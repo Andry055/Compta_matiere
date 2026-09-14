@@ -1,0 +1,25 @@
+{
+  "kind": "collectionType",
+  "collectionName": "directions",
+  "info": {
+    "singularName": "direction",
+    "pluralName": "directions",
+    "displayName": "direction"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "nom_direction": {
+      "type": "string",
+      "required": true
+    },
+    "abreviation": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    }
+  }
+}

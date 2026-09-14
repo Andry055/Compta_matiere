@@ -1,0 +1,66 @@
+{
+  "kind": "collectionType",
+  "collectionName": "employees",
+  "info": {
+    "singularName": "employee",
+    "pluralName": "employees",
+    "displayName": "employee"
+  },
+  "options": {
+    "draftAndPublish": true
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "im": {
+      "type": "string",
+      "required": true
+    },
+    "CIN": {
+      "type": "string"
+    },
+    "nom": {
+      "type": "string"
+    },
+    "prenom": {
+      "type": "string"
+    },
+    "sexe": {
+      "type": "enumeration",
+      "enum": [
+        "masculin",
+        "féminin"
+      ]
+    },
+    "corps": {
+      "type": "string"
+    },
+    "fonction": {
+      "type": "string"
+    },
+    "phone": {
+      "type": "string"
+    },
+    "email": {
+      "type": "email",
+      "required": true
+    },
+    "photo": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": [
+        "images",
+        "files",
+        "videos",
+        "audios"
+      ]
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": [
+        "actif",
+        "inactif",
+        "congé"
+      ]
+    }
+  }
+}

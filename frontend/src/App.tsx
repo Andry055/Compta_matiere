@@ -3,8 +3,9 @@ import { DashboardLayout } from "./components/DashboardLayout"
 import { StaffDashboardLayout } from "./components/StaffDashboardLayout"
 import { LoginScreen } from "./components/LoginScreen"
 import { AuthGuard } from "./components/AuthGuard"
+import { AppRole, DemandeurLevel } from "./types/roles"
 
-export type UserRole = 'admin' | 'staff' | null
+export type UserRole = AppRole | 'admin' | 'staff' | null
 
 export interface User {
   id: string
@@ -13,6 +14,9 @@ export interface User {
   role: UserRole
   department: string
   permissions: string[]
+  demandeurLevel?: DemandeurLevel
+  directionId?: string
+  serviceId?: string
 }
 
 export default function App() {
@@ -62,7 +66,7 @@ export default function App() {
     localStorage.setItem('currentUser', JSON.stringify(user))
     localStorage.setItem('loginTime', Date.now().toString())
     
-    // Track login event (in real app, this would be sent to analytics)
+    // Track login event
     console.log(`User logged in: ${user.email} (${user.role}) at ${new Date().toISOString()}`)
   }
 
@@ -77,7 +81,6 @@ export default function App() {
     localStorage.removeItem('rememberMe')
     localStorage.removeItem('savedEmail')
     
-    // Track logout event
     if (logoutUser) {
       console.log(`User logged out: ${logoutUser.email} at ${new Date().toISOString()}`)
     }
@@ -117,29 +120,16 @@ export default function App() {
     )
   }
 
-  // Render appropriate dashboard based on user role
+  // Normaliser le rôle pour la navigation unifiée
+  const isSpecialStaff = currentUser.role === 'staff'
+
   return (
     <div className="size-full">
       <AuthGuard user={currentUser}>
-        {currentUser.role === 'admin' ? (
-          <DashboardLayout user={currentUser} onLogout={handleLogout} />
-        ) : currentUser.role === 'staff' ? (
+        {isSpecialStaff ? (
           <StaffDashboardLayout user={currentUser} onLogout={handleLogout} />
         ) : (
-          <div className="size-full flex items-center justify-center bg-background">
-            <div className="text-center">
-              <div className="text-destructive text-lg mb-2">Erreur d'Authentification</div>
-              <div className="text-muted-foreground text-sm mb-4">
-                Rôle utilisateur non reconnu: {currentUser.role}
-              </div>
-              <button
-                onClick={handleLogout}
-                className="px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90"
-              >
-                Se déconnecter
-              </button>
-            </div>
-          </div>
+          <DashboardLayout user={currentUser} onLogout={handleLogout} />
         )}
       </AuthGuard>
     </div>

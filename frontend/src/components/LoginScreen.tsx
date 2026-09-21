@@ -13,7 +13,7 @@ interface LoginScreenProps {
   onLogin: (user: UserType) => void;
 }
 
-// Mock user database with credentials - Adapté à l'organigramme de l'entreprise
+// Mock user database with credentials - 5 rôles réglementaires MTEFoP
 const mockUserDatabase: Array<UserType & { password: string }> = [
   {
     id: "admin-1",
@@ -21,81 +21,64 @@ const mockUserDatabase: Array<UserType & { password: string }> = [
     email: "m.rakoto@ministere.gov.mg",
     password: "admin123",
     role: "admin",
-    department: "Direction Logistique - Service Comptabilité Matière",
+    department: "Administration Centrale",
     permissions: ["all"],
   },
   {
-    id: "staff-1",
-    name: "Jean RAMAROSON",
-    email: "j.ramaroson@ministere.gov.mg",
-    password: "jean123",
-    role: "staff",
-    department: "Direction Logistique - Service Comptabilité Matière",
-    permissions: [
-      "material_entry",
-      "material_exit",
-      "view_movements",
-      "create_requests",
-    ],
+    id: "depositaire-1",
+    name: "Rakotomalala Hery",
+    email: "hery.rakoto@mtefop.gov.mg",
+    password: "depositaire123",
+    role: "depositaire",
+    department: "DAF - Service Comptabilité Matière",
+    permissions: ["equipment.view", "equipment.edit", "equipment.delete", "equipment.create"],
   },
   {
-    id: "staff-2",
-    name: "Sophie RANDRIAMAMPIONONA",
-    email: "s.randriamampionona@ministere.gov.mg",
-    password: "sophie123",
-    role: "staff",
-    department: "Direction Logistique - Service Comptabilité Matière",
-    permissions: ["material_entry", "material_exit", "view_movements"],
+    id: "magasinier-1",
+    name: "Andriamampianina Fara",
+    email: "fara.andriam@mtefop.gov.mg",
+    password: "magasinier123",
+    role: "magasinier",
+    department: "DAF - Magasin & Entrepôt",
+    permissions: ["equipment.view"],
   },
   {
-    id: "staff-3",
-    name: "Paul ANDRY",
-    email: "p.andry@ministere.gov.mg",
-    password: "paul123",
-    role: "staff",
-    department: "Direction Logistique - Service Approvisionnement",
-    permissions: ["material_entry", "view_movements", "create_requests"],
+    id: "logistique-1",
+    name: "Razafindrakoto Tojo",
+    email: "tojo.razaf@mtefop.gov.mg",
+    password: "logistique123",
+    role: "logistique",
+    department: "DAF - Direction Logistique",
+    permissions: ["equipment.view"],
   },
   {
-    id: "staff-4",
-    name: "Michel RABE",
-    email: "m.rabe@ministere.gov.mg",
-    password: "michel123",
-    role: "staff",
-    department: "Direction Logistique - Service Maintenance",
-    permissions: ["material_exit", "view_movements", "maintenance_requests"],
+    id: "comptable-1",
+    name: "Ravaomanana Nirina",
+    email: "nirina.ravao@mtefop.gov.mg",
+    password: "comptable123",
+    role: "comptable",
+    department: "DAF - Service Budget",
+    permissions: ["equipment.view"],
   },
   {
-    id: "staff-5",
-    name: "Voahangy RAZANADRA",
-    email: "v.razanadra@ministere.gov.mg",
-    password: "voahangy123",
-    role: "staff",
-    department: "Direction RH - Service Gestion Personnel",
-    permissions: ["view_movements", "create_requests"],
+    id: "demandeur-service-1",
+    name: "Randriamampionona Tolotra",
+    email: "tolotra.randria@mtefop.gov.mg",
+    password: "demandeur123",
+    role: "demandeur",
+    department: "DRH - Service du Personnel",
+    permissions: ["equipment.view"],
+    demandeurLevel: "service",
   },
   {
-    id: "staff-6",
-    name: "Lala RAZAFINDRAKOTO",
-    email: "l.razafindrakoto@ministere.gov.mg",
-    password: "lala123",
-    role: "staff",
-    department: "Direction Informatique - Service Développement",
-    permissions: [
-      "material_entry",
-      "material_exit",
-      "view_movements",
-      "tech_support",
-    ],
-  },
-  {
-    id: "staff-7",
-    name: "Patrick RAZANATSEHENO",
-    email: "p.razanatseheno@ministere.gov.mg",
-    password: "patrick123",
-    role: "staff",
-    department: "Direction Financière - Service Budget",
-    permissions: ["view_movements", "financial_reports"],
+    id: "demandeur-direction-1",
+    name: "Rakotoson Jean",
+    email: "jean.rakoto@mtefop.gov.mg",
+    password: "direction123",
+    role: "demandeur",
+    department: "Direction du Travail (DT)",
+    permissions: ["equipment.view"],
+    demandeurLevel: "direction",
   },
 ];
 
@@ -323,88 +306,89 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     <button
                       onClick={() =>
                         fillDemoCredentials(
-                          "j.ramaroson@ministere.gov.mg",
-                          "jean123"
+                          "hery.rakoto@mtefop.gov.mg",
+                          "depositaire123"
                         )
                       }
                       className="text-left p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
                     >
                       <div className="text-blue-700 dark:text-blue-300">
-                        👤 <strong>Jean RAMAROSON</strong> - Comptabilité
-                        Matière
+                        👤 <strong>Rakotomalala Hery</strong> - Dépositaire
+                        comptable
                       </div>
                       <div className="text-blue-600 dark:text-blue-400">
-                        j.ramaroson@ministere.gov.mg / jean123
+                        hery.rakoto@mtefop.gov.mg / depositaire123
                       </div>
                     </button>
 
                     <button
                       onClick={() =>
                         fillDemoCredentials(
-                          "s.randriamampionona@ministere.gov.mg",
-                          "sophie123"
+                          "fara.andriam@mtefop.gov.mg",
+                          "magasinier123"
                         )
                       }
                       className="text-left p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
                     >
                       <div className="text-blue-700 dark:text-blue-300">
-                        👤 <strong>Sophie RANDRIAMAMPIONONA</strong> -
-                        Comptabilité Matière
+                        👤 <strong>Andriamampianina Fara</strong> -
+                        Magasinier
                       </div>
                       <div className="text-blue-600 dark:text-blue-400">
-                        s.randriamampionona@ministere.gov.mg / sophie123
+                        fara.andriam@mtefop.gov.mg / magasinier123
                       </div>
                     </button>
 
                     <button
                       onClick={() =>
                         fillDemoCredentials(
-                          "p.andry@ministere.gov.mg",
-                          "paul123"
+                          "tojo.razaf@mtefop.gov.mg",
+                          "logistique123"
                         )
                       }
                       className="text-left p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
                     >
                       <div className="text-green-700 dark:text-green-300">
-                        📦 <strong>Paul ANDRY</strong> - Service
-                        Approvisionnement
+                        📦 <strong>Razafindrakoto Tojo</strong> - Chef
+                        logistique
                       </div>
                       <div className="text-green-600 dark:text-green-400">
-                        p.andry@ministere.gov.mg / paul123
+                        tojo.razaf@mtefop.gov.mg / logistique123
                       </div>
                     </button>
 
                     <button
                       onClick={() =>
                         fillDemoCredentials(
-                          "v.razanadra@ministere.gov.mg",
-                          "voahangy123"
+                          "nirina.ravao@mtefop.gov.mg",
+                          "comptable123"
                         )
                       }
                       className="text-left p-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
                     >
                       <div className="text-purple-700 dark:text-purple-300">
-                        👥 <strong>Voahangy RAZANADRA</strong> - RH
+                        👥 <strong>Ravaomanana Nirina</strong> - Comptable
                       </div>
                       <div className="text-purple-600 dark:text-purple-400">
-                        v.razanadra@ministere.gov.mg / voahangy123
+                        nirina.ravao@mtefop.gov.mg / comptable123
                       </div>
                     </button>
 
                     <button
                       onClick={() =>
                         fillDemoCredentials(
-                          "l.razafindrakoto@ministere.gov.mg",
-                          "lala123"
+                          "tolotra.randria@mtefop.gov.mg",
+                          "demandeur123"
                         )
                       }
                       className="text-left p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
                     >
                       <div className="text-orange-700 dark:text-orange-300">
-                        💻 <strong>Lala RAZAFINDRAKOTO</strong> - Informatique
+                        💻 <strong>Randriamampionona Tolotra</strong> -
+                        Demandeur (Service)
                       </div>
                       <div className="text-orange-600 dark:text-orange-400">
-                        l.razafindrakoto@ministere.gov.mg / lala123
+                        tolotra.randria@mtefop.gov.mg / demandeur123
                       </div>
                     </button>
                   </div>

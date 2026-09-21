@@ -13,6 +13,7 @@ import { ThemeToggle } from "./ThemeToggle"
 import { Menu, Package, Bell, Shield, Wifi, Check, X, LogOut } from "lucide-react"
 import { useState, useEffect } from "react"
 import { User } from "../App"
+import { ROLES_CONFIG, AppRole } from "../types/roles"
 
 interface DashboardLayoutProps {
   user: User
@@ -24,6 +25,10 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isMobile, setIsMobile] = useState(false)
+
+  // Fonctionnalité : config du rôle connecté
+  const userRole = (user.role || 'depositaire') as AppRole
+  const roleConfig = ROLES_CONFIG[userRole]
 
   // Detect mobile screen size
   useEffect(() => {
@@ -41,6 +46,13 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
     return () => window.removeEventListener('resize', checkScreenSize)
   }, [])
 
+  // Fonctionnalité : si la section active n'est pas autorisée pour ce rôle, revenir au tableau de bord
+  useEffect(() => {
+    if (user.role !== 'admin' && roleConfig?.pages && !roleConfig.pages.includes(activeSection)) {
+      setActiveSection("dashboard")
+    }
+  }, [user.role, roleConfig, activeSection])
+
   const renderContent = () => {
     switch (activeSection) {
       case "dashboard":
@@ -48,7 +60,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
       case "journal":
         return <Journal />
       case "equipment":
-        return <Equipment />
+        return <Equipment user={user} />
       case "distribution":
         return <Distribution />
       case "movements":
@@ -56,7 +68,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
       case "departments":
         return <Departments />
       case "requests":
-        return <Requests />
+        return <Requests user={user} />
       case "reports":
         return <Reports />
       case "users":
@@ -97,6 +109,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
         <SimpleSidebar 
           activeSection={activeSection} 
           onSectionChange={handleSectionChange}
+          user={user}
           isMobile={isMobile}
           onClose={() => setMobileMenuOpen(false)}
         />
@@ -145,7 +158,9 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
             {/* User Info - Hidden on mobile */}
             <div className="hidden md:flex flex-col items-end">
               <span className="text-sm text-foreground">{user.name}</span>
-              <span className="text-xs text-muted-foreground">Administrateur</span>
+              <span className="text-xs text-muted-foreground">
+                {roleConfig?.label || (user.role === 'admin' ? 'Administrateur' : user.department)}
+              </span>
             </div>
 
             {/* Notifications */}

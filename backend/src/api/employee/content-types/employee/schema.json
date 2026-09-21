@@ -61,6 +61,12 @@
         "inactif",
         "congé"
       ]
+    },
+    "service": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::service.service",
+      "inversedBy": "employees"
     }
   }
 }

@@ -6,4 +6,9 @@
 
 const { createCoreRouter } = require('@strapi/strapi').factories;
 
-module.exports = createCoreRouter('api::service.service');
+module.exports = createCoreRouter('api::service.service', {
+  config: {
+    find: { auth: false },
+    findOne: { auth: false },
+  },
+});

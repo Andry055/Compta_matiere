@@ -459,7 +459,10 @@ export interface ApiDirectionDirection extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     description: Schema.Attribute.String;
+    directeur: Schema.Attribute.String;
+    directeur_email: Schema.Attribute.Email;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localisation: Schema.Attribute.String;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
       'api::direction.direction'
@@ -467,6 +470,7 @@ export interface ApiDirectionDirection extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     nom_direction: Schema.Attribute.String & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
+    services: Schema.Attribute.Relation<'oneToMany', 'api::service.service'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -506,6 +510,7 @@ export interface ApiEmployeeEmployee extends Struct.CollectionTypeSchema {
     >;
     prenom: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
+    service: Schema.Attribute.Relation<'manyToOne', 'api::service.service'>;
     sexe: Schema.Attribute.Enumeration<['masculin', 'f\u00E9minin']>;
     statut: Schema.Attribute.Enumeration<['actif', 'inactif', 'cong\u00E9']>;
     updatedAt: Schema.Attribute.DateTime;
@@ -529,7 +534,13 @@ export interface ApiServiceService extends Struct.CollectionTypeSchema {
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     description: Schema.Attribute.String;
+    direction: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::direction.direction'
+    >;
+    employees: Schema.Attribute.Relation<'oneToMany', 'api::employee.employee'>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localisation: Schema.Attribute.String;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
       'api::service.service'
@@ -537,6 +548,8 @@ export interface ApiServiceService extends Struct.CollectionTypeSchema {
       Schema.Attribute.Private;
     nom_service: Schema.Attribute.String & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
+    responsable: Schema.Attribute.String;
+    responsable_email: Schema.Attribute.Email;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

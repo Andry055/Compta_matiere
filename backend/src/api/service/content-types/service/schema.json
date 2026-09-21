@@ -17,6 +17,27 @@
     },
     "description": {
       "type": "string"
+    },
+    "responsable": {
+      "type": "string"
+    },
+    "responsable_email": {
+      "type": "email"
+    },
+    "localisation": {
+      "type": "string"
+    },
+    "direction": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::direction.direction",
+      "inversedBy": "services"
+    },
+    "employees": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::employee.employee",
+      "mappedBy": "service"
     }
   }
 }

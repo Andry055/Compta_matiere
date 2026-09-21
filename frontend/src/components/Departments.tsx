@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Building,
   Users,
@@ -18,6 +18,7 @@ import { DirectionsStructure } from "./DirectionsStructure";
 import { DirectionModal } from "./DirectionModal";
 import { EmployeeModal } from "./EmployeeModal";
 import { TransferEmployeeModal } from "./TransferEmployeeModal";
+import { fetchOrganisation } from "../lib/api";
 
 interface Employee {
   id: number;
@@ -438,8 +439,27 @@ export function Departments() {
     [key: number]: boolean;
   }>({});
 
-  // Mock data state (in real app this would come from API)
+  // Données locales (repli si l'API est indisponible) puis chargement depuis le backend Strapi
   const [directions, setDirections] = useState(mockDirections);
+
+  useEffect(() => {
+    let isActive = true;
+    fetchOrganisation()
+      .then((data) => {
+        if (isActive && data.length > 0) {
+          setDirections(data);
+        }
+      })
+      .catch((error) => {
+        console.warn(
+          "API Strapi indisponible, utilisation des données locales :",
+          error?.message || error
+        );
+      });
+    return () => {
+      isActive = false;
+    };
+  }, []);
 
   const getStatusColor = (status: string) => {
     switch (status) {

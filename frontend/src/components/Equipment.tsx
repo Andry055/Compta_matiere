@@ -183,7 +183,7 @@ const mockEquipment: EquipmentItem[] = [
   },
 ];
 
-export function Equipment() {
+export function Equipment({ user }: { user?: UserType }) {
   const [equipment, setEquipment] = useState<EquipmentItem[]>(mockEquipment);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
@@ -192,6 +192,9 @@ export function Equipment() {
   const [selectedItem, setSelectedItem] = useState<EquipmentItem | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showAllEquipmentModal, setShowAllEquipmentModal] = useState(false);
+
+  // Fonctionnalité : le demandeur consulte le stock en lecture seule
+  const isDemandeur = user?.role === "demandeur";
 
   const filteredEquipment = equipment.filter((item) => {
     const matchesSearch =
@@ -360,6 +363,7 @@ export function Equipment() {
             </span>
             <span className="relative font-medium sm:hidden">Complet</span>
           </button>
+          {!isDemandeur && (
           <button
             onClick={() => setShowAddModal(true)}
             className="group relative inline-flex items-center gap-2 px-4 sm:px-6 py-2 sm:py-3 bg-gradient-to-r from-primary to-primary/90 text-primary-foreground rounded-lg shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/40 hover:scale-105 active:scale-95 transition-all duration-200 transform-gpu overflow-hidden text-sm sm:text-base"
@@ -372,6 +376,7 @@ export function Equipment() {
             <span className="relative font-medium sm:hidden">Ajouter</span>
             <div className="absolute inset-0 border border-white/20 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
           </button>
+          )}
         </div>
       </div>
 
@@ -550,10 +555,9 @@ export function Equipment() {
                   )}`}
                 >
                   {item.status}
-                </span>
-                <EquipmentActions
+                </span>                  <EquipmentActions
                   equipment={item}
-                  currentUser={mockCurrentUser}
+                  currentUser={user || mockCurrentUser}
                   onView={handleViewEquipment}
                   onEdit={handleEditEquipment}
                   onDelete={handleDeleteEquipment}
@@ -650,7 +654,7 @@ export function Equipment() {
                     <td className="py-3 px-4">
                       <EquipmentActions
                         equipment={item}
-                        currentUser={mockCurrentUser}
+                        currentUser={user || mockCurrentUser}
                         onView={handleViewEquipment}
                         onEdit={handleEditEquipment}
                         onDelete={handleDeleteEquipment}

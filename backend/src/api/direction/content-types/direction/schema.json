@@ -20,6 +20,21 @@
     },
     "description": {
       "type": "string"
+    },
+    "directeur": {
+      "type": "string"
+    },
+    "directeur_email": {
+      "type": "email"
+    },
+    "localisation": {
+      "type": "string"
+    },
+    "services": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::service.service",
+      "mappedBy": "direction"
     }
   }
 }

@@ -5,12 +5,14 @@ import {
   Building,
   Clipboard,
   BarChart3,
-  User,
+  User as UserIcon,
   Settings,
   X,
   Truck,
   BookOpen
 } from "lucide-react"
+import { User } from "../App"
+import { ROLES_CONFIG, AppRole } from "../types/roles"
 
 const navItems = [
   {
@@ -63,7 +65,7 @@ const navItems = [
   },
   {
     title: "Utilisateurs",
-    icon: User,
+    icon: UserIcon,
     key: "users",
     description: "Gestion des utilisateurs"
   },
@@ -78,11 +80,21 @@ const navItems = [
 interface SimpleSidebarProps {
   activeSection: string
   onSectionChange: (section: string) => void
+  user?: User
   isMobile?: boolean
   onClose?: () => void
 }
 
-export function SimpleSidebar({ activeSection, onSectionChange, isMobile = false, onClose }: SimpleSidebarProps) {
+export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile = false, onClose }: SimpleSidebarProps) {
+  // Fonctionnalité : filtrer les rubriques selon le rôle métier
+  const userRole = (user?.role || 'depositaire') as AppRole
+  const allowedPages = user?.role === 'admin'
+    ? navItems.map((item) => item.key)
+    : (ROLES_CONFIG[userRole]?.pages || navItems.map((item) => item.key))
+  const visibleItems = navItems.filter((item) => allowedPages.includes(item.key))
+
+  const roleLabel = ROLES_CONFIG[userRole]?.label || (user?.role === 'admin' ? 'Administrateur Système' : 'Personnel')
+
   return (
     <div className={`${isMobile ? 'w-80' : 'w-72'} bg-sidebar border-r border-sidebar-border flex flex-col h-full`}>
       {/* Header */}
@@ -112,7 +124,7 @@ export function SimpleSidebar({ activeSection, onSectionChange, isMobile = false
           <p className="text-xs text-sidebar-foreground/60 uppercase tracking-wider mb-4 px-1">
             Navigation
           </p>
-          {navItems.map((item) => {
+          {visibleItems.map((item) => {
             const IconComponent = item.icon
             const isActive = activeSection === item.key
             return (
@@ -144,12 +156,14 @@ export function SimpleSidebar({ activeSection, onSectionChange, isMobile = false
       <div className="p-3 sm:p-4 border-t border-sidebar-border">
         <div className="flex items-center gap-3 px-3 py-2 rounded-lg bg-sidebar-accent/30">
           <div className="w-8 h-8 bg-sidebar-primary rounded-full flex items-center justify-center flex-shrink-0">
-            <User className="h-4 w-4 text-sidebar-primary-foreground" />
+            <UserIcon className="h-4 w-4 text-sidebar-primary-foreground" />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="text-sm text-sidebar-foreground truncate">Admin Système</div>
+            <div className="text-sm text-sidebar-foreground truncate">
+              {user?.name || 'Admin Système'}
+            </div>
             <div className="text-xs text-sidebar-foreground/60 truncate">
-              Accès Complet
+              {roleLabel}
             </div>
           </div>
         </div>

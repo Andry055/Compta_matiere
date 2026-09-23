@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react"
+import { clearStrapiSession } from "./lib/api"
 import { DashboardLayout } from "./components/DashboardLayout"
 import { StaffDashboardLayout } from "./components/StaffDashboardLayout"
 import { LoginScreen } from "./components/LoginScreen"
@@ -44,6 +45,7 @@ export default function App() {
             // Clear expired session
             localStorage.removeItem('currentUser')
             localStorage.removeItem('loginTime')
+            clearStrapiSession()
             setAuthError('Votre session a expiré. Veuillez vous reconnecter.')
           }
         }
@@ -80,6 +82,8 @@ export default function App() {
     localStorage.removeItem('loginTime')
     localStorage.removeItem('rememberMe')
     localStorage.removeItem('savedEmail')
+    // Jeton JWT Content API
+    clearStrapiSession()
     
     if (logoutUser) {
       console.log(`User logged out: ${logoutUser.email} at ${new Date().toISOString()}`)

@@ -443,6 +443,109 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiCategoryCategory extends Struct.CollectionTypeSchema {
+  collectionName: 'categories';
+  info: {
+    displayName: 'category';
+    pluralName: 'categories';
+    singularName: 'category';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    code: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    description: Schema.Attribute.String;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::category.category'
+    > &
+      Schema.Attribute.Private;
+    materiaux: Schema.Attribute.Relation<'oneToMany', 'api::material.material'>;
+    nom: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiDemandeDemande extends Struct.CollectionTypeSchema {
+  collectionName: 'demandes';
+  info: {
+    displayName: 'demande';
+    pluralName: 'demandes';
+    singularName: 'demande';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_demande: Schema.Attribute.Date & Schema.Attribute.Required;
+    date_envoi: Schema.Attribute.Date;
+    date_validation: Schema.Attribute.Date;
+    demandeur: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    designation_materiel: Schema.Attribute.String & Schema.Attribute.Required;
+    direction: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::direction.direction'
+    >;
+    fonction: Schema.Attribute.String;
+    groupe: Schema.Attribute.String;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::demande.demande'
+    > &
+      Schema.Attribute.Private;
+    motif: Schema.Attribute.Text;
+    mouvements: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::mouvement.mouvement'
+    >;
+    observation: Schema.Attribute.Text;
+    priorite: Schema.Attribute.Enumeration<['normal', 'urgent', 'critique']> &
+      Schema.Attribute.DefaultTo<'normal'>;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<1>;
+    reference: Schema.Attribute.String & Schema.Attribute.Unique;
+    service: Schema.Attribute.Relation<'manyToOne', 'api::service.service'>;
+    sorties: Schema.Attribute.Relation<'oneToMany', 'api::sortie.sortie'>;
+    statut: Schema.Attribute.Enumeration<
+      [
+        'brouillon',
+        'en_attente',
+        'en_cours',
+        'approuvee',
+        'rejetee',
+        'preparation',
+        'annulee',
+        'sortie_effectuee',
+      ]
+    > &
+      Schema.Attribute.DefaultTo<'en_attente'>;
+    type: Schema.Attribute.Enumeration<['entree', 'sortie']> &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'sortie'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    valide_par: Schema.Attribute.String;
+  };
+}
+
 export interface ApiDirectionDirection extends Struct.CollectionTypeSchema {
   collectionName: 'directions';
   info: {
@@ -519,6 +622,257 @@ export interface ApiEmployeeEmployee extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiEntreeLigneEntreeLigne extends Struct.CollectionTypeSchema {
+  collectionName: 'entree_lignes';
+  info: {
+    displayName: 'entreeLigne';
+    pluralName: 'entree-lignes';
+    singularName: 'entree-ligne';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    designation: Schema.Attribute.String;
+    entree: Schema.Attribute.Relation<'manyToOne', 'api::entree.entree'>;
+    espece: Schema.Attribute.String;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::entree-ligne.entree-ligne'
+    > &
+      Schema.Attribute.Private;
+    materiel: Schema.Attribute.Relation<'manyToOne', 'api::material.material'>;
+    montant: Schema.Attribute.Decimal;
+    nomenclature: Schema.Attribute.String;
+    numero_ordre: Schema.Attribute.Integer;
+    observations: Schema.Attribute.String;
+    piece_justificative: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<1>;
+    unite: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    valeur_unitaire: Schema.Attribute.Decimal;
+  };
+}
+
+export interface ApiEntreeEntree extends Struct.CollectionTypeSchema {
+  collectionName: 'entrees';
+  info: {
+    displayName: 'entree';
+    pluralName: 'entrees';
+    singularName: 'entree';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    adresse_fournisseur: Schema.Attribute.String;
+    affectation_chef_service_1: Schema.Attribute.String;
+    affectation_chef_service_2: Schema.Attribute.String;
+    affectation_depositaire: Schema.Attribute.String;
+    bon_livraison: Schema.Attribute.String;
+    budget_general: Schema.Attribute.String;
+    chef_service_1_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    chef_service_2_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_entree: Schema.Attribute.Date & Schema.Attribute.Required;
+    date_facture: Schema.Attribute.Date;
+    date_signature_chef_service_1: Schema.Attribute.String;
+    date_signature_chef_service_2: Schema.Attribute.String;
+    date_signature_depositaire: Schema.Attribute.String;
+    declaration_date: Schema.Attribute.Date;
+    declaration_fonction: Schema.Attribute.String;
+    declaration_nom: Schema.Attribute.String;
+    declaration_signature: Schema.Attribute.String;
+    depositaire_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    direction: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::direction.direction'
+    >;
+    fournisseur: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::fournisseur.fournisseur'
+    >;
+    libelle_chapitre: Schema.Attribute.String;
+    lignes: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::entree-ligne.entree-ligne'
+    >;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::entree.entree'
+    > &
+      Schema.Attribute.Private;
+    mouvements: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::mouvement.mouvement'
+    >;
+    notes: Schema.Attribute.Text;
+    numero_chapitre: Schema.Attribute.String;
+    numero_facture: Schema.Attribute.String;
+    numero_ordre_journal: Schema.Attribute.String;
+    piece_justificative: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    qr_token: Schema.Attribute.String & Schema.Attribute.Unique;
+    reference: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    reference_marche: Schema.Attribute.String;
+    responsable: Schema.Attribute.String;
+    service: Schema.Attribute.Relation<'manyToOne', 'api::service.service'>;
+    signataire_chef_service_1: Schema.Attribute.String;
+    signataire_chef_service_2: Schema.Attribute.String;
+    signataire_depositaire: Schema.Attribute.String;
+    soa: Schema.Attribute.String;
+    statut: Schema.Attribute.Enumeration<
+      ['brouillon', 'en_attente', 'verifiee', 'validee', 'rejetee']
+    > &
+      Schema.Attribute.DefaultTo<'en_attente'>;
+    stock_impacte: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
+    subdivision_chapitre: Schema.Attribute.String;
+    total: Schema.Attribute.Decimal & Schema.Attribute.DefaultTo<0>;
+    type_operation: Schema.Attribute.Enumeration<
+      ['materiel_en_approvisionnement', 'materiel_en_service']
+    >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiFournisseurFournisseur extends Struct.CollectionTypeSchema {
+  collectionName: 'fournisseurs';
+  info: {
+    displayName: 'fournisseur';
+    pluralName: 'fournisseurs';
+    singularName: 'fournisseur';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    adresse: Schema.Attribute.String;
+    contact: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    email: Schema.Attribute.Email;
+    entrees: Schema.Attribute.Relation<'oneToMany', 'api::entree.entree'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::fournisseur.fournisseur'
+    > &
+      Schema.Attribute.Private;
+    nom: Schema.Attribute.String & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    telephone: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiMaterialMaterial extends Struct.CollectionTypeSchema {
+  collectionName: 'materials';
+  info: {
+    displayName: 'material';
+    pluralName: 'materials';
+    singularName: 'material';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    categorie: Schema.Attribute.Relation<'manyToOne', 'api::category.category'>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    designation: Schema.Attribute.String & Schema.Attribute.Required;
+    lignes_entree: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::entree-ligne.entree-ligne'
+    >;
+    lignes_sortie: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::sortie-ligne.sortie-ligne'
+    >;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::material.material'
+    > &
+      Schema.Attribute.Private;
+    nomenclature: Schema.Attribute.String;
+    numero_serie: Schema.Attribute.String;
+    observations: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite_stock: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
+    statut: Schema.Attribute.Enumeration<
+      ['en_stock', 'distribue', 'maintenance', 'reforme', 'sortie']
+    > &
+      Schema.Attribute.DefaultTo<'en_stock'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    valeur_unitaire: Schema.Attribute.Decimal;
+  };
+}
+
+export interface ApiMouvementMouvement extends Struct.CollectionTypeSchema {
+  collectionName: 'mouvements';
+  info: {
+    displayName: 'mouvement';
+    pluralName: 'mouvements';
+    singularName: 'mouvement';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    action: Schema.Attribute.String & Schema.Attribute.Required;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_mouvement: Schema.Attribute.Date & Schema.Attribute.Required;
+    demande: Schema.Attribute.Relation<'manyToOne', 'api::demande.demande'>;
+    entree: Schema.Attribute.Relation<'manyToOne', 'api::entree.entree'>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::mouvement.mouvement'
+    > &
+      Schema.Attribute.Private;
+    materiel: Schema.Attribute.String;
+    observations: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite: Schema.Attribute.Integer;
+    reference: Schema.Attribute.String & Schema.Attribute.Required;
+    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'>;
+    statut: Schema.Attribute.String;
+    type: Schema.Attribute.Enumeration<['entree', 'sortie', 'demande']> &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    utilisateur: Schema.Attribute.String;
+  };
+}
+
 export interface ApiServiceService extends Struct.CollectionTypeSchema {
   collectionName: 'services';
   info: {
@@ -550,6 +904,91 @@ export interface ApiServiceService extends Struct.CollectionTypeSchema {
     publishedAt: Schema.Attribute.DateTime;
     responsable: Schema.Attribute.String;
     responsable_email: Schema.Attribute.Email;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiSortieLigneSortieLigne extends Struct.CollectionTypeSchema {
+  collectionName: 'sortie_lignes';
+  info: {
+    displayName: 'sortieLigne';
+    pluralName: 'sortie-lignes';
+    singularName: 'sortie-ligne';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::sortie-ligne.sortie-ligne'
+    > &
+      Schema.Attribute.Private;
+    materiel: Schema.Attribute.Relation<'manyToOne', 'api::material.material'>;
+    observations: Schema.Attribute.String;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<1>;
+    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    valeur_unitaire: Schema.Attribute.Decimal;
+  };
+}
+
+export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
+  collectionName: 'sorties';
+  info: {
+    displayName: 'sortie';
+    pluralName: 'sorties';
+    singularName: 'sortie';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    beneficiaire: Schema.Attribute.String;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_sortie: Schema.Attribute.Date & Schema.Attribute.Required;
+    demande: Schema.Attribute.Relation<'manyToOne', 'api::demande.demande'>;
+    direction: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::direction.direction'
+    >;
+    justificatif: Schema.Attribute.String;
+    lignes: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::sortie-ligne.sortie-ligne'
+    >;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::sortie.sortie'
+    > &
+      Schema.Attribute.Private;
+    mouvements: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::mouvement.mouvement'
+    >;
+    observations: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    reference: Schema.Attribute.String & Schema.Attribute.Unique;
+    responsable: Schema.Attribute.String;
+    service: Schema.Attribute.Relation<'manyToOne', 'api::service.service'>;
+    statut: Schema.Attribute.Enumeration<
+      ['demandee', 'en_preparation', 'validee', 'sortie_effectuee', 'annulee']
+    > &
+      Schema.Attribute.DefaultTo<'demandee'>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1021,11 +1460,14 @@ export interface PluginUsersPermissionsUser
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    department: Schema.Attribute.String;
     email: Schema.Attribute.Email &
       Schema.Attribute.Required &
+      Schema.Attribute.Unique &
       Schema.Attribute.SetMinMaxLength<{
         minLength: 6;
       }>;
+    fonction: Schema.Attribute.String;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1067,9 +1509,18 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::category.category': ApiCategoryCategory;
+      'api::demande.demande': ApiDemandeDemande;
       'api::direction.direction': ApiDirectionDirection;
       'api::employee.employee': ApiEmployeeEmployee;
+      'api::entree-ligne.entree-ligne': ApiEntreeLigneEntreeLigne;
+      'api::entree.entree': ApiEntreeEntree;
+      'api::fournisseur.fournisseur': ApiFournisseurFournisseur;
+      'api::material.material': ApiMaterialMaterial;
+      'api::mouvement.mouvement': ApiMouvementMouvement;
       'api::service.service': ApiServiceService;
+      'api::sortie-ligne.sortie-ligne': ApiSortieLigneSortieLigne;
+      'api::sortie.sortie': ApiSortieSortie;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

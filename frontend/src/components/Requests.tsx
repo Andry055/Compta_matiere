@@ -1,76 +1,19 @@
-import { useState } from "react"
-import { Clipboard, Plus, Check, X, Clock, Filter, Search, Loader2, RotateCcw, AlertCircle } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Clipboard, Plus, Check, X, Clock, Filter, Search, Loader2, RotateCcw, AlertCircle, FileText, ArrowRight, History, Package } from "lucide-react"
 import { User as UserType } from "../App"
+import { Request, mockRequests } from "../lib/requests"
+import { sortieRecords, getSortieTrace, splitDepartement } from "../lib/movements"
+import { MyRequests } from "./MyRequests"
 
-interface Request {
-  id: number
-  type: 'Entrée' | 'Sortie'
-  equipment: string
-  requestedBy: string
-  department: string
-  reason: string
-  quantity: number
-  requestDate: string
-  status: 'En attente' | 'Approuvé' | 'Rejeté'
-  priority: 'Normal' | 'Urgent' | 'Critique'
-  approver?: string
-  notes?: string
+interface RequestsProps {
+  user?: UserType
+  /** Ouvre directement le détail d'une demande (lien « Demande associée » venu de la page Sorties) */
+  detailRequestId?: number
+  /** Notifie le parent que le détail demandé a été ouvert */
+  onDetailConsumed?: () => void
 }
 
-const mockRequests: Request[] = [
-  {
-    id: 1,
-    type: "Entrée",
-    equipment: "Ordinateur portable Dell",
-    requestedBy: "Marie Dubois",
-    department: "IT - Développement",
-    reason: "Nouveau collaborateur",
-    quantity: 1,
-    requestDate: "2025-01-20",
-    status: "En attente",
-    priority: "Urgent"
-  },
-  {
-    id: 2,
-    type: "Sortie",
-    equipment: "Imprimante Canon",
-    requestedBy: "Pierre Martin",
-    department: "Finance",
-    reason: "Réparation",
-    quantity: 1,
-    requestDate: "2025-01-19",
-    status: "Approuvé",
-    priority: "Normal",
-    approver: "Jean Directeur"
-  },
-  {
-    id: 3,
-    type: "Sortie",
-    equipment: "Ordinateur portable Dell",
-    requestedBy: "Randriamampionona Tolotra",
-    department: "DRH - Service du Personnel",
-    reason: "Renouvellement poste de travail",
-    quantity: 1,
-    requestDate: "2025-01-21",
-    status: "En attente",
-    priority: "Normal"
-  },
-  {
-    id: 4,
-    type: "Entrée",
-    equipment: "Vidéoprojecteur Epson",
-    requestedBy: "Rakotoson Jean",
-    department: "Direction du Travail (DT)",
-    reason: "Équipement salle de réunion",
-    quantity: 1,
-    requestDate: "2025-01-21",
-    status: "Approuvé",
-    priority: "Urgent",
-    approver: "Rakotomalala Hery"
-  }
-]
-
-export function Requests({ user }: { user?: UserType }) {
+export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("Tous")
   const [loadingRequests, setLoadingRequests] = useState<{ [key: number]: string }>({})
@@ -91,8 +34,33 @@ export function Requests({ user }: { user?: UserType }) {
     type: "Sortie",
   })
 
+  const [detailRequest, setDetailRequest] = useState<Request | null>(null)
+
+  // Ouverture automatique du détail (lien « Demande associée » depuis Sorties)
+  useEffect(() => {
+    if (!detailRequestId) return
+    const target = requests.find((r) => r.id === detailRequestId)
+    if (target) {
+      setDetailRequest(target)
+    }
+    // Toujours libérer la demande demandée (même si elle n'existe pas encore)
+    onDetailConsumed?.()
+  }, [detailRequestId, requests, onDetailConsumed])
+
   // Fonctionnalité : cloisonnement par périmètre et par rôle
   const isDemandeur = user?.role === "demandeur"
+
+  // Espace Demandeur : page dédiée « Mes demandes »
+  if (isDemandeur) {
+    return (
+      <MyRequests
+        user={user}
+        detailRequestId={detailRequestId}
+        onDetailConsumed={onDetailConsumed}
+      />
+    )
+  }
+
   const scopedRequests =
     isDemandeur && user?.department
       ? requests.filter((request) => request.department === user.department)
@@ -129,6 +97,10 @@ export function Requests({ user }: { user?: UserType }) {
   const getStatusColor = (status: string) => {
     switch (status) {
       case 'Approuvé': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Validée': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Préparée': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Effectuée': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Historisé': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
       case 'En attente': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
       case 'Rejeté': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
@@ -407,9 +379,13 @@ export function Requests({ user }: { user?: UserType }) {
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        {isDemandeur && (
-                          <span className="text-sm text-muted-foreground">—</span>
-                        )}
+                        <button
+                          onClick={() => setDetailRequest(request)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary hover:bg-primary/10 rounded transition-colors"
+                        >
+                          <FileText className="h-3 w-3" />
+                          Détails
+                        </button>
                         {!isDemandeur && request.status === "En attente" && (
                           <>
                             {/* Approve Button */}
@@ -618,6 +594,361 @@ export function Requests({ user }: { user?: UserType }) {
           </div>
         </div>
       )}
+
+      {/* Détails / traçabilité de la demande */}
+      {detailRequest &&
+        (() => {
+          const linkedSortie = sortieRecords.find(
+            (s) => s.demandeId === detailRequest.id
+          )
+          const orga = splitDepartement(detailRequest.department)
+          const isApproved = detailRequest.status === "Approuvé"
+          const isRejected = detailRequest.status === "Rejeté"
+          const isPrepared =
+            !!linkedSortie &&
+            ["Validée", "Sortie effectuée", "En préparation"].includes(
+              linkedSortie.statut
+            )
+          const isOut = linkedSortie?.statut === "Sortie effectuée"
+
+          // Demande → Validation → Préparation → Sortie → Traçabilité
+          const steps = [
+            { label: "Demande", statut: "Créée", ok: true },
+            {
+              label: "Validation",
+              statut: isApproved
+                ? "Validée"
+                : isRejected
+                ? "Rejetée"
+                : "En attente",
+              ok: isApproved,
+            },
+            {
+              label: "Préparation du matériel",
+              statut: isPrepared ? "Préparée" : "En attente",
+              ok: isPrepared,
+            },
+            {
+              label: "Sortie du matériel",
+              statut: isOut ? "Effectuée" : "En attente",
+              ok: isOut,
+            },
+            {
+              label: "Traçabilité du mouvement",
+              statut: isOut ? "Historisé" : "—",
+              ok: isOut,
+            },
+          ]
+
+          const historique: Array<{
+            date: string
+            utilisateur: string
+            action: string
+            statut: string
+          }> = [
+            {
+              date: detailRequest.requestDate,
+              utilisateur: detailRequest.requestedBy,
+              action: "Demande créée",
+              statut: "En attente",
+            },
+            ...(detailRequest.approver
+              ? [
+                  {
+                    date: detailRequest.requestDate,
+                    utilisateur: detailRequest.approver,
+                    action: isApproved
+                      ? "Demande validée"
+                      : isRejected
+                      ? "Demande rejetée"
+                      : "Demande traitée",
+                    statut: detailRequest.status,
+                  },
+                ]
+              : []),
+            ...(linkedSortie
+              ? getSortieTrace(linkedSortie)
+                  .filter((event) => event.statut !== "—" && event.statut !== "En attente")
+                  .map((event) => ({
+                    date: event.date,
+                    utilisateur: event.utilisateur,
+                    action: event.action,
+                    statut: event.statut,
+                  }))
+              : []),
+          ]
+
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+                {/* Header */}
+                <div className="flex items-start justify-between p-6 border-b border-border">
+                  <div>
+                    <h3 className="text-lg text-card-foreground flex items-center gap-2">
+                      <Clipboard className="h-5 w-5 text-primary" />
+                      Demande n° {detailRequest.id}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getStatusColor(
+                          detailRequest.status
+                        )}`}
+                      >
+                        {detailRequest.status}
+                      </span>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getPriorityColor(
+                          detailRequest.priority
+                        )}`}
+                      >
+                        {detailRequest.priority}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {detailRequest.type} - {detailRequest.equipment}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setDetailRequest(null)}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Fermer"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* Chaîne de traçabilité */}
+                  <div>
+                    <h4 className="text-sm text-card-foreground mb-3">
+                      Suivi de la demande
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {steps.map((step, index) => (
+                        <div key={step.label} className="flex items-center gap-2">
+                          <div
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                              step.ok
+                                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                : "border-border bg-muted/30 text-muted-foreground"
+                            }`}
+                          >
+                            <span className="font-medium">{step.label}</span>
+                            <span className="opacity-70">({step.statut})</span>
+                          </div>
+                          {index < steps.length - 1 && (
+                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Informations */}
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Statut</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.status}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Équipement demandé
+                      </div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.equipment}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Quantité</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.quantity}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Demandeur</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.requestedBy}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Direction</div>
+                      <div className="text-sm text-card-foreground">
+                        {orga.direction}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Service</div>
+                      <div className="text-sm text-card-foreground">{orga.service}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Date de demande
+                      </div>
+                      <div className="text-sm text-card-foreground">
+                        {new Date(detailRequest.requestDate).toLocaleDateString("fr-FR")}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Motif</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.reason}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Priorité</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.priority}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Validations */}
+                  <div className="p-4 border border-border rounded-lg bg-muted/20">
+                    <h4 className="text-sm text-card-foreground mb-2 flex items-center gap-2">
+                      <Check className="h-4 w-4" />
+                      Validations
+                    </h4>
+                    <div className="text-sm text-muted-foreground">
+                      {detailRequest.approver ? (
+                        <>
+                          Validée par <span className="text-card-foreground">
+                            {detailRequest.approver}
+                          </span>{" "}
+                          le {new Date(detailRequest.requestDate).toLocaleDateString("fr-FR")}
+                        </>
+                      ) : (
+                        "En attente de validation par le responsable habilité."
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sortie associée */}
+                  <div className="p-4 border border-border rounded-lg bg-muted/20">
+                    <h4 className="text-sm text-card-foreground mb-3 flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Sortie associée
+                    </h4>
+                    {linkedSortie ? (
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Référence de sortie
+                          </div>
+                          <div className="text-sm font-mono text-card-foreground">
+                            {linkedSortie.reference}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Date de sortie
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {new Date(linkedSortie.dateSortie).toLocaleDateString(
+                              "fr-FR"
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Statut
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.statut}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Bénéficiaire
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.beneficiaire}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Responsable
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.responsable}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Direction / Service
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.direction} / {linkedSortie.serviceDemandeur}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Aucune sortie enregistrée pour le moment.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Historique */}
+                  <div>
+                    <h4 className="text-sm text-card-foreground mb-3 flex items-center gap-2">
+                      <History className="h-4 w-4" />
+                      Historique
+                    </h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border">
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Date
+                            </th>
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Utilisateur
+                            </th>
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Action
+                            </th>
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Statut
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historique.map((event, index) => (
+                            <tr
+                              key={index}
+                              className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
+                            >
+                              <td className="py-2 px-3 text-sm text-card-foreground">
+                                {new Date(event.date).toLocaleDateString("fr-FR")}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-card-foreground">
+                                {event.utilisateur}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-card-foreground">
+                                {event.action}
+                              </td>
+                              <td className="py-2 px-3 text-sm">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${getStatusColor(
+                                    event.statut
+                                  )}`}
+                                >
+                                  {event.statut}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
     </div>
   );
 }

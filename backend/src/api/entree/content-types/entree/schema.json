@@ -1,0 +1,169 @@
+{
+  "kind": "collectionType",
+  "collectionName": "entrees",
+  "info": {
+    "singularName": "entree",
+    "pluralName": "entrees",
+    "displayName": "entree"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "reference": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "date_entree": {
+      "type": "date",
+      "required": true
+    },
+    "numero_facture": {
+      "type": "string"
+    },
+    "fournisseur": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::fournisseur.fournisseur",
+      "inversedBy": "entrees"
+    },
+    "direction": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::direction.direction"
+    },
+    "service": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::service.service"
+    },
+    "responsable": {
+      "type": "string"
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": ["brouillon", "en_attente", "verifiee", "validee", "rejetee"],
+      "default": "en_attente"
+    },
+    "affectation_depositaire": {
+      "type": "string"
+    },
+    "affectation_chef_service_1": {
+      "type": "string"
+    },
+    "affectation_chef_service_2": {
+      "type": "string"
+    },
+    "qr_token": {
+      "type": "string",
+      "unique": true
+    },
+    "depositaire_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "chef_service_1_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "chef_service_2_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "date_signature_depositaire": {
+      "type": "string"
+    },
+    "date_signature_chef_service_1": {
+      "type": "string"
+    },
+    "date_signature_chef_service_2": {
+      "type": "string"
+    },
+    "signataire_depositaire": {
+      "type": "string"
+    },
+    "signataire_chef_service_1": {
+      "type": "string"
+    },
+    "signataire_chef_service_2": {
+      "type": "string"
+    },
+    "notes": {
+      "type": "text"
+    },
+    "total": {
+      "type": "decimal",
+      "default": 0
+    },
+    "numero_chapitre": {
+      "type": "string"
+    },
+    "libelle_chapitre": {
+      "type": "string"
+    },
+    "subdivision_chapitre": {
+      "type": "string"
+    },
+    "numero_ordre_journal": {
+      "type": "string"
+    },
+    "budget_general": {
+      "type": "string"
+    },
+    "soa": {
+      "type": "string"
+    },
+    "type_operation": {
+      "type": "enumeration",
+      "enum": [
+        "materiel_en_approvisionnement",
+        "materiel_en_service"
+      ]
+    },
+    "adresse_fournisseur": {
+      "type": "string"
+    },
+    "date_facture": {
+      "type": "date"
+    },
+    "bon_livraison": {
+      "type": "string"
+    },
+    "reference_marche": {
+      "type": "string"
+    },
+    "piece_justificative": {
+      "type": "string"
+    },
+    "declaration_nom": {
+      "type": "string"
+    },
+    "declaration_fonction": {
+      "type": "string"
+    },
+    "declaration_date": {
+      "type": "date"
+    },
+    "declaration_signature": {
+      "type": "string"
+    },
+    "stock_impacte": {
+      "type": "boolean",
+      "default": false
+    },
+    "lignes": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::entree-ligne.entree-ligne",
+      "mappedBy": "entree"
+    },
+    "mouvements": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::mouvement.mouvement",
+      "mappedBy": "entree"
+    }
+  }
+}

@@ -20,9 +20,9 @@ export interface RoleConfig {
 export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
   depositaire: {
     key: 'depositaire',
-    label: 'Dépositaire comptable',
+    label: 'Dépositaire par service',
     defaultEmployeeName: 'Rakotomalala Hery',
-    description: "Réceptionne et enregistre les arrivées, tient le grand livre, traite et approuve les demandes, signe les sorties, déclare les pertes et clôture l'inventaire annuel.",
+    description: "Dépositaire du service : réceptionne et enregistre les arrivées, tient le grand livre, traite et approuve les demandes, signe les sorties, déclare les pertes et clôture l'inventaire annuel.",
     pages: ['dashboard', 'arrivee', 'journal', 'equipment', 'requests', 'distribution', 'movements', 'pertes', 'inventaire', 'departments', 'reports', 'users', 'settings'],
     signRole: 'depositaire',
     canApprove: true,
@@ -63,7 +63,7 @@ export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
     label: 'Demandeur',
     defaultEmployeeName: 'Randriamampionona Tolotra',
     description: "Exprime les besoins en matériel pour son service ou sa direction et assure le suivi direct de ses demandes.",
-    pages: ['dashboard', 'requests', 'equipment', 'reports'],
+    pages: ['dashboard', 'equipment', 'entries', 'exits', 'requests', 'reports'],
     signRole: null,
     canApprove: false,
     levelLock: 'dynamic',

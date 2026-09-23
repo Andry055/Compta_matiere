@@ -157,6 +157,215 @@ const SEED_DIRECTIONS = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Authentification Content API (JWT) pour l'espace Demandeur
+//
+// - crée les rôles métier manquants (demandeur, depositaire, ...) ;
+// - accorde à ces rôles (et au rôle « authenticated ») les permissions
+//   nécessaires aux demandes : find / findOne / create / update
+//   (la suppression et la validation restent réservées aux responsables) ;
+// - crée un compte de démonstration Demandeur connectable via /api/auth/local.
+// ---------------------------------------------------------------------------
+const APP_ROLES = [
+  {
+    type: 'demandeur',
+    name: 'Demandeur',
+    description:
+      'Exprime les besoins en matériel, consulte et suit ses demandes (aucun droit de validation ni de signature).',
+  },
+  {
+    type: 'depositaire',
+    name: 'Dépositaire par service',
+    description: 'Dépositaire du service : réceptionne, vérifie et valide les entrées (validation Dépositaire par service).',
+  },
+  {
+    type: 'magasinier',
+    name: 'Magasinier',
+    description: 'Contrôle le matériel au magasin et suit les sorties.',
+  },
+  {
+    type: 'logistique',
+    name: 'Chef logistique',
+    description: "Supervise l'approvisionnement et les sorties.",
+  },
+  {
+    type: 'comptable',
+    name: 'Comptable',
+    description: 'Audite le journal de comptabilité matière et produit les rapports.',
+  },
+];
+
+const DEMAND_ACTIONS = [
+  'api::demande.demande.find',
+  'api::demande.demande.findOne',
+  'api::demande.demande.create',
+  'api::demande.demande.update',
+  'plugin::users-permissions.user.me',
+];
+
+// ---------------------------------------------------------------------------
+// Entrées : permissions des endpoints de la validation à 3 signatures.
+// La signature proprement dite est de toute façon contrôlée par rôle dans le
+// contrôleur (un Demandeur ne peut jamais signer) ; ici on accorde seulement
+// l'accès aux routes custom et à la lecture des fournisseurs / matériaux.
+// ---------------------------------------------------------------------------
+const ENTREE_SIGN_ACTIONS = [
+  'api::entree.entree.createComplete',
+  'api::entree.entree.sign',
+  'api::entree.entree.reject',
+  'api::fournisseur.fournisseur.find',
+  'api::fournisseur.fournisseur.findOne',
+  'api::material.material.find',
+  'api::material.material.findOne',
+  'api::category.category.find',
+  'api::direction.direction.find',
+  'api::service.service.find',
+  'api::mouvement.mouvement.find',
+];
+
+// Rôles habilités à créer / signer / rejeter une entrée (jamais le Demandeur).
+const ROLES_SIGNATAIRES = ['depositaire', 'magasinier', 'logistique', 'comptable'];
+
+// ---------------------------------------------------------------------------
+// Demandeur : il peut ENREGISTRER une entrée (elle démarre « En attente »,
+// 0/3 signatures) et consulter les données de référence du formulaire,
+// mais JAMAIS signer ni rejeter (contrôlé aussi dans le contrôleur).
+// ---------------------------------------------------------------------------
+const DEMANDEUR_ENTREE_ACTIONS = [
+  'api::entree.entree.createComplete',
+  'api::fournisseur.fournisseur.find',
+  'api::fournisseur.fournisseur.findOne',
+  'api::material.material.find',
+  'api::material.material.findOne',
+  'api::category.category.find',
+  'api::direction.direction.find',
+  'api::service.service.find',
+  'api::mouvement.mouvement.find',
+];
+
+const DEMO_DEMANDEUR = {
+  username: 'Randriamampionona Tolotra',
+  email: 'tolotra.randria@mtefop.gov.mg',
+  password: 'demandeur123',
+  provider: 'local',
+  confirmed: true,
+  blocked: false,
+  department: 'DRH - Service du Personnel',
+  fonction: 'Chargé du personnel',
+};
+
+// Comptes de démonstration des signataires de la validation à 3 signatures
+const DEMO_SIGNATAIRES = [
+  {
+    username: 'Rakotomalala Hery',
+    email: 'hery.rakoto@mtefop.gov.mg',
+    password: 'depositaire123',
+    department: 'DAF - Service Comptabilité Matière',
+    fonction: 'Dépositaire par service',
+    roleType: 'depositaire',
+  },
+  {
+    username: 'Andriamampianina Fara',
+    email: 'fara.andriam@mtefop.gov.mg',
+    password: 'magasinier123',
+    department: 'DAF - Magasin & Entrepôt',
+    fonction: 'Magasinier (Chef de service 1)',
+    roleType: 'magasinier',
+  },
+  {
+    username: 'Razafindrakoto Tojo',
+    email: 'tojo.razaf@mtefop.gov.mg',
+    password: 'logistique123',
+    department: 'DAF - Direction Logistique',
+    fonction: 'Chef logistique (Chef de service 2)',
+    roleType: 'logistique',
+  },
+];
+
+async function ensureAuthSetup(strapi) {
+  const roleQuery = strapi.db.query('plugin::users-permissions.role');
+  const permQuery = strapi.db.query('plugin::users-permissions.permission');
+  const userQuery = strapi.db.query('plugin::users-permissions.user');
+
+  // 1) Rôles métier
+  const roles = {};
+  for (const def of APP_ROLES) {
+    let role = await roleQuery.findOne({ where: { type: def.type } });
+    if (!role) {
+      role = await roleQuery.create({ data: def });
+      strapi.log.info(`[auth] Rôle « ${def.type} » créé.`);
+    }
+    roles[def.type] = role;
+  }
+  const authenticated = await roleQuery.findOne({ where: { type: 'authenticated' } });
+
+  // 2) Permissions Content API (une ligne = une permission accordée)
+  const targetRoles = [
+    ...Object.values(roles),
+    ...(authenticated ? [authenticated] : []),
+  ];
+  const existing = await permQuery.findMany({ populate: ['role'] });
+  const granted = new Set(
+    existing.map(
+      (p) => `${p.role ? p.role.type || p.role.code : ''}:${p.action}`
+    )
+  );
+  for (const role of targetRoles) {
+    for (const action of DEMAND_ACTIONS) {
+      if (granted.has(`${role.type}:${action}`)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+    }
+  }
+
+  // 2bis) Permissions « Entrées » : routes custom + lecture des données
+  // de référence, accordées uniquement aux rôles signataires.
+  for (const type of ROLES_SIGNATAIRES) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of ENTREE_SIGN_ACTIONS) {
+      if (granted.has(`${role.type}:${action}`)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+    }
+  }
+  // 2ter) Le Demandeur peut enregistrer une entrée (statut « En attente »
+  // initial, 0/3 signatures) mais ne reçoit JAMAIS les permissions
+  // `sign` ni `reject` : la validation reste réservée aux responsables.
+  const roleDemandeur = roles['demandeur'];
+  if (roleDemandeur) {
+    for (const action of DEMANDEUR_ENTREE_ACTIONS) {
+      if (granted.has(`${roleDemandeur.type}:${action}`)) continue;
+      await permQuery.create({ data: { action, role: roleDemandeur.id } });
+    }
+  }
+  // L'admin (rôle authenticated créé par Strapi) garde un accès complet via
+  // l'interface d'administration ; on lui accorde aussi les routes custom.
+  if (authenticated) {
+    for (const action of ENTREE_SIGN_ACTIONS) {
+      if (granted.has(`authenticated:${action}`)) continue;
+      await permQuery.create({ data: { action, role: authenticated.id } });
+    }
+  }
+
+  // 3) Comptes de démonstration (connexion JWT /api/auth/local) :
+  //    Demandeur + les 3 signataires de la validation à 3 signatures.
+  const demoUsers = [
+    { ...DEMO_DEMANDEUR, roleType: 'demandeur' },
+    ...DEMO_SIGNATAIRES,
+  ];
+  for (const demo of demoUsers) {
+    const existingUser = await userQuery.findOne({
+      where: { email: demo.email },
+    });
+    if (existingUser) continue;
+    const { roleType, ...data } = demo;
+    await strapi
+      .plugin('users-permissions')
+      .service('user')
+      .add({ ...data, provider: 'local', confirmed: true, blocked: false, role: roles[roleType].id });
+    strapi.log.info(`[auth] Compte ${roleType} créé : ${demo.email} / ${demo.password}`);
+  }
+}
+
 async function seedOrganisation(strapi) {
   const existing = await strapi
     .documents('api::direction.direction')
@@ -235,6 +444,11 @@ module.exports = {
    * run jobs, or perform some special logic.
    */
   async bootstrap({ strapi }) {
+    try {
+      await ensureAuthSetup(strapi);
+    } catch (err) {
+      strapi.log.error(`[auth] Échec de la configuration d'authentification : ${err.message}`);
+    }
     try {
       await seedOrganisation(strapi);
     } catch (err) {

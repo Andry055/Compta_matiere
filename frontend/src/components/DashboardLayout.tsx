@@ -6,14 +6,18 @@ import { Distribution } from "./Distribution"
 import { Movements } from "./Movements"
 import { Departments } from "./Departments"
 import { Requests } from "./Requests"
+import { EntriesPage } from "./EntriesPage"
+import { ExitsPage } from "./ExitsPage"
 import { Reports } from "./Reports"
 import { Users } from "./Users"
 import { Settings } from "./Settings"
 import { ThemeToggle } from "./ThemeToggle"
-import { Menu, Package, Bell, Shield, Wifi, Check, X, LogOut } from "lucide-react"
+import { NotificationBell } from "./NotificationBell"
+import { Menu, Package, Shield, Wifi, Check, X, LogOut } from "lucide-react"
 import { useState, useEffect } from "react"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
+import { ErrorBoundary } from "./ErrorBoundary"
 
 interface DashboardLayoutProps {
   user: User
@@ -25,6 +29,8 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isMobile, setIsMobile] = useState(false)
+  // Lien « Demande associée » ouvert depuis la page Sorties
+  const [requestDetailId, setRequestDetailId] = useState<number | null>(null)
 
   // Fonctionnalité : config du rôle connecté
   const userRole = (user.role || 'depositaire') as AppRole
@@ -56,7 +62,19 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   const renderContent = () => {
     switch (activeSection) {
       case "dashboard":
-        return <Dashboard />
+        return <Dashboard user={user} />
+      case "entries":
+        return <EntriesPage user={user} />
+      case "exits":
+        return (
+          <ExitsPage
+            user={user}
+            onViewRequest={(id) => {
+              setRequestDetailId(id)
+              setActiveSection("requests")
+            }}
+          />
+        )
       case "journal":
         return <Journal />
       case "equipment":
@@ -68,9 +86,15 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
       case "departments":
         return <Departments />
       case "requests":
-        return <Requests user={user} />
+        return (
+          <Requests
+            user={user}
+            detailRequestId={requestDetailId ?? undefined}
+            onDetailConsumed={() => setRequestDetailId(null)}
+          />
+        )
       case "reports":
-        return <Reports />
+        return <Reports user={user} />
       case "users":
         return <Users />
       case "settings":
@@ -82,6 +106,9 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
 
   const handleSectionChange = (section: string) => {
     setActiveSection(section)
+    if (section !== "requests") {
+      setRequestDetailId(null)
+    }
     if (isMobile) {
       setMobileMenuOpen(false)
     }
@@ -163,14 +190,8 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
               </span>
             </div>
 
-            {/* Notifications */}
-            <button className="relative inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
-              <Bell className="h-4 w-4" />
-              <span className="absolute -top-1 -right-1 h-3 w-3 bg-red-500 rounded-full text-xs flex items-center justify-center">
-                <span className="text-white text-[10px]">3</span>
-              </span>
-              <span className="sr-only">Notifications</span>
-            </button>
+            {/* Notifications (compteur des non lues) */}
+            <NotificationBell user={user} />
 
             {/* Theme Toggle */}
             <ThemeToggle />
@@ -189,7 +210,13 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
         
         {/* Main Content */}
         <main className="flex-1 overflow-auto">
-          {renderContent()}
+          <ErrorBoundary
+            title="Impossible de charger la page."
+            message="Le module demandé n'a pas pu s'afficher. Réessayez ou revenez au tableau de bord."
+            onRetry={() => setActiveSection("dashboard")}
+          >
+            {renderContent()}
+          </ErrorBoundary>
         </main>
 
         {/* Status Bar - Hidden on mobile */}

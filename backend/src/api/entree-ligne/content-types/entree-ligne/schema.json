@@ -1,0 +1,59 @@
+{
+  "kind": "collectionType",
+  "collectionName": "entree_lignes",
+  "info": {
+    "singularName": "entree-ligne",
+    "pluralName": "entree-lignes",
+    "displayName": "entreeLigne"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "entree": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::entree.entree",
+      "inversedBy": "lignes"
+    },
+    "materiel": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::material.material",
+      "inversedBy": "lignes_entree"
+    },
+    "numero_ordre": {
+      "type": "integer"
+    },
+    "designation": {
+      "type": "string"
+    },
+    "espece": {
+      "type": "string"
+    },
+    "unite": {
+      "type": "string"
+    },
+    "quantite": {
+      "type": "integer",
+      "required": true,
+      "default": 1
+    },
+    "valeur_unitaire": {
+      "type": "decimal"
+    },
+    "montant": {
+      "type": "decimal"
+    },
+    "nomenclature": {
+      "type": "string"
+    },
+    "piece_justificative": {
+      "type": "string"
+    },
+    "observations": {
+      "type": "string"
+    }
+  }
+}

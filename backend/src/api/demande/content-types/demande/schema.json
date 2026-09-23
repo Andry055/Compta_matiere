@@ -1,0 +1,105 @@
+{
+  "kind": "collectionType",
+  "collectionName": "demandes",
+  "info": {
+    "singularName": "demande",
+    "pluralName": "demandes",
+    "displayName": "demande"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "reference": {
+      "type": "string",
+      "unique": true
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": ["entree", "sortie"],
+      "required": true,
+      "default": "sortie"
+    },
+    "designation_materiel": {
+      "type": "string",
+      "required": true
+    },
+    "quantite": {
+      "type": "integer",
+      "required": true,
+      "default": 1
+    },
+    "motif": {
+      "type": "text"
+    },
+    "priorite": {
+      "type": "enumeration",
+      "enum": ["normal", "urgent", "critique"],
+      "default": "normal"
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": [
+        "brouillon",
+        "en_attente",
+        "en_cours",
+        "approuvee",
+        "rejetee",
+        "preparation",
+        "annulee",
+        "sortie_effectuee"
+      ],
+      "default": "en_attente"
+    },
+    "groupe": {
+      "type": "string"
+    },
+    "fonction": {
+      "type": "string"
+    },
+    "observation": {
+      "type": "text"
+    },
+    "date_demande": {
+      "type": "date",
+      "required": true
+    },
+    "date_envoi": {
+      "type": "date"
+    },
+    "valide_par": {
+      "type": "string"
+    },
+    "date_validation": {
+      "type": "date"
+    },
+    "demandeur": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "direction": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::direction.direction"
+    },
+    "service": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::service.service"
+    },
+    "sorties": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::sortie.sortie",
+      "mappedBy": "demande"
+    },
+    "mouvements": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::mouvement.mouvement",
+      "mappedBy": "demande"
+    }
+  }
+}

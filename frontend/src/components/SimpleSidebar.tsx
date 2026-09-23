@@ -1,5 +1,6 @@
 import { 
   LayoutDashboard, 
+  ArrowDown,
   ArrowUpDown, 
   Package,
   Building,
@@ -20,6 +21,12 @@ const navItems = [
     icon: LayoutDashboard,
     key: "dashboard",
     description: "Vue d'ensemble"
+  },
+  {
+    title: "Arrivée Matériel",
+    icon: ArrowDown,
+    key: "arrivee",
+    description: "Réception en 4 étapes"
   },
   {
     title: "Journal Comptable",

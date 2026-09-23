@@ -1,5 +1,6 @@
 import { SimpleSidebar } from "./SimpleSidebar"
 import { Dashboard } from "./Dashboard"
+import { MaterialEntry } from "./MaterialEntry"
 import { Equipment } from "./Equipment"
 import { Journal } from "./Journal"
 import { Distribution } from "./Distribution"
@@ -47,8 +48,11 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   }, [])
 
   // Fonctionnalité : si la section active n'est pas autorisée pour ce rôle, revenir au tableau de bord
+  // (admin : tout autorisé ; rôle "staff" : interface dédiée StaffDashboardLayout)
   useEffect(() => {
-    if (user.role !== 'admin' && roleConfig?.pages && !roleConfig.pages.includes(activeSection)) {
+    const isAdmin = user.role === 'admin'
+    const isStaff = user.role === 'staff'
+    if (!isAdmin && !isStaff && roleConfig?.pages && !roleConfig.pages.includes(activeSection)) {
       setActiveSection("dashboard")
     }
   }, [user.role, roleConfig, activeSection])
@@ -57,6 +61,8 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
     switch (activeSection) {
       case "dashboard":
         return <Dashboard />
+      case "arrivee":
+        return <MaterialEntry user={user} />
       case "journal":
         return <Journal />
       case "equipment":

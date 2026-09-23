@@ -109,3 +109,91 @@ export interface OptionsAffichage {
   afficherValeurs: boolean
   afficherDetails: boolean
 }
+
+// --- Nouveaux types pour le Workflow de Validation (Demande & Sortie) ---
+
+export type DemandeStatus = 'en_attente' | 'approuvee' | 'rejetee';
+export type SortieStatus = 'en_attente_signatures' | 'validee';
+
+export interface Signature {
+  signePar: string;
+  signeParId: string;
+  dateSignature: string;
+}
+
+export interface DemandeMateriel {
+  id: string;
+  typeDemande: 'Entrée' | 'Sortie';
+  demandeurId: string;
+  demandeurNom: string;
+  direction: string;
+  equipementDemande: string;
+  quantite: number;
+  motif: string;
+  dateDemande: string;
+  statut: DemandeStatus;
+  priorite: 'Normal' | 'Urgent' | 'Critique';
+  approuvePar?: string; // ID du dépositaire
+  dateApprobation?: string;
+}
+
+export interface SortieMateriel {
+  id: string;
+  demandeId: string; // Lien vers la demande d'origine
+  equipementDemande: string;
+  demandeurNom: string;
+  direction: string;
+  quantite: number;
+  dateCreation: string;
+  statut: SortieStatus;
+  signatures: {
+    depositaire?: Signature;
+    magasinier?: Signature;
+    logistique?: Signature;
+  };
+}
+
+// --- Types pour le Workflow d'Entrée Matériel (Réception en 4 étapes) ---
+// Répartition des responsabilités :
+//   Étape 1 — Dépositaire comptable : saisie du bon de livraison et des
+//             articles (désignation, référence, quantités, prix).
+//   Étape 2 — Magasinier : BL et articles en lecture seule ; il vérifie
+//             lui-même l'état et la conformité de chaque article puis
+//             certifie la réception physique.
+//   Étape 3 — Dépositaire comptable : enregistrement au journal (écriture
+//             générée avec numéro d'ordre automatique).
+//   Étape 4 — PV de réception généré automatiquement.
+
+export type EtatConstate = 'neuf' | 'bon' | 'moyen' | 'defaillant';
+
+export interface BonLivraisonArticle {
+  id: string;
+  designation: string;
+  referenceNomenclature: string;
+  quantiteCommandee: number;
+  quantiteLivree: number;
+  prixUnitaire: number;
+}
+
+export interface ControleArticle {
+  articleId: string;
+  etat: EtatConstate;
+  conforme: boolean;
+  remarque: string;
+}
+
+export interface ReceptionData {
+  // Étape 1 — Bon de livraison (Dépositaire)
+  fournisseur: string;
+  numeroBL: string;
+  dateBL: string;
+  articles: BonLivraisonArticle[];
+  observationsBL: string;
+  // Étape 2 — Contrôle magasinier (état/conformité renseignés par le magasinier)
+  controles: ControleArticle[];
+  magasinierCertifie: boolean;
+  // Étape 3 — Enregistrement dépositaire
+  depositaireCertifie: boolean;
+  journalEntryId: string; // Format JE-{année}-{numéro}
+  dateEnregistrement?: string; // ISO — posée à la validation de l'étape 3
+}

@@ -250,6 +250,231 @@ function StepIndicator({
 }
 
 // ──────────────────────────────────────────────
+// Suivi de la répartition des rôles — « chacun joue son rôle »
+// ──────────────────────────────────────────────
+
+function step1Complete(d: ReceptionData): boolean {
+  return (
+    d.fournisseur.trim().length > 0 &&
+    d.numeroBL.trim().length > 0 &&
+    d.dateBL.length > 0 &&
+    d.articles.length > 0 &&
+    d.articles.every(
+      (a) =>
+        a.designation.trim().length > 0 &&
+        a.quantiteLivree > 0 &&
+        a.prixUnitaire > 0
+    )
+  );
+}
+
+interface StepStatusRow {
+  step: number;
+  label: string;
+  ownerRole: AppRole | null;
+  state: "a_faire_vous" | "a_faire_autre" | "verrouillee" | "terminee" | "disponible";
+  detail: string;
+}
+
+function getStepStatusRows(
+  data: ReceptionData,
+  activeRole: AppRole
+): StepStatusRow[] {
+  const s1 = step1Complete(data);
+  const s2 = s1 && data.magasinierCertifie;
+  const s3 = s2 && data.depositaireCertifie;
+
+  const mine = (role: AppRole | null) => role !== null && role === activeRole;
+
+  return [
+    {
+      step: 1,
+      label: STEP_LABELS[0],
+      ownerRole: "depositaire",
+      state: s1 ? "terminee" : mine("depositaire") ? "a_faire_vous" : "a_faire_autre",
+      detail: s1 ? `BL ${data.numeroBL} saisi` : "Saisie du BL et des articles",
+    },
+    {
+      step: 2,
+      label: STEP_LABELS[1],
+      ownerRole: "magasinier",
+      state: !s1
+        ? "verrouillee"
+        : data.magasinierCertifie
+        ? "terminee"
+        : mine("magasinier")
+        ? "a_faire_vous"
+        : "a_faire_autre",
+      detail: !s1
+        ? "En attente du BL"
+        : data.magasinierCertifie
+        ? "Réception physique certifiée"
+        : "Vérification de l'état du matériel",
+    },
+    {
+      step: 3,
+      label: STEP_LABELS[2],
+      ownerRole: "depositaire",
+      state: !s2
+        ? "verrouillee"
+        : data.depositaireCertifie
+        ? "terminee"
+        : mine("depositaire")
+        ? "a_faire_vous"
+        : "a_faire_autre",
+      detail: !s2
+        ? "En attente de la certification magasinier"
+        : data.depositaireCertifie
+        ? `Écriture ${data.journalEntryId} générée`
+        : "Enregistrement au journal à valider",
+    },
+    {
+      step: 4,
+      label: STEP_LABELS[3],
+      ownerRole: null,
+      state: s3 ? "disponible" : "verrouillee",
+      detail: s3 ? "PV consultable et imprimable" : "Généré après l'étape 3",
+    },
+  ];
+}
+
+function RoleWorkflowStatus({
+  data,
+  activeRole,
+  currentStep,
+  onGoToStep,
+}: {
+  data: ReceptionData;
+  activeRole: AppRole;
+  currentStep: number;
+  onGoToStep: (step: number) => void;
+}) {
+  const rows = getStepStatusRows(data, activeRole);
+  const activeRoleLabel = ROLES_CONFIG[activeRole].label;
+  const hasAction = rows.some((r) => r.state === "a_faire_vous");
+  const mine = (role: AppRole | null) => role !== null && role === activeRole;
+
+  return (
+    <Card className="print-hidden">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <ClipboardCheck className="h-4 w-4 text-primary" />
+          Circuit de réception — qui fait quoi
+        </CardTitle>
+        <CardDescription>
+          Rôle actif : <strong>{activeRoleLabel}</strong>.{" "}
+          {hasAction
+            ? "Votre étape est indiquée ci-dessous."
+            : "Aucune action ne vous est réservée pour le moment — consultation possible."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="pt-0">
+        <div className="space-y-2">
+          {rows.map((row) => {
+            const isCurrent = row.step === currentStep;
+            const ownerLabel = row.ownerRole
+              ? ROLES_CONFIG[row.ownerRole].label
+              : "Généré automatiquement";
+            return (
+              <button
+                key={row.step}
+                type="button"
+                onClick={() => onGoToStep(row.step)}
+                className={`w-full flex items-center gap-3 rounded-lg border px-3 py-2 text-left transition-colors ${
+                  isCurrent
+                    ? "border-primary/50 bg-primary/5"
+                    : "border-border hover:bg-accent/50"
+                }`}
+              >
+                <span
+                  className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-xs font-semibold ${
+                    row.state === "terminee"
+                      ? "bg-green-600 text-white"
+                      : row.state === "a_faire_vous"
+                      ? "bg-primary text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  }`}
+                >
+                  {row.state === "terminee" ? (
+                    <Check className="h-3.5 w-3.5" />
+                  ) : (
+                    row.step
+                  )}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium">{row.label}</span>
+                    {row.ownerRole && (
+                      <Badge
+                        variant="outline"
+                        className={
+                          mine(row.ownerRole)
+                            ? "border-primary/40 text-primary"
+                            : ""
+                        }
+                      >
+                        {ownerLabel}
+                        {mine(row.ownerRole) ? " · vous" : ""}
+                      </Badge>
+                    )}
+                  </span>
+                  <span className="block text-xs text-muted-foreground">
+                    {row.detail}
+                  </span>
+                </span>
+                {row.state === "a_faire_vous" && (
+                  <Badge className="bg-primary text-primary-foreground shrink-0">
+                    À faire
+                  </Badge>
+                )}
+                {row.state === "a_faire_autre" && (
+                  <Badge variant="secondary" className="shrink-0">
+                    En attente
+                  </Badge>
+                )}
+                {row.state === "verrouillee" && (
+                  <Badge variant="outline" className="shrink-0">
+                    Verrouillée
+                  </Badge>
+                )}
+                {row.state === "terminee" && (
+                  <Badge className="bg-green-600 text-white shrink-0">
+                    Terminée
+                  </Badge>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted-foreground mt-3">
+          La consultation des étapes est libre pour tous ; seules les actions
+          (saisie, certifications) sont réservées au rôle propriétaire.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Étape d'accueil d'un rôle : la première étape sur laquelle ce rôle a une
+ *  action à réaliser (ou la dernière terminée à consulter). Permet à chacun
+ *  d'atterrir directement sur SON étape. */
+function getRoleHomeStep(role: AppRole, data: ReceptionData): number {
+  const s1 = step1Complete(data);
+  switch (role) {
+    case "depositaire":
+      if (!s1) return 1;
+      if (!data.magasinierCertifie) return 2; // attend le magasinier (lecture seule)
+      if (!data.depositaireCertifie) return 3;
+      return 4;
+    case "magasinier":
+      if (!s1) return 1; // en attente du dépositaire (lecture seule)
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+// ──────────────────────────────────────────────
 // Bandeau « Lecture seule — en attente du rôle X »
 // ──────────────────────────────────────────────
 
@@ -1285,7 +1510,13 @@ export function MaterialEntry({ user }: MaterialEntryProps) {
     return persisted ?? createInitialData(true);
   });
 
-  const [currentStep, setCurrentStep] = useState(1);
+// Chacun atterrit directement sur SON étape : le dépositaire sur la saisie du
+  // BL (ou l'enregistrement si le magasinier a déjà certifié), le magasinier
+  // sur le contrôle de l'état (ou l'étape 1 en lecture seule si le BL n'est
+  // pas encore saisi).
+  const [currentStep, setCurrentStep] = useState<number>(() =>
+    getRoleHomeStep(resolveActiveRole(user?.role), loadPersistedReception() ?? createInitialData(true))
+  );
 
   const sessionName = getSessionUserName(activeRole, user ?? null);
   const magasinierName = getSessionUserName("magasinier", user ?? null);
@@ -1303,6 +1534,9 @@ export function MaterialEntry({ user }: MaterialEntryProps) {
   useEffect(() => {
     refreshNotifications(activeRole);
     setNotifOpen(false);
+    // Chacun joue son rôle : au changement de rôle, on repositionne sur son
+    // étape d'accueil.
+    setCurrentStep(getRoleHomeStep(activeRole, receptionData));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRole]);
 
@@ -1445,8 +1679,9 @@ export function MaterialEntry({ user }: MaterialEntryProps) {
   };
 
   const handleNewReception = () => {
-    setCurrentStep(1);
-    setReceptionData(createInitialData(false));
+    const fresh = createInitialData(false);
+    setReceptionData(fresh);
+    setCurrentStep(getRoleHomeStep(activeRole, fresh));
   };
 
   return (
@@ -1578,6 +1813,14 @@ export function MaterialEntry({ user }: MaterialEntryProps) {
           </div>
         </CardContent>
       </Card>
+
+      {/* Suivi de la répartition des rôles */}
+      <RoleWorkflowStatus
+        data={receptionData}
+        activeRole={activeRole}
+        currentStep={currentStep}
+        onGoToStep={(step) => setCurrentStep(step)}
+      />
 
       {/* Step indicator */}
       <StepIndicator currentStep={currentStep} steps={STEP_LABELS} />

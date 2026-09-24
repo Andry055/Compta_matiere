@@ -61,6 +61,8 @@ export interface DocumentRef {
 /** Ligne matérielle d'une entrée (tableau « ORDRE D'ENTRÉE ») */
 export interface EntreeLigne {
   numeroOrdre: number;
+  /** Référence du bien (ex. MAT-2026-001) */
+  reference?: string;
   designation: string;
   espece: string;
   unite: string;
@@ -87,11 +89,16 @@ export interface EntreeAdmin {
   adresseFournisseur: string;
   dateFacture: string;
   bonLivraison: string;
+  dateBonLivraison: string;
   referenceMarche: string;
   pieceJustificative: string;
   declarationNom: string;
   declarationFonction: string;
   declarationDate: string;
+  /** Motif de l'entrée (acquisition, don, retour, transfert…) */
+  motifEntree: string;
+  /** Observations complémentaires saisies à l'étape 5 */
+  observations: string;
 }
 
 export const ENTREE_ADMIN_VIDE: EntreeAdmin = {
@@ -105,11 +112,14 @@ export const ENTREE_ADMIN_VIDE: EntreeAdmin = {
   adresseFournisseur: "",
   dateFacture: "",
   bonLivraison: "",
+  dateBonLivraison: "",
   referenceMarche: "",
   pieceJustificative: "",
   declarationNom: "",
   declarationFonction: "",
   declarationDate: "",
+  motifEntree: "",
+  observations: "",
 };
 
 /** Étiquettes lisibles du type d'opération */
@@ -621,6 +631,7 @@ const ENTREE_ACTIONS = [
 ];
 
 const ENTREE_STATUTS: Record<StatutEntree, string[]> = {
+  "Brouillon": ["Terminé", "Conforme", "Réceptionné", "Brouillon", "Brouillon", "Brouillon"],
   "En attente": ["Terminé", "Conforme", "Réceptionné", "En attente", "En attente", "En attente"],
   "Vérifiée": ["Terminé", "Conforme", "Réceptionné", "Vérifiée", "En attente", "En attente"],
   "Validée": ["Terminé", "Conforme", "Réceptionné", "Vérifiée", "Enregistrée", "En stock"],

@@ -25,8 +25,10 @@ import {
   getSignatureCount,
   getSignaturesEntree,
   getStatutEntreeAffiche,
+  formatMontant,
 } from "../lib/movements";
 import { fetchEntrees } from "../lib/api";
+import { getEntreesTransfert } from "../lib/transfers";
 import {
   MovementDetailModal,
   MouvementDetailTab,
@@ -35,6 +37,15 @@ import { NewEntryPage } from "./NewEntryPage";
 import { ErrorBoundary } from "./ErrorBoundary";
 
 const PAGE_SIZE = 6;
+
+/** Total valorisé d'une entrée (colonne Montant du tableau) */
+function montantEntree(entry: EntreeRecord): number | undefined {
+  if (typeof entry.total === "number") return entry.total;
+  if (entry.lignes && entry.lignes.length > 0) {
+    return entry.lignes.reduce((s, l) => s + (Number(l.montant) || 0), 0);
+  }
+  return undefined;
+}
 
 // Statuts affichés (règle des 3 signatures)
 const STATUTS_AFFICHAGE_ENTREE = [
@@ -96,7 +107,8 @@ export function EntriesPage({ user }: EntriesPageProps) {
   const charger = () => {
     fetchEntrees().then((data) => {
       if (data && data.length > 0) {
-        setRecords(data);
+        // Entrées issues des transferts entre Directions + données API
+        setRecords([...getEntreesTransfert(), ...data]);
         setDataOrigin("api");
       }
     });
@@ -107,10 +119,10 @@ export function EntriesPage({ user }: EntriesPageProps) {
     fetchEntrees().then((data) => {
       if (cancelled) return;
       if (data && data.length > 0) {
-        setRecords(data);
+        setRecords([...getEntreesTransfert(), ...data]);
         setDataOrigin("api");
       } else {
-        setRecords(entreeRecords);
+        setRecords([...getEntreesTransfert(), ...entreeRecords]);
         setDataOrigin("local");
       }
     });
@@ -324,6 +336,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
               Nouvelle entrée
             </button>
           )}
+
           <button
             onClick={() => setSearchOpen((v) => !v)}
             className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg bg-background hover:bg-accent hover:text-accent-foreground transition-colors text-sm"
@@ -553,6 +566,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Quantité</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Fournisseur</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">N° facture</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Montant</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction / Service</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Statut</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Signatures</th>
@@ -564,7 +578,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
                 {visibleRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={12}
+                      colSpan={13}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       {isDemandeur && records.length === 0
@@ -598,6 +612,9 @@ export function EntriesPage({ user }: EntriesPageProps) {
                       </td>
                       <td className="py-3 px-3 text-sm font-mono text-card-foreground">
                         {entry.numeroFacture}
+                      </td>
+                      <td className="py-3 px-3 text-sm font-mono text-card-foreground whitespace-nowrap">
+                        {formatMontant(montantEntree(entry))}
                       </td>
                       <td className="py-3 px-3 text-sm text-card-foreground max-w-[180px] truncate">
                         {entry.direction} / {entry.service}
@@ -743,6 +760,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
         onChanged={charger}
         onClose={() => setModalOpen(false)}
       />
+
 
       {/* Message flash */}
       {flash && (

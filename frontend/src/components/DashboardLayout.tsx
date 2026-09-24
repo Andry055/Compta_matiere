@@ -7,6 +7,7 @@ import { Movements } from "./Movements"
 import { Departments } from "./Departments"
 import { Requests } from "./Requests"
 import { EntriesPage } from "./EntriesPage"
+import { AffectationsPage } from "./AffectationsPage"
 import { ExitsPage } from "./ExitsPage"
 import { Reports } from "./Reports"
 import { Users } from "./Users"
@@ -65,6 +66,8 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
         return <Dashboard user={user} />
       case "entries":
         return <EntriesPage user={user} />
+      case "affectations":
+        return <AffectationsPage user={user} />
       case "exits":
         return (
           <ExitsPage

@@ -7029,3 +7029,31 @@ large {
     opacity: 0;
   }
 }
+
+@media print {
+  body * {
+    visibility: hidden;
+  }
+
+  .ordre-entree-preview,
+  .ordre-entree-preview * {
+    visibility: visible;
+  }
+
+  .ordre-entree-preview {
+    position: absolute;
+    inset: 0;
+    padding: 0;
+    background: #fff;
+  }
+
+  .ordre-entree-actions {
+    display: none !important;
+  }
+
+  .ordre-entree-document {
+    width: 100%;
+    border: 0;
+    box-shadow: none;
+  }
+}

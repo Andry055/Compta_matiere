@@ -443,6 +443,72 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiAffectationAffectation extends Struct.CollectionTypeSchema {
+  collectionName: 'affectations';
+  info: {
+    description: "Affectation d'un mat\u00E9riel entre deux services d'une m\u00EAme Direction (workflow 4 validations)";
+    displayName: 'Affectation';
+    pluralName: 'affectations';
+    singularName: 'affectation';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    chef_service_1: Schema.Attribute.String;
+    chef_service_1_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    chef_service_2: Schema.Attribute.String;
+    chef_service_2_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    createur: Schema.Attribute.String;
+    createur_email: Schema.Attribute.String;
+    date: Schema.Attribute.Date & Schema.Attribute.Required;
+    date_signature_chef_service_1: Schema.Attribute.String;
+    date_signature_chef_service_2: Schema.Attribute.String;
+    date_signature_depositaire: Schema.Attribute.String;
+    date_signature_responsable_transfert: Schema.Attribute.String;
+    depositaire: Schema.Attribute.String;
+    depositaire_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    direction: Schema.Attribute.String;
+    historique: Schema.Attribute.JSON;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::affectation.affectation'
+    > &
+      Schema.Attribute.Private;
+    materiel: Schema.Attribute.String;
+    materiel_reference: Schema.Attribute.String;
+    motif: Schema.Attribute.String;
+    observation: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    qr_token: Schema.Attribute.String & Schema.Attribute.Unique;
+    quantite: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
+    reference: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    responsable_transfert: Schema.Attribute.String;
+    responsable_transfert_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    service_destinataire: Schema.Attribute.String;
+    service_source: Schema.Attribute.String;
+    signataire_chef_service_1: Schema.Attribute.String;
+    signataire_chef_service_2: Schema.Attribute.String;
+    signataire_depositaire: Schema.Attribute.String;
+    signataire_responsable_transfert: Schema.Attribute.String;
+    statut: Schema.Attribute.Enumeration<['en_attente', 'validee']> &
+      Schema.Attribute.DefaultTo<'en_attente'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiCategoryCategory extends Struct.CollectionTypeSchema {
   collectionName: 'categories';
   info: {
@@ -655,6 +721,7 @@ export interface ApiEntreeLigneEntreeLigne extends Struct.CollectionTypeSchema {
     quantite: Schema.Attribute.Integer &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<1>;
+    reference: Schema.Attribute.String;
     unite: Schema.Attribute.String;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
@@ -687,6 +754,7 @@ export interface ApiEntreeEntree extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    date_bon_livraison: Schema.Attribute.Date;
     date_entree: Schema.Attribute.Date & Schema.Attribute.Required;
     date_facture: Schema.Attribute.Date;
     date_signature_chef_service_1: Schema.Attribute.String;
@@ -717,6 +785,7 @@ export interface ApiEntreeEntree extends Struct.CollectionTypeSchema {
       'api::entree.entree'
     > &
       Schema.Attribute.Private;
+    motif_entree: Schema.Attribute.String;
     mouvements: Schema.Attribute.Relation<
       'oneToMany',
       'api::mouvement.mouvement'
@@ -884,9 +953,12 @@ export interface ApiServiceService extends Struct.CollectionTypeSchema {
     draftAndPublish: true;
   };
   attributes: {
+    chef_service_1: Schema.Attribute.String;
+    chef_service_2: Schema.Attribute.String;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    depositaire: Schema.Attribute.String;
     description: Schema.Attribute.String;
     direction: Schema.Attribute.Relation<
       'manyToOne',
@@ -1509,6 +1581,7 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
+      'api::affectation.affectation': ApiAffectationAffectation;
       'api::category.category': ApiCategoryCategory;
       'api::demande.demande': ApiDemandeDemande;
       'api::direction.direction': ApiDirectionDirection;

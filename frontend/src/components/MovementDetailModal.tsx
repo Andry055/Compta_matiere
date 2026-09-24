@@ -5,6 +5,8 @@ import {
   History,
   FileText,
   Download,
+  FileDown,
+  FileSpreadsheet,
   Package,
   CheckCircle2,
   Circle,
@@ -33,6 +35,12 @@ import { QRCodeSVG } from "qrcode.react";
 import { getAllDemandes } from "../lib/demandes";
 import { User } from "../App";
 import { rejeterEntree, signerEntree } from "../lib/api";
+import { getHistoriqueAffectations } from "../lib/transfers";
+import {
+  construireOrdreEntree,
+  genererPdfOrdreEntree,
+  genererExcelOrdreEntree,
+} from "../lib/ordreDocument";
 
 /** Libellé d'une demande associée : référence DEM-AAAA-NNN si connue */
 function demandeLabel(id?: number): string {
@@ -120,6 +128,7 @@ export function MovementDetailModal({
     "depositaire" | "chef_service_1" | "chef_service_2" | null
   >(null);
   const [busy, setBusy] = useState(false);
+  const [busyDoc, setBusyDoc] = useState<"" | "pdf" | "excel">("");
   const [erreur, setErreur] = useState("");
   // Force le re-render quand le prop `entree` est muté après signature
   const [, forceRender] = useState(0);
@@ -274,6 +283,51 @@ export function MovementDetailModal({
     type === "entree" ? getEntreeTrace(entree!) : getSortieTrace(sortie!);
   const documents = type === "entree" ? entree!.documents : sortie!.documents;
 
+  // Historique enrichi : affectations internes / transferts entre Directions
+  const traceAffectations =
+    type === "entree"
+      ? getHistoriqueAffectations(entree!.reference).map((ev) => ({
+          date: ev.date,
+          utilisateur: "Affectation / transfert",
+          action: `${ev.libelle} — ${ev.detail}`,
+          materiel: entree!.materiel,
+          quantite: entree!.quantite,
+          statut: "Traçabilité",
+          reference: entree!.reference,
+        }))
+      : [];
+  const traceComplete = [...trace, ...traceAffectations].sort((a, b) =>
+    a.date < b.date ? -1 : a.date > b.date ? 1 : 0
+  );
+
+  /** PDF réel (jsPDF) de l'Ordre d'entrée : téléchargement ou aperçu */
+  const telechargerPdf = async (action: "download" | "preview" = "download") => {
+    if (!entree) return;
+    setBusyDoc("pdf");
+    setErreur("");
+    try {
+      await genererPdfOrdreEntree(construireOrdreEntree(entree), action);
+    } catch {
+      setErreur("Génération du PDF impossible.");
+    } finally {
+      setBusyDoc("");
+    }
+  };
+
+  /** Classeur .xlsx réel (exceljs) de l'Ordre d'entrée */
+  const telechargerExcel = async () => {
+    if (!entree) return;
+    setBusyDoc("excel");
+    setErreur("");
+    try {
+      await genererExcelOrdreEntree(construireOrdreEntree(entree));
+    } catch {
+      setErreur("Génération du fichier Excel impossible.");
+    } finally {
+      setBusyDoc("");
+    }
+  };
+
   const handleExport = () => {
     const headers =
       type === "entree"
@@ -411,14 +465,42 @@ export function MovementDetailModal({
             </button>
           )}
           {type === "entree" && (
-            <button
-              onClick={imprimerOrdreEntree}
-              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border text-muted-foreground hover:bg-muted transition-colors"
-              title="Générer le document administratif imprimable"
-            >
-              <Printer className="h-4 w-4" />
-              Générer l'Ordre d'entrée
-            </button>
+            <>
+              <button
+                onClick={() => telechargerPdf("download")}
+                disabled={busyDoc !== ""}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
+                title="Télécharger l'Ordre d'entrée en PDF imprimable"
+              >
+                {busyDoc === "pdf" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileDown className="h-4 w-4" />
+                )}
+                Générer PDF
+              </button>
+              <button
+                onClick={telechargerExcel}
+                disabled={busyDoc !== ""}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+                title="Exporter l'Ordre d'entrée en classeur Excel (.xlsx)"
+              >
+                {busyDoc === "excel" ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <FileSpreadsheet className="h-4 w-4" />
+                )}
+                Exporter Excel
+              </button>
+              <button
+                onClick={imprimerOrdreEntree}
+                className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-border text-muted-foreground hover:bg-muted transition-colors"
+                title="Version imprimable de l'Ordre d'entrée"
+              >
+                <Printer className="h-4 w-4" />
+                Imprimer
+              </button>
+            </>
           )}
         </div>
 
@@ -484,6 +566,18 @@ export function MovementDetailModal({
                       value={`${getSignatureCount(entree!)} / 3`}
                     />
                     <InfoField label="Responsable" value={entree!.responsable} />
+                    <InfoField
+                      label="Dépositaire du service"
+                      value={entree!.affectations?.depositaire || "—"}
+                    />
+                    <InfoField
+                      label="Chef de service 1"
+                      value={entree!.affectations?.chefService1 || "—"}
+                    />
+                    <InfoField
+                      label="Chef de service 2"
+                      value={entree!.affectations?.chefService2 || "—"}
+                    />
                   </>
                 ) : (
                   <>
@@ -767,7 +861,7 @@ export function MovementDetailModal({
                   </tr>
                 </thead>
                 <tbody>
-                  {trace.map((event, index) => (
+                  {traceComplete.map((event, index) => (
                     <tr
                       key={index}
                       className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
@@ -835,6 +929,39 @@ export function MovementDetailModal({
                     </span>
                   </div>
                 ))
+              )}
+
+              {type === "entree" && (
+                <div className="flex flex-wrap gap-2 pt-2">
+                  <button
+                    onClick={() => telechargerPdf("preview")}
+                    disabled={busyDoc !== ""}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+                  >
+                    {busyDoc === "pdf" ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <FileDown className="h-4 w-4" />
+                    )}
+                    Voir PDF
+                  </button>
+                  <button
+                    onClick={() => telechargerPdf("download")}
+                    disabled={busyDoc !== ""}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+                  >
+                    <Download className="h-4 w-4" />
+                    Télécharger PDF
+                  </button>
+                  <button
+                    onClick={telechargerExcel}
+                    disabled={busyDoc !== ""}
+                    className="inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm border border-border text-muted-foreground hover:bg-muted disabled:opacity-50 transition-colors"
+                  >
+                    <FileSpreadsheet className="h-4 w-4" />
+                    Exporter Excel
+                  </button>
+                </div>
               )}
             </div>
           )}

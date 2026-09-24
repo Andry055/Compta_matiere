@@ -223,6 +223,16 @@ const ENTREE_SIGN_ACTIONS = [
   'api::mouvement.mouvement.find',
 ];
 
+// ---------------------------------------------------------------------------
+// Affectations : permissions des endpoints de la validation à 4 signatures.
+// La signature proprement dite est contrôlée par rôle dans le contrôleur
+// (1/4 réservée au créateur, 2/4 dépositaire, 3/4 magasinier, 4/4 logistique).
+// ---------------------------------------------------------------------------
+const AFFECTATION_ACTIONS = [
+  'api::affectation.affectation.createComplete',
+  'api::affectation.affectation.sign',
+];
+
 // Rôles habilités à créer / signer / rejeter une entrée (jamais le Demandeur).
 const ROLES_SIGNATAIRES = ['depositaire', 'magasinier', 'logistique', 'comptable'];
 
@@ -337,10 +347,33 @@ async function ensureAuthSetup(strapi) {
       await permQuery.create({ data: { action, role: roleDemandeur.id } });
     }
   }
+  // 2quater) Permissions « Affectations » : routes custom de la validation à
+  // 4 signatures, accordées aux rôles signataires. Le Demandeur peut créer
+  // une affectation (dont il sera le Responsable du transfert 1/4) mais ne
+  // reçoit JAMAIS `sign` : les validations responsables sont contrôlées dans
+  // le contrôleur (un Demandeur ne signe que la 1/4 sur SA création).
+  const DEMANDEUR_AFFECTATION_ACTIONS = [
+    'api::affectation.affectation.createComplete',
+  ];
+  for (const type of ROLES_SIGNATAIRES) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of AFFECTATION_ACTIONS) {
+      if (granted.has(`${role.type}:${action}`)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+    }
+  }
+  if (roleDemandeur) {
+    for (const action of DEMANDEUR_AFFECTATION_ACTIONS) {
+      if (granted.has(`${roleDemandeur.type}:${action}`)) continue;
+      await permQuery.create({ data: { action, role: roleDemandeur.id } });
+    }
+  }
+
   // L'admin (rôle authenticated créé par Strapi) garde un accès complet via
   // l'interface d'administration ; on lui accorde aussi les routes custom.
   if (authenticated) {
-    for (const action of ENTREE_SIGN_ACTIONS) {
+    for (const action of [...ENTREE_SIGN_ACTIONS, ...AFFECTATION_ACTIONS]) {
       if (granted.has(`authenticated:${action}`)) continue;
       await permQuery.create({ data: { action, role: authenticated.id } });
     }

@@ -21,6 +21,15 @@
     "responsable": {
       "type": "string"
     },
+    "depositaire": {
+      "type": "string"
+    },
+    "chef_service_1": {
+      "type": "string"
+    },
+    "chef_service_2": {
+      "type": "string"
+    },
     "responsable_email": {
       "type": "email"
     },

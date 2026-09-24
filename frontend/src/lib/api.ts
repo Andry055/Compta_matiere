@@ -160,6 +160,7 @@ interface StrapiEntity {
   lignes?: Array<{
     id: number;
     numero_ordre?: number | null;
+    reference?: string | null;
     designation?: string | null;
     espece?: string | null;
     unite?: string | null;
@@ -189,6 +190,9 @@ interface StrapiEntreeChamps {
   adresse_fournisseur?: string | null;
   date_facture?: string | null;
   bon_livraison?: string | null;
+  date_bon_livraison?: string | null;
+  motif_entree?: string | null;
+  observations?: string | null;
   reference_marche?: string | null;
   piece_justificative?: string | null;
   declaration_nom?: string | null;
@@ -242,6 +246,9 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
     adresseFournisseur: row.adresse_fournisseur || "",
     dateFacture: row.date_facture || "",
     bonLivraison: row.bon_livraison || "",
+    dateBonLivraison: row.date_bon_livraison || "",
+    motifEntree: row.motif_entree || "",
+    observations: row.observations || row.notes || "",
     referenceMarche: row.reference_marche || "",
     pieceJustificative: row.piece_justificative || "",
     declarationNom: row.declaration_nom || "",
@@ -261,6 +268,7 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
 
   const lignesMappees: EntreeLigne[] = lignes.map((l, i) => ({
     numeroOrdre: l.numero_ordre ?? i + 1,
+    reference: l.reference || "",
     designation: l.designation || l.materiel?.designation || "—",
     espece: l.espece || l.materiel?.categorie?.nom || "—",
     unite: l.unite || "unité",
@@ -410,7 +418,9 @@ export interface NouvelleEntreePayload {
   affectation_chef_service_1?: string;
   affectation_chef_service_2?: string;
   lignes: Array<{
+    numero_ordre?: number;
     designation: string;
+    reference?: string;
     espece?: string;
     unite?: string;
     quantite: number;
@@ -430,6 +440,9 @@ export interface NouvelleEntreePayload {
   adresse_fournisseur?: string;
   date_facture?: string;
   bon_livraison?: string;
+  date_bon_livraison?: string;
+  motif_entree?: string;
+  observations?: string;
   reference_marche?: string;
   piece_justificative?: string;
   declaration_nom?: string;
@@ -461,6 +474,15 @@ export async function rejeterEntree(documentId: string): Promise<EntreeRecord> {
 export interface RefOption {
   documentId: string;
   nom: string;
+  /** Direction de rattachement (services uniquement) — pour le filtrage Direction → Service */
+  directionId?: string;
+  /** Responsables du service (déchargés automatiquement à la sélection) */
+  responsable?: string;
+  depositaire?: string;
+  chefService1?: string;
+  chefService2?: string;
+  /** Directeur de la direction (responsable de repli) */
+  directeur?: string;
 }
 
 export interface MaterialOption {
@@ -494,26 +516,61 @@ export async function fetchDirections(): Promise<RefOption[]> {
       params: { "pagination[pageSize]": 100, sort: "nom_direction:asc" },
       timeout: 5000,
     });
-    return (data?.data ?? []).map((row: { documentId?: string; id: number; nom_direction?: string }) => ({
-      documentId: row.documentId || String(row.id),
-      nom: row.nom_direction || `Direction #${row.id}`,
-    }));
+    return (data?.data ?? []).map(
+      (row: {
+        documentId?: string;
+        id: number;
+        nom_direction?: string;
+        directeur?: string;
+      }) => ({
+        documentId: row.documentId || String(row.id),
+        nom: row.nom_direction || `Direction #${row.id}`,
+        directeur: row.directeur || undefined,
+      })
+    );
   } catch {
     return [];
   }
 }
 
-/** Liste des services (pour le formulaire « Nouvelle entrée »). */
+/** Liste des services (pour le formulaire « Nouvelle entrée »).
+ *  Chaque service porte sa direction de rattachement et ses responsables
+ *  (dépositaire, chef de service 1, chef de service 2) : le formulaire
+ *  filtre automatiquement les services de la direction sélectionnée. */
 export async function fetchServices(): Promise<RefOption[]> {
   try {
     const { data } = await api.get("/api/services", {
-      params: { "pagination[pageSize]": 100, sort: "nom_service:asc" },
+      params: {
+        "pagination[pageSize]": 100,
+        sort: "nom_service:asc",
+        populate: "direction",
+      },
       timeout: 5000,
     });
-    return (data?.data ?? []).map((row: { documentId?: string; id: number; nom_service?: string }) => ({
-      documentId: row.documentId || String(row.id),
-      nom: row.nom_service || `Service #${row.id}`,
-    }));
+    return (data?.data ?? []).map(
+      (row: {
+        documentId?: string;
+        id: number;
+        nom_service?: string;
+        responsable?: string;
+        depositaire?: string;
+        chef_service_1?: string;
+        chef_service_2?: string;
+        direction?: {
+          documentId?: string;
+          id: number;
+          nom_direction?: string;
+        } | null;
+      }) => ({
+        documentId: row.documentId || String(row.id),
+        nom: row.nom_service || `Service #${row.id}`,
+        directionId: row.direction?.documentId || undefined,
+        responsable: row.responsable || undefined,
+        depositaire: row.depositaire || undefined,
+        chefService1: row.chef_service_1 || undefined,
+        chefService2: row.chef_service_2 || undefined,
+      })
+    );
   } catch {
     return [];
   }

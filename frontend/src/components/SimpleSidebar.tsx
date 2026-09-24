@@ -11,7 +11,8 @@ import {
   Truck,
   BookOpen,
   ArrowDownToLine,
-  ArrowUpFromLine
+  ArrowUpFromLine,
+  ArrowLeftRight
 } from "lucide-react"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
@@ -40,6 +41,12 @@ const navItems = [
     icon: ArrowDownToLine,
     key: "entries",
     description: "Suivi des entrées de matériels"
+  },
+  {
+    title: "Affectations",
+    icon: ArrowLeftRight,
+    key: "affectations",
+    description: "Affectations entre services"
   },
   {
     title: "Sorties",

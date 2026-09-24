@@ -9,13 +9,16 @@ import {
   CheckCircle2,
   Loader2,
   FileText,
-  Building2,
+  MapPin,
   Package,
-  Users,
+  Truck,
+  ClipboardCheck,
   ArrowLeft,
   QrCode as QrCodeIcon,
   Download,
   Printer,
+  FileDown,
+  FileSpreadsheet,
   Maximize2,
   Info,
   Paperclip,
@@ -25,6 +28,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { User } from "../App";
 import {
   EntreeLigne,
+  EntreeRecord,
   EntreeAdmin,
   ENTREE_ADMIN_VIDE,
   TYPE_OPERATION_LABELS,
@@ -40,12 +44,29 @@ import {
   MaterialOption,
   RefOption,
 } from "../lib/api";
+import {
+  DIRECTIONS_REPLI,
+  SERVICES_REPLI,
+  estIdentifiantRepli,
+  filtrerServicesParDirection,
+  responsablesDuService,
+} from "../lib/organigramme";
+import {
+  construireOrdreEntree,
+  genererPdfOrdreEntree,
+  genererExcelOrdreEntree,
+} from "../lib/ordreDocument";
 
+// Processus métier : DIRECTION → SERVICE → ENTRÉE EN STOCK → VÉRIFICATION →
+// VALIDATION PAR LES RESPONSABLES DU SERVICE → STOCK DU SERVICE.
+// Aucun « Dépositaire général » : les responsables sont ceux du service.
 const ETAPES = [
-  { numero: 1, label: "Informations générales", icon: FileText },
-  { numero: 2, label: "Fournisseur et documents", icon: Building2 },
-  { numero: 3, label: "Matériels", icon: Package },
-  { numero: 4, label: "Affectation et validation", icon: Users },
+  { numero: 1, label: "Destination — Direction et Service", icon: MapPin },
+  { numero: 2, label: "Informations administratives", icon: FileText },
+  { numero: 3, label: "Fournisseur et justificatifs", icon: Truck },
+  { numero: 4, label: "Matériels et objets", icon: Package },
+  { numero: 5, label: "Informations complémentaires", icon: Info },
+  { numero: 6, label: "Vérification", icon: ClipboardCheck },
 ];
 
 const UNITES = ["Unité", "Pièce", "Lot", "Kg", "Litre", "Mètre", "Boîte"];
@@ -80,29 +101,41 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
   const [erreur, setErreur] = useState("");
   const [saving, setSaving] = useState(false);
   const [qrAgrandi, setQrAgrandi] = useState(false);
+  const [finalPreview, setFinalPreview] = useState(false);
+  const [busyDoc, setBusyDoc] = useState<"" | "pdf" | "excel">("");
   const [loadingReferences, setLoadingReferences] = useState(true);
   const [referencesError, setReferencesError] = useState<string | null>(null);
 
-  // Étape 1 — informations générales
-  const [dateEntree, setDateEntree] = useState(new Date().toISOString().slice(0, 10));
-  const [typeOperation, setTypeOperation] = useState<EntreeAdmin["typeOperation"]>("");
+  // Étape 1 — destination (DIRECTION → SERVICE → responsables automatiques)
   const [directionId, setDirectionId] = useState("");
   const [serviceId, setServiceId] = useState("");
+  const [depotParService, setDepotParService] = useState("");
+  const [chefService1, setChefService1] = useState("");
+  const [chefService2, setChefService2] = useState("");
 
-  // Étape 2 — fournisseur et documents
+  // Étape 2 — informations administratives (modèle « ORDRE D'ENTRÉE »)
+  const [dateEntree, setDateEntree] = useState(new Date().toISOString().slice(0, 10));
+  const [typeOperation, setTypeOperation] = useState<EntreeAdmin["typeOperation"]>("");
+  const [numeroChapitre, setNumeroChapitre] = useState("");
+  const [libelleChapitre, setLibelleChapitre] = useState("");
+  const [subdivisionChapitre, setSubdivisionChapitre] = useState("");
+  const [numeroOrdreJournal, setNumeroOrdreJournal] = useState("");
+  const [soa, setSoa] = useState("");
+
+  // Étape 3 — fournisseur et justificatifs
   const [fournisseurId, setFournisseurId] = useState("");
   const [numeroFacture, setNumeroFacture] = useState("");
   const [dateFacture, setDateFacture] = useState("");
   const [bonLivraison, setBonLivraison] = useState("");
+  const [dateBonLivraison, setDateBonLivraison] = useState("");
   const [documents, setDocuments] = useState<DocumentJoint[]>([]);
 
-  // Étape 3 — matériels
+  // Étape 4 — matériels et objets
   const [lignes, setLignes] = useState<EntreeLigne[]>([ligneVide(0)]);
 
-  // Étape 4 — affectation et validation
-  const [depotParService, setDepotParService] = useState("");
-  const [chefService1, setChefService1] = useState("");
-  const [chefService2, setChefService2] = useState("");
+  // Étape 5 — informations complémentaires
+  const [observations, setObservations] = useState("");
+  const [motifEntree, setMotifEntree] = useState("");
 
   // Données de référence
   const [fournisseurs, setFournisseurs] = useState<RefOption[]>([]);
@@ -128,8 +161,13 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
         if (cancelled) return;
 
         setFournisseurs(fournisseursData ?? []);
-        setDirections(directionsData ?? []);
-        setServices(servicesData ?? []);
+        // Repli hors ligne : le processus DIRECTION → SERVICE reste utilisable
+        setDirections(
+          directionsData && directionsData.length ? directionsData : DIRECTIONS_REPLI
+        );
+        setServices(
+          servicesData && servicesData.length ? servicesData : SERVICES_REPLI
+        );
         setMaterials(materialsData ?? []);
       } catch (error) {
         console.error("Erreur de chargement des référentiels Nouvelle entrée:", error);
@@ -157,6 +195,33 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
   const nomFournisseur = fournisseurs.find((f) => f.documentId === fournisseurId)?.nom || "—";
   const nomDirection = directions.find((d) => d.documentId === directionId)?.nom || "—";
   const nomService = services.find((s) => s.documentId === serviceId)?.nom || "—";
+
+  // -----------------------------------------------------------------------
+  // DIRECTION → SERVICE : seuls les services de la direction choisie sont
+  // proposés, et les responsables du service sont récupérés automatiquement.
+  // -----------------------------------------------------------------------
+  const servicesVisibles = filtrerServicesParDirection(services, directionId);
+  const directionChoisie = directions.find((d) => d.documentId === directionId);
+  const serviceChoisie = services.find((s) => s.documentId === serviceId);
+
+  const changerDirection = (nouvelleDirection: string) => {
+    setDirectionId(nouvelleDirection);
+    setServiceId("");
+    setDepotParService("");
+    setChefService1("");
+    setChefService2("");
+  };
+
+  // Responsables automatiques dès la sélection du Service
+  useEffect(() => {
+    if (!serviceId) return;
+    const svc = services.find((s) => s.documentId === serviceId);
+    const dir = directions.find((d) => d.documentId === directionId);
+    const responsables = responsablesDuService(svc, dir);
+    setDepotParService(responsables.depositaire);
+    setChefService1(responsables.chefService1);
+    setChefService2(responsables.chefService2);
+  }, [serviceId, directionId, services, directions]);
 
   // Contenu du QR Code : identifiant seul, jamais de données sensibles.
   // La référence définitive est renvoyée par le serveur après création.
@@ -195,19 +260,26 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
   };
 
   /** Validation étape par étape, messages affichés sous les champs */
-  const validerEtape = (): string => {
-    if (etape === 1) {
+  const validerEtape = (numeroEtape = etape): string => {
+    if (numeroEtape === 1) {
+      if (!directionId) return "Veuillez sélectionner la Direction.";
+      if (!serviceId)
+        return "Veuillez sélectionner le Service (il dépend de la Direction).";
+      if (!depotParService.trim())
+        return "Le Dépositaire du service est requis (fiche du service à compléter).";
+      if (!chefService1.trim())
+        return "Le Chef de service 1 est requis (fiche du service à compléter).";
+      if (!chefService2.trim())
+        return "Le Chef de service 2 est requis (fiche du service à compléter).";
+    }
+    if (numeroEtape === 2) {
       if (!dateEntree) return "La date d'entrée est obligatoire.";
-      if (!typeOperation) return "Veuillez choisir le type d'entrée.";
-      if (!directionId) return "Veuillez sélectionner la direction.";
-      if (!serviceId) return "Veuillez sélectionner le service.";
+      if (!typeOperation) return "Veuillez choisir le type d'opération.";
     }
-    if (etape === 2) {
+    if (numeroEtape === 3) {
       if (!fournisseurId) return "Veuillez sélectionner le fournisseur.";
-      if (!numeroFacture.trim()) return "Le numéro de facture est obligatoire.";
-      if (!dateFacture) return "La date de facture est obligatoire.";
     }
-    if (etape === 3) {
+    if (numeroEtape === 4) {
       if (lignes.length === 0) return "Au moins un matériel est requis.";
       for (const l of lignes) {
         if (!l.designation.trim()) return "Chaque matériel doit avoir une désignation.";
@@ -217,19 +289,13 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
           return `Prix unitaire invalide pour « ${l.designation} ».`;
       }
     }
-    if (etape === 4) {
-      if (!depotParService)
-        return "Veuillez sélectionner le dépositaire par service.";
-      if (!chefService1) return "Veuillez sélectionner le Chef de service 1.";
-      if (!chefService2) return "Veuillez sélectionner le Chef de service 2.";
-    }
     return "";
   };
 
   const suivant = () => {
     const err = validerEtape();
     setErreur(err);
-    if (!err) setEtape((e) => Math.min(4, e + 1));
+    if (!err) setEtape((e) => Math.min(6, e + 1));
   };
 
   /** Brouillon : enregistrement partiel (validation assouplie côté serveur) */
@@ -247,20 +313,26 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
     }
   };
 
-  /** Envoi : toutes les validations du formulaire sont exigées */
-  const envoyer = async () => {
-    // Vérifie toutes les étapes avant envoi
-    for (let e = 1; e <= 4; e += 1) {
-      const sauvegarde = etape;
-      setEtape(e);
-      const err = validerEtape();
-      setEtape(sauvegarde);
+  const validerToutesLesEtapes = () => {
+    for (let e = 1; e <= 6; e += 1) {
+      const err = validerEtape(e);
       if (err) {
         setErreur(err);
         setEtape(e);
-        return;
+        return false;
       }
     }
+    setErreur("");
+    return true;
+  };
+
+  const previsualiser = () => {
+    if (validerToutesLesEtapes()) setFinalPreview(true);
+  };
+
+  /** Envoi : toutes les validations du formulaire sont exigées */
+  const envoyer = async () => {
+    if (!validerToutesLesEtapes()) return;
     setErreur("");
     setSaving(true);
     try {
@@ -278,9 +350,14 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
   const payloadCommun = (brouillon: boolean) => ({
     date_entree: dateEntree,
     numero_facture: numeroFacture || undefined,
-    fournisseur_id: fournisseurId || undefined,
-    direction_id: directionId || undefined,
-    service_id: serviceId || undefined,
+    fournisseur_id:
+      fournisseurId && !estIdentifiantRepli(fournisseurId)
+        ? fournisseurId
+        : undefined,
+    direction_id:
+      directionId && !estIdentifiantRepli(directionId) ? directionId : undefined,
+    service_id:
+      serviceId && !estIdentifiantRepli(serviceId) ? serviceId : undefined,
     responsable: user?.name,
     brouillon,
     affectation_depositaire: depotParService || undefined,
@@ -289,16 +366,154 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
     type_operation: typeOperation || undefined,
     date_facture: dateFacture || undefined,
     bon_livraison: bonLivraison || undefined,
+    date_bon_livraison: dateBonLivraison || undefined,
+    numero_chapitre: numeroChapitre || undefined,
+    libelle_chapitre: libelleChapitre || undefined,
+    subdivision_chapitre: subdivisionChapitre || undefined,
+    numero_ordre_journal: numeroOrdreJournal || undefined,
+    soa: soa || undefined,
+    motif_entree: motifEntree || undefined,
+    observations: observations || undefined,
+    notes: observations || undefined,
+    piece_justificative: documents[0]?.nom || numeroFacture || undefined,
     lignes: lignes
       .filter((l) => brouillon || l.designation.trim())
-      .map((l) => ({
+      .map((l, index) => ({
+        numero_ordre: index + 1,
         designation: l.designation.trim(),
+        reference: l.reference?.trim() || undefined,
         espece: l.espece || undefined,
         unite: l.unite || undefined,
         quantite: Number(l.quantite) || 0,
         valeur_unitaire: Number(l.prixUnitaire) || 0,
+        piece_justificative: l.pieceJustificative || numeroFacture || undefined,
+        observations: l.observation || undefined,
       })),
   });
+
+  const nomTypeOperation = typeOperation
+    ? TYPE_OPERATION_LABELS[typeOperation]
+    : "—";
+  const dateEntreeFormatee = dateEntree
+    ? new Date(`${dateEntree}T00:00:00`).toLocaleDateString("fr-FR")
+    : "—";
+  const dateFactureFormatee = dateFacture
+    ? new Date(`${dateFacture}T00:00:00`).toLocaleDateString("fr-FR")
+    : "—";
+
+  const telechargerCsvFinal = () => {
+    const headers = [
+      "Numero",
+      "Designation",
+      "Espece",
+      "Unite",
+      "Quantite",
+      "Prix unitaire",
+      "Montant",
+      "Piece justificative",
+    ];
+    const csvCell = (value: string | number) =>
+      `"${String(value).replace(/"/g, '""')}"`;
+    const rows = lignes.map((ligne) =>
+      [
+        ligne.numeroOrdre,
+        ligne.designation,
+        ligne.espece,
+        ligne.unite,
+        ligne.quantite,
+        ligne.prixUnitaire,
+        ligne.montant,
+        ligne.pieceJustificative || numeroFacture,
+      ]
+        .map(csvCell)
+        .join(";")
+    );
+    const content = [headers.map(csvCell).join(";"), ...rows].join("\r\n");
+    const link = document.createElement("a");
+    link.href = `data:text/csv;charset=utf-8,${encodeURIComponent(content)}`;
+    link.download = `${referenceCreee || "ordre-entree"}.csv`;
+    link.click();
+  };
+
+  /**
+   * Brouillon de l'entrée sous forme d'EntreeRecord : sert à pré-remplir
+   * l'aperçu de l'Ordre d'entrée et à générer le PDF / le classeur Excel.
+   */
+  const recordApercu = (): EntreeRecord => ({
+    id: referenceCreee || "apercu",
+    reference: referenceCreee || "ENT-AAAA-NNN",
+    dateEntree,
+    materiel:
+      lignes
+        .filter((l) => l.designation.trim())
+        .map((l) => l.designation)
+        .join(", ") || "—",
+    categorie:
+      lignes
+        .filter((l) => l.espece.trim())
+        .map((l) => l.espece)
+        .join(", ") || "—",
+    quantite: lignes.reduce((s, l) => s + (Number(l.quantite) || 0), 0),
+    fournisseur: nomFournisseur,
+    numeroFacture: numeroFacture || "—",
+    direction: nomDirection,
+    service: nomService,
+    statut: "En attente",
+    responsable: user?.name || "—",
+    documents: documents.map((d) => ({ nom: d.nom, type: d.type })),
+    affectations: {
+      depositaire: depotParService,
+      chefService1,
+      chefService2,
+    },
+    qrToken: referenceCreee || undefined,
+    total,
+    admin: {
+      ...ENTREE_ADMIN_VIDE,
+      numeroChapitre,
+      libelleChapitre,
+      subdivisionChapitre,
+      numeroOrdreJournal,
+      soa,
+      typeOperation,
+      dateFacture,
+      bonLivraison,
+      dateBonLivraison,
+      motifEntree,
+      observations,
+      pieceJustificative: documents[0]?.nom || numeroFacture || "",
+      declarationNom: depotParService,
+      declarationFonction: "Dépositaire du service",
+      declarationDate: dateEntree,
+    },
+    lignes: lignes.filter((l) => l.designation.trim()),
+  });
+
+  /** PDF réel (jsPDF) de l'Ordre d'entrée — pas une capture d'écran */
+  const genererPdfFinal = async () => {
+    setBusyDoc("pdf");
+    setErreur("");
+    try {
+      await genererPdfOrdreEntree(construireOrdreEntree(recordApercu()));
+    } catch {
+      setErreur("Génération du PDF impossible.");
+    } finally {
+      setBusyDoc("");
+    }
+  };
+
+  /** Classeur .xlsx réel (exceljs) — A4 paysage, bordures, signatures */
+  const telechargerExcelFinal = async () => {
+    setBusyDoc("excel");
+    setErreur("");
+    try {
+      await genererExcelOrdreEntree(construireOrdreEntree(recordApercu()));
+    } catch {
+      setErreur("Génération du fichier Excel impossible.");
+    } finally {
+      setBusyDoc("");
+    }
+  };
 
   /** Téléchargement du QR Code en PNG */
   const telechargerQr = () => {
@@ -342,6 +557,137 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
       <script>window.onload=()=>window.print()</script></body></html>`);
     win.document.close();
   };
+
+  if (finalPreview) {
+    return (
+      <div className="ordre-entree-preview p-3 sm:p-6 space-y-4">
+        <div className="ordre-entree-actions flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <button
+              type="button"
+              onClick={() => setFinalPreview(false)}
+              className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeft className="h-4 w-4" /> Modifier la demande
+            </button>
+            <h1 className="mt-3 text-2xl font-semibold text-foreground">Aperçu final</h1>
+            <p className="text-sm text-muted-foreground">
+              Toutes les conditions sont complètes. Vérifiez l'ordre avant de l'envoyer.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button type="button" onClick={genererPdfFinal} disabled={busyDoc !== ""} className="inline-flex items-center gap-2 rounded-lg bg-primary px-3 py-2 text-sm text-primary-foreground disabled:opacity-50">
+              {busyDoc === "pdf" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileDown className="h-4 w-4" />}
+              Générer PDF
+            </button>
+            <button type="button" onClick={telechargerExcelFinal} disabled={busyDoc !== ""} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted disabled:opacity-50">
+              {busyDoc === "excel" ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+              Exporter Excel
+            </button>
+            <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted">
+              <Printer className="h-4 w-4" /> Imprimer
+            </button>
+            <button type="button" onClick={telechargerCsvFinal} className="inline-flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm hover:bg-muted">
+              <Download className="h-4 w-4" /> CSV
+            </button>
+          </div>
+        </div>
+
+        {erreur && (
+          <div className="ordre-entree-actions rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+            {erreur}
+          </div>
+        )}
+
+        <article className="ordre-entree-document border border-slate-900 bg-white p-4 text-slate-900 shadow-sm sm:p-8">
+          <header className="grid gap-4 border-b-2 border-slate-900 pb-4 text-center text-xs sm:grid-cols-[1fr_auto_1fr] sm:text-left">
+            <div>
+              <p className="font-semibold">MINISTÈRE DE LA FONCTION PUBLIQUE</p>
+              <p>DE LA RÉFORME DE L'ADMINISTRATION</p>
+              <p>DU TRAVAIL ET DES LOIS SOCIALES</p>
+              <p className="mt-2">Budget général</p>
+            </div>
+            <div className="self-center font-semibold">MODÈLE N°7</div>
+            <div className="sm:text-right">
+              <p>Référence : {referenceCreee || "À attribuer"}</p>
+              <p>Date : {dateEntreeFormatee}</p>
+              <p>Instruction générale du 22 juillet 1955</p>
+            </div>
+          </header>
+
+          <div className="py-5 text-center">
+            <h2 className="text-xl font-bold underline">ORDRE D'ENTRÉE</h2>
+            <p className="mt-2 text-sm">MATÉRIEL EN APPROVISIONNEMENT / MATÉRIEL EN SERVICE</p>
+            <p className="mt-1 text-sm">Type : {nomTypeOperation}</p>
+          </div>
+
+          <div className="grid gap-2 border-y border-slate-900 py-3 text-sm sm:grid-cols-2">
+            <p><strong>Direction :</strong> {nomDirection}</p>
+            <p><strong>Service :</strong> {nomService}</p>
+            <p><strong>Fournisseur :</strong> {nomFournisseur}</p>
+            <p><strong>Facture :</strong> {numeroFacture} du {dateFactureFormatee}</p>
+            <p><strong>Bon de livraison :</strong> {bonLivraison || "—"}{dateBonLivraison ? ` du ${new Date(`${dateBonLivraison}T00:00:00`).toLocaleDateString("fr-FR")}` : ""}</p>
+            <p><strong>Chapitre :</strong> {numeroChapitre || "—"} — {libelleChapitre || "—"} (subdivision {subdivisionChapitre || "—"})</p>
+            <p><strong>Journal / SOA :</strong> {numeroOrdreJournal || "—"} / {soa || "—"}</p>
+            <p><strong>Dépositaire :</strong> {depotParService || "—"}</p>
+            <p><strong>Demandeur :</strong> {user?.name || "—"}</p>
+          </div>
+
+          <div className="mt-5 overflow-x-auto">
+            <table className="min-w-full border-collapse text-xs sm:text-sm">
+              <thead>
+                <tr className="bg-slate-100">
+                  {[
+                    "N°",
+                    "Désignation des matières et objets",
+                    "Espèce",
+                    "Unité",
+                    "Quantité",
+                    "Prix de l'unité",
+                    "Valeur partielle",
+                    "Pièce justificative",
+                  ].map((heading) => <th key={heading} className="border border-slate-900 px-2 py-2 text-left font-semibold">{heading}</th>)}
+                </tr>
+              </thead>
+              <tbody>
+                {lignes.map((ligne) => (
+                  <tr key={ligne.numeroOrdre}>
+                    <td className="border border-slate-900 px-2 py-2">{ligne.numeroOrdre}</td>
+                    <td className="border border-slate-900 px-2 py-2">{ligne.designation}</td>
+                    <td className="border border-slate-900 px-2 py-2">{ligne.espece || "—"}</td>
+                    <td className="border border-slate-900 px-2 py-2">{ligne.unite}</td>
+                    <td className="border border-slate-900 px-2 py-2 text-right">{ligne.quantite}</td>
+                    <td className="border border-slate-900 px-2 py-2 text-right">{formatMontant(ligne.prixUnitaire)}</td>
+                    <td className="border border-slate-900 px-2 py-2 text-right">{formatMontant(ligne.montant)}</td>
+                    <td className="border border-slate-900 px-2 py-2">{ligne.pieceJustificative || numeroFacture}</td>
+                  </tr>
+                ))}
+                <tr className="font-bold">
+                  <td colSpan={6} className="border border-slate-900 px-2 py-2 text-right">TOTAL</td>
+                  <td className="border border-slate-900 px-2 py-2 text-right">{formatMontant(total)}</td>
+                  <td className="border border-slate-900" />
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div className="mt-8 grid gap-8 text-sm sm:grid-cols-3">
+            <div><p className="font-semibold">Le comptable dépositaire</p><p className="mt-1 text-xs">{depotParService || "—"}</p><p className="mt-10 border-t border-slate-900 pt-2">Signature</p></div>
+            <div><p className="font-semibold">Chef de service 1</p><p className="mt-1 text-xs">{chefService1 || "—"}</p><p className="mt-10 border-t border-slate-900 pt-2">Signature</p></div>
+            <div><p className="font-semibold">Chef de service 2</p><p className="mt-1 text-xs">{chefService2 || "—"}</p><p className="mt-10 border-t border-slate-900 pt-2">Signature</p></div>
+          </div>
+        </article>
+
+        <div className="ordre-entree-actions flex justify-end gap-2">
+          <button type="button" onClick={() => setFinalPreview(false)} className="rounded-lg border border-border px-4 py-2 text-sm hover:bg-muted">Modifier</button>
+          <button type="button" onClick={envoyer} disabled={saving} className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground disabled:opacity-50">
+            {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            Confirmer et envoyer
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const inputClass =
     "w-full px-3 py-2.5 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring focus:border-transparent";
@@ -486,35 +832,182 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                   />
                 </button>
 
-                {/* Contenu : toujours visible sur desktop, accordéon sur mobile */}
-                <div className={`${active ? "block" : "hidden lg:block"} p-4 sm:p-6 pt-0`}>
-                  {/* ---------------- ÉTAPE 1 ---------------- */}
+                {/* Contenu de l'étape active — assistant en 6 étapes */}
+                <div className={`${active ? "block" : "hidden"} p-4 sm:p-6 pt-0`}>
+                  {/* ---------------- ÉTAPE 1 — DESTINATION ---------------- */}
                   {etapeDef.numero === 1 && (
-                    <div className="grid gap-4 sm:grid-cols-2">
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className={labelClass}>
+                            Direction <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            className={inputClass}
+                            value={directionId}
+                            onChange={(e) => changerDirection(e.target.value)}
+                          >
+                            <option value="">Sélectionner une Direction</option>
+                            {directions.map((d) => (
+                              <option key={d.documentId} value={d.documentId}>
+                                {d.nom}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                        <div>
+                          <label className={labelClass}>
+                            Service <span className="text-red-500">*</span>
+                          </label>
+                          <select
+                            className={inputClass}
+                            value={serviceId}
+                            onChange={(e) => setServiceId(e.target.value)}
+                            disabled={!directionId}
+                          >
+                            <option value="">
+                              {directionId
+                                ? "Sélectionner un Service"
+                                : "Choisissez d'abord une Direction"}
+                            </option>
+                            {servicesVisibles.map((s) => (
+                              <option key={s.documentId} value={s.documentId}>
+                                {s.nom}
+                              </option>
+                            ))}
+                          </select>
+                          <p className="mt-1 text-xs text-muted-foreground">
+                            Seuls les services de la Direction sélectionnée sont
+                            proposés.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Responsables du service — récupérés automatiquement */}
+                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-4">
+                        <div className="flex items-center gap-2 mb-3">
+                          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
+                            Responsables du service (automatiques)
+                          </span>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-3">
+                          <div>
+                            <label className={labelClass}>
+                              {SIGNATURE_ROLE_LABELS.depositaire}
+                            </label>
+                            <input
+                              className={inputClass}
+                              value={depotParService}
+                              onChange={(e) => setDepotParService(e.target.value)}
+                              placeholder="Dépositaire du service"
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>
+                              {SIGNATURE_ROLE_LABELS.chefService1}
+                            </label>
+                            <input
+                              className={inputClass}
+                              value={chefService1}
+                              onChange={(e) => setChefService1(e.target.value)}
+                              placeholder="Chef de service 1"
+                            />
+                          </div>
+                          <div>
+                            <label className={labelClass}>
+                              {SIGNATURE_ROLE_LABELS.chefService2}
+                            </label>
+                            <input
+                              className={inputClass}
+                              value={chefService2}
+                              onChange={(e) => setChefService2(e.target.value)}
+                              placeholder="Chef de service 2"
+                            />
+                          </div>
+                        </div>
+                        <p className="mt-3 text-xs text-blue-700 dark:text-blue-300">
+                          Destination du matériel : {nomDirection} / {nomService} —
+                          le matériel sera enregistré dans le stock de ce service.
+                          Aucun « Dépositaire général » : les responsables sont
+                          ceux du service.
+                        </p>
+                      </div>
+
+                      <div className="flex items-start gap-2 px-4 py-3 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
+                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        Processus : DIRECTION → SERVICE → ENTRÉE EN STOCK DU
+                        SERVICE → VÉRIFICATION → VALIDATION PAR LES 3
+                        RESPONSABLES DU SERVICE → STOCK DU SERVICE.
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ---------------- ÉTAPE 2 — INFORMATIONS ADMINISTRATIVES ---------------- */}
+                  {etapeDef.numero === 2 && (
+                    <div className="space-y-4">
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className={labelClass}>Numéro du chapitre</label>
+                          <input
+                            className={inputClass}
+                            placeholder="Ex. 312"
+                            value={numeroChapitre}
+                            onChange={(e) => setNumeroChapitre(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Libellé du chapitre</label>
+                          <input
+                            className={inputClass}
+                            placeholder="Ex. Équipements informatiques"
+                            value={libelleChapitre}
+                            onChange={(e) => setLibelleChapitre(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>Subdivision du chapitre</label>
+                          <input
+                            className={inputClass}
+                            placeholder="Ex. Matériel de bureau"
+                            value={subdivisionChapitre}
+                            onChange={(e) => setSubdivisionChapitre(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>N° d'ordre du journal</label>
+                          <input
+                            className={inputClass}
+                            placeholder="Ex. 001"
+                            value={numeroOrdreJournal}
+                            onChange={(e) => setNumeroOrdreJournal(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>
+                            Date <span className="text-red-500">*</span>
+                          </label>
+                          <input
+                            type="date"
+                            className={inputClass}
+                            value={dateEntree}
+                            onChange={(e) => setDateEntree(e.target.value)}
+                          />
+                        </div>
+                        <div>
+                          <label className={labelClass}>SOA</label>
+                          <input
+                            className={inputClass}
+                            placeholder="Ex. SOA-2026-001"
+                            value={soa}
+                            onChange={(e) => setSoa(e.target.value)}
+                          />
+                        </div>
+                      </div>
+
                       <div>
                         <label className={labelClass}>
-                          Référence de l'entrée <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          className={inputClass}
-                          value="Automatique (ENT-AAAA-NNN)"
-                          disabled
-                        />
-                      </div>
-                      <div>
-                        <label className={labelClass}>
-                          Date d'entrée <span className="text-red-500">*</span>
-                        </label>
-                        <input
-                          type="date"
-                          className={inputClass}
-                          value={dateEntree}
-                          onChange={(e) => setDateEntree(e.target.value)}
-                        />
-                      </div>
-                      <div className="sm:col-span-2">
-                        <label className={labelClass}>
-                          Type d'entrée <span className="text-red-500">*</span>
+                          Type d'opération <span className="text-red-500">*</span>
                         </label>
                         <div className="grid gap-2 sm:grid-cols-2">
                           {Object.entries(TYPE_OPERATION_LABELS).map(([value, label]) => (
@@ -538,48 +1031,21 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                           ))}
                         </div>
                       </div>
-                      <div>
-                        <label className={labelClass}>
-                          Direction <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          className={inputClass}
-                          value={directionId}
-                          onChange={(e) => setDirectionId(e.target.value)}
-                        >
-                          <option value="">Sélectionner une direction</option>
-                          {directions.map((d) => (
-                            <option key={d.documentId} value={d.documentId}>
-                              {d.nom}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <div>
-                        <label className={labelClass}>
-                          Service <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          className={inputClass}
-                          value={serviceId}
-                          onChange={(e) => setServiceId(e.target.value)}
-                        >
-                          <option value="">Sélectionner un service</option>
-                          {services.map((s) => (
-                            <option key={s.documentId} value={s.documentId}>
-                              {s.nom}
-                            </option>
-                          ))}
-                        </select>
+
+                      <div className="flex items-start gap-2 px-4 py-3 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
+                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        Référence de l'entrée attribuée automatiquement à
+                        l'enregistrement : ENT-AAAA-NNN (visible aussi dans le QR
+                        Code).
                       </div>
                     </div>
                   )}
 
-                  {/* ---------------- ÉTAPE 2 ---------------- */}
-                  {etapeDef.numero === 2 && (
+                  {/* ---------------- ÉTAPE 3 — FOURNISSEUR ET JUSTIFICATIFS ---------------- */}
+                  {etapeDef.numero === 3 && (
                     <div className="space-y-4">
                       <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
+                        <div className="sm:col-span-2">
                           <label className={labelClass}>
                             Fournisseur <span className="text-red-500">*</span>
                           </label>
@@ -597,20 +1063,16 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                           </select>
                         </div>
                         <div>
-                          <label className={labelClass}>
-                            N° facture <span className="text-red-500">*</span>
-                          </label>
+                          <label className={labelClass}>Numéro de facture</label>
                           <input
                             className={inputClass}
-                            placeholder="FAC-2026-001"
+                            placeholder="FAC-2026-034"
                             value={numeroFacture}
                             onChange={(e) => setNumeroFacture(e.target.value)}
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>
-                            Date facture <span className="text-red-500">*</span>
-                          </label>
+                          <label className={labelClass}>Date de la facture</label>
                           <input
                             type="date"
                             className={inputClass}
@@ -619,7 +1081,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                           />
                         </div>
                         <div>
-                          <label className={labelClass}>Bon de livraison</label>
+                          <label className={labelClass}>Numéro du bon de livraison</label>
                           <input
                             className={inputClass}
                             placeholder="BL-2026-001"
@@ -627,83 +1089,121 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                             onChange={(e) => setBonLivraison(e.target.value)}
                           />
                         </div>
+                        <div>
+                          <label className={labelClass}>Date du bon de livraison</label>
+                          <input
+                            type="date"
+                            className={inputClass}
+                            value={dateBonLivraison}
+                            onChange={(e) => setDateBonLivraison(e.target.value)}
+                          />
+                        </div>
                       </div>
 
-                      {/* Pièce justificative */}
-                      <div>
-                        <label className={labelClass}>Pièce justificative</label>
-                        <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 border border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
-                          <Paperclip className="h-5 w-5 text-muted-foreground" />
-                          <span className="text-sm text-card-foreground">
-                            Ajouter une pièce justificative
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            PDF, JPG, PNG — taille maximale : 5 Mo
-                          </span>
-                          <input
-                            type="file"
-                            multiple
-                            accept=".pdf,.jpg,.jpeg,.png"
-                            className="hidden"
-                            onChange={(e) => ajouterDocument(e.target.files)}
-                          />
-                        </label>
-                        {documents.length > 0 && (
-                          <div className="mt-3 space-y-2">
-                            {documents.map((doc, i) => (
-                              <div
-                                key={i}
-                                className="flex items-center justify-between px-3 py-2 border border-border rounded-lg bg-muted/20"
-                              >
-                                <div className="min-w-0">
-                                  <div className="text-sm text-card-foreground truncate">
-                                    {doc.nom}
-                                  </div>
-                                  <div className="text-xs text-muted-foreground">
-                                    {(doc.taille / 1024).toFixed(0)} Ko — {doc.type}
-                                  </div>
-                                </div>
-                                <button
-                                  onClick={() =>
-                                    setDocuments((prev) => prev.filter((_, j) => j !== i))
-                                  }
-                                  className="p-1.5 rounded text-muted-foreground hover:text-destructive transition-colors"
-                                  title="Supprimer le document"
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className={labelClass}>Pièce justificative</label>
+                          <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 border border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
+                            <Paperclip className="h-5 w-5 text-muted-foreground" />
+                            <span className="text-sm text-card-foreground">
+                              Télécharger la pièce justificative
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              PDF, JPG, PNG — 5 Mo max.
+                            </span>
+                            <input
+                              type="file"
+                              multiple
+                              accept=".pdf,.jpg,.jpeg,.png"
+                              className="hidden"
+                              onChange={(e) => ajouterDocument(e.target.files)}
+                            />
+                          </label>
+                        </div>
+                        <div>
+                          <label className={labelClass}>Autres documents</label>
+                          <label className="flex flex-col items-center justify-center gap-2 px-4 py-6 border border-dashed border-border rounded-lg cursor-pointer hover:bg-muted/30 transition-colors">
+                            <Paperclip className="h-5 w-5 text-muted-foreground" />
+                            <span className="text-sm text-card-foreground">
+                              Télécharger d'autres documents
+                            </span>
+                            <span className="text-xs text-muted-foreground">
+                              Bon de livraison, PV, marché…
+                            </span>
+                            <input
+                              type="file"
+                              multiple
+                              className="hidden"
+                              onChange={(e) => ajouterDocument(e.target.files)}
+                            />
+                          </label>
+                        </div>
                       </div>
+
+                      {documents.length > 0 && (
+                        <div className="space-y-2">
+                          {documents.map((doc, i) => (
+                            <div
+                              key={i}
+                              className="flex items-center justify-between px-3 py-2 border border-border rounded-lg bg-muted/20"
+                            >
+                              <div className="min-w-0">
+                                <div className="text-sm text-card-foreground truncate">
+                                  {doc.nom}
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  {(doc.taille / 1024).toFixed(0)} Ko — {doc.type}
+                                </div>
+                              </div>
+                              <button
+                                onClick={() =>
+                                  setDocuments((prev) => prev.filter((_, j) => j !== i))
+                                }
+                                className="p-1.5 rounded text-muted-foreground hover:text-destructive transition-colors"
+                                title="Supprimer le document"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
-                  {/* ---------------- ÉTAPE 3 ---------------- */}
-                  {etapeDef.numero === 3 && (
+                  {/* ---------------- ÉTAPE 4 — MATÉRIELS ET OBJETS ---------------- */}
+                  {etapeDef.numero === 4 && (
                     <div className="space-y-3">
                       <div className="overflow-x-auto border border-border rounded-lg">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-sm min-w-[1020px]">
                           <thead>
                             <tr className="border-b border-border bg-muted/30">
-                              <th className="text-left py-2 px-2 text-xs text-muted-foreground min-w-[180px]">
-                                Désignation
+                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-10">
+                                N°
                               </th>
-                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-28">
-                                Catégorie
+                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-36">
+                                Référence
                               </th>
-                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-24">
-                                Unité
+                              <th className="text-left py-2 px-2 text-xs text-muted-foreground min-w-[200px]">
+                                Désignation des matières et objets
+                              </th>
+                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-44">
+                                Espèce / unité
                               </th>
                               <th className="text-left py-2 px-2 text-xs text-muted-foreground w-20">
                                 Quantité
                               </th>
-                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-32">
+                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-28">
                                 Prix unitaire
                               </th>
+                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-32">
+                                Valeur
+                              </th>
+                              <th className="text-left py-2 px-2 text-xs text-muted-foreground w-32">
+                                N° pièce just.
+                              </th>
                               <th className="text-left py-2 px-2 text-xs text-muted-foreground w-36">
-                                Montant
+                                Observation
                               </th>
                               <th className="w-10" />
                             </tr>
@@ -712,8 +1212,21 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                             {lignes.map((ligne, index) => (
                               <tr
                                 key={index}
-                                className="border-b border-border last:border-b-0"
+                                className="border-b border-border last:border-b-0 align-top"
                               >
+                                <td className="py-2.5 px-2 text-sm text-muted-foreground">
+                                  {index + 1}
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input
+                                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-sm"
+                                    value={ligne.reference ?? ""}
+                                    onChange={(e) =>
+                                      majLigne(index, { reference: e.target.value })
+                                    }
+                                    placeholder="MAT-2026-001"
+                                  />
+                                </td>
                                 <td className="py-2 px-2">
                                   <input
                                     list="materiaux-nouvelle-entree"
@@ -722,7 +1235,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                                     onChange={(e) =>
                                       majLigne(index, { designation: e.target.value })
                                     }
-                                    placeholder="Ex. Ordinateur portable HP"
+                                    placeholder="Ex. Ordinateur HP ProBook"
                                   />
                                   {index === 0 && (
                                     <datalist id="materiaux-nouvelle-entree">
@@ -733,24 +1246,25 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                                   )}
                                 </td>
                                 <td className="py-2 px-2">
-                                  <input
-                                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-sm"
-                                    value={ligne.espece}
-                                    onChange={(e) => majLigne(index, { espece: e.target.value })}
-                                  />
-                                </td>
-                                <td className="py-2 px-2">
-                                  <select
-                                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-sm"
-                                    value={ligne.unite}
-                                    onChange={(e) => majLigne(index, { unite: e.target.value })}
-                                  >
-                                    {UNITES.map((u) => (
-                                      <option key={u} value={u}>
-                                        {u}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  <div className="flex gap-1">
+                                    <input
+                                      className="w-1/2 px-2 py-1.5 border border-border rounded bg-background text-sm"
+                                      value={ligne.espece}
+                                      onChange={(e) => majLigne(index, { espece: e.target.value })}
+                                      placeholder="Espèce"
+                                    />
+                                    <select
+                                      className="w-1/2 px-1 py-1.5 border border-border rounded bg-background text-sm"
+                                      value={ligne.unite}
+                                      onChange={(e) => majLigne(index, { unite: e.target.value })}
+                                    >
+                                      {UNITES.map((u) => (
+                                        <option key={u} value={u}>
+                                          {u}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  </div>
                                 </td>
                                 <td className="py-2 px-2">
                                   <input
@@ -775,8 +1289,28 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                                     }
                                   />
                                 </td>
-                                <td className="py-2 px-2 text-sm text-card-foreground font-mono whitespace-nowrap">
+                                <td className="py-2.5 px-2 text-sm text-card-foreground font-mono whitespace-nowrap">
                                   {formatMontant(ligne.montant)}
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input
+                                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-sm"
+                                    value={ligne.pieceJustificative}
+                                    onChange={(e) =>
+                                      majLigne(index, { pieceJustificative: e.target.value })
+                                    }
+                                    placeholder={numeroFacture || "FAC-2026-034"}
+                                  />
+                                </td>
+                                <td className="py-2 px-2">
+                                  <input
+                                    className="w-full px-2 py-1.5 border border-border rounded bg-background text-sm"
+                                    value={ligne.observation}
+                                    onChange={(e) =>
+                                      majLigne(index, { observation: e.target.value })
+                                    }
+                                    placeholder="—"
+                                  />
                                 </td>
                                 <td className="py-2 px-2">
                                   <button
@@ -801,81 +1335,161 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                         Ajouter un matériel
                       </button>
                       <div className="flex items-center justify-end gap-2 pt-1">
-                        <span className="text-sm text-muted-foreground">TOTAL ESTIMÉ :</span>
+                        <span className="text-sm text-muted-foreground">TOTAL :</span>
                         <span className="text-lg font-semibold text-card-foreground font-mono">
                           {formatMontant(total)}
                         </span>
                       </div>
+                      <div className="flex items-start gap-2 px-4 py-3 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
+                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                        Valeur = Quantité × Prix unitaire — le montant de chaque
+                        ligne puis le TOTAL sont calculés automatiquement.
+                      </div>
                     </div>
                   )}
 
-                  {/* ---------------- ÉTAPE 4 ---------------- */}
-                  {etapeDef.numero === 4 && (
+                  {/* ---------------- ÉTAPE 5 — INFORMATIONS COMPLÉMENTAIRES ---------------- */}
+                  {etapeDef.numero === 5 && (
                     <div className="space-y-4">
-                      <div className="grid gap-4 sm:grid-cols-3">
-                        <div>
-                          <label className={labelClass}>
-                            {SIGNATURE_ROLE_LABELS.depositaire}{" "}
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            className={inputClass}
-                            value={depotParService}
-                            onChange={(e) => setDepotParService(e.target.value)}
-                          >
-                            <option value="">Sélectionner le service</option>
-                            {services.map((s) => (
-                              <option key={s.documentId} value={s.nom}>
-                                {s.nom}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelClass}>
-                            {SIGNATURE_ROLE_LABELS.chefService1}{" "}
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            className={inputClass}
-                            value={chefService1}
-                            onChange={(e) => setChefService1(e.target.value)}
-                          >
-                            <option value="">Sélectionner</option>
-                            {directions.map((d) => (
-                              <option key={d.documentId} value={d.nom}>
-                                {d.nom}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelClass}>
-                            {SIGNATURE_ROLE_LABELS.chefService2}{" "}
-                            <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            className={inputClass}
-                            value={chefService2}
-                            onChange={(e) => setChefService2(e.target.value)}
-                          >
-                            <option value="">Sélectionner</option>
-                            {directions.map((d) => (
-                              <option key={d.documentId} value={d.nom}>
-                                {d.nom}
-                              </option>
-                            ))}
-                          </select>
+                      <div>
+                        <label className={labelClass}>Observations</label>
+                        <textarea
+                          className={`${inputClass} min-h-[90px]`}
+                          rows={3}
+                          value={observations}
+                          onChange={(e) => setObservations(e.target.value)}
+                          placeholder="État du matériel, réserves éventuelles, précisions complémentaires…"
+                        />
+                      </div>
+                      <div>
+                        <label className={labelClass}>Motif de l'entrée</label>
+                        <textarea
+                          className={`${inputClass} min-h-[70px]`}
+                          rows={2}
+                          value={motifEntree}
+                          onChange={(e) => setMotifEntree(e.target.value)}
+                          placeholder="Ex. Acquisition sur facture, don d'entreprise, retour de mise en service, transfert…"
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ---------------- ÉTAPE 6 — VÉRIFICATION ---------------- */}
+                  {etapeDef.numero === 6 && (
+                    <div className="space-y-4">
+                      <div className="rounded-lg border border-border bg-muted/20 p-4">
+                        <h4 className="text-sm font-medium text-card-foreground mb-3">
+                          RÉSUMÉ AVANT VALIDATION
+                        </h4>
+                        <div className="grid gap-3 sm:grid-cols-2">
+                          {[
+                            ["DIRECTION", nomDirection],
+                            ["SERVICE", nomService],
+                            [SIGNATURE_ROLE_LABELS.depositaire, depotParService],
+                            [SIGNATURE_ROLE_LABELS.chefService1, chefService1],
+                            [SIGNATURE_ROLE_LABELS.chefService2, chefService2],
+                            ["FOURNISSEUR", nomFournisseur],
+                            ["FACTURE", numeroFacture || "—"],
+                            ["DATE D'ENTRÉE", dateEntreeFormatee],
+                          ].map(([label, valeur]) => (
+                            <div
+                              key={label}
+                              className="rounded border border-border bg-background px-3 py-2"
+                            >
+                              <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                                {label}
+                              </div>
+                              <div className="text-sm text-card-foreground">
+                                {valeur || "—"}
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
+
+                      <div className="rounded-lg border border-border bg-muted/20 p-4">
+                        <h4 className="text-sm font-medium text-card-foreground mb-3">
+                          MATÉRIELS
+                        </h4>
+                        {lignes.filter((l) => l.designation.trim()).length === 0 ? (
+                          <p className="text-xs text-muted-foreground">
+                            Aucun matériel saisi.
+                          </p>
+                        ) : (
+                          <ul className="space-y-1 text-sm">
+                            {lignes
+                              .filter((l) => l.designation.trim())
+                              .map((l, i) => (
+                                <li
+                                  key={i}
+                                  className="flex justify-between gap-2 text-card-foreground"
+                                >
+                                  <span className="truncate">
+                                    {l.reference ? `${l.reference} — ` : ""}
+                                    {l.designation}
+                                  </span>
+                                  <span className="text-muted-foreground whitespace-nowrap">
+                                    {l.quantite} × {formatMontant(l.prixUnitaire)} ={" "}
+                                    {formatMontant(l.montant)}
+                                  </span>
+                                </li>
+                              ))}
+                          </ul>
+                        )}
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-border">
+                          <span className="text-sm font-medium text-card-foreground">
+                            MONTANT TOTAL
+                          </span>
+                          <span className="text-base font-semibold text-card-foreground font-mono">
+                            {formatMontant(total)}
+                          </span>
+                        </div>
+                      </div>
+
                       <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
                         <Info className="h-4 w-4 shrink-0 mt-0.5" />
-                        L'entrée sera créée avec le statut « En attente » (0/3).
-                        Les validations suivent l'ordre :{" "}
-                        {SIGNATURE_ROLE_LABELS.depositaire} →{" "}
-                        {SIGNATURE_ROLE_LABELS.chefService1} →{" "}
-                        {SIGNATURE_ROLE_LABELS.chefService2}. À 3/3, l'entrée
-                        est VALIDÉE et verrouillée.
+                        L'entrée démarre « En attente » (0/3). Elle n'est VALIDÉE
+                        qu'après les 3 validations obligatoires du service :
+                        Dépositaire → Chef de service 1 → Chef de service 2. Vous
+                        ne pouvez jamais signer à la place d'un responsable.
+                      </div>
+
+                      <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+                        <button
+                          onClick={() => setEtape(5)}
+                          className="px-4 py-2.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors text-card-foreground inline-flex items-center justify-center gap-2"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                          Retour
+                        </button>
+                        <button
+                          onClick={enregistrerBrouillon}
+                          disabled={saving}
+                          className="px-4 py-2.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-50 text-card-foreground inline-flex items-center justify-center gap-2"
+                        >
+                          <FileText className="h-4 w-4" />
+                          Enregistrer comme brouillon
+                        </button>
+                        <button
+                          onClick={previsualiser}
+                          disabled={saving}
+                          className="px-4 py-2.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors disabled:opacity-50 text-card-foreground inline-flex items-center justify-center gap-2"
+                        >
+                          <Printer className="h-4 w-4" />
+                          Aperçu de l'Ordre d'entrée (PDF / Excel)
+                        </button>
+                        <button
+                          onClick={envoyer}
+                          disabled={saving}
+                          className="px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
+                        >
+                          {saving ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="h-4 w-4" />
+                          )}
+                          Valider l'entrée
+                        </button>
                       </div>
                     </div>
                   )}
@@ -968,6 +1582,24 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                       {nomDirection} / {nomService}
                     </span>
                   </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Dépositaire</span>
+                    <span className="text-card-foreground text-right">
+                      {depotParService || "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Chef de service 1</span>
+                    <span className="text-card-foreground text-right">
+                      {chefService1 || "—"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">Chef de service 2</span>
+                    <span className="text-card-foreground text-right">
+                      {chefService2 || "—"}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -1057,18 +1689,37 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
             <FileText className="h-4 w-4" />
             Enregistrer comme brouillon
           </button>
-          <button
-            onClick={envoyer}
-            disabled={saving}
-            className="px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Check className="h-4 w-4" />
-            )}
-            Envoyer la demande
-          </button>
+          {etape > 1 && (
+            <button
+              onClick={() => setEtape((e) => Math.max(1, e - 1))}
+              className="px-4 py-2.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors text-card-foreground inline-flex items-center justify-center gap-2"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              {etape === ETAPES.length ? "Retour" : "Précédent"}
+            </button>
+          )}
+          {etape < ETAPES.length ? (
+            <button
+              onClick={suivant}
+              className="px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center justify-center gap-2"
+            >
+              Suivant
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={envoyer}
+              disabled={saving}
+              className="px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              Valider l'entrée
+            </button>
+          )}
         </div>
       </div>
 

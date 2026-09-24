@@ -131,6 +131,12 @@
     "bon_livraison": {
       "type": "string"
     },
+    "date_bon_livraison": {
+      "type": "date"
+    },
+    "motif_entree": {
+      "type": "string"
+    },
     "reference_marche": {
       "type": "string"
     },

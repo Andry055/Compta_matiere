@@ -29,6 +29,9 @@
     "designation": {
       "type": "string"
     },
+    "reference": {
+      "type": "string"
+    },
     "espece": {
       "type": "string"
     },

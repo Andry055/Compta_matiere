@@ -63,7 +63,8 @@ export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
     label: 'Demandeur',
     defaultEmployeeName: 'Randriamampionona Tolotra',
     description: "Exprime les besoins en matériel pour son service ou sa direction et assure le suivi direct de ses demandes.",
-    pages: ['dashboard', 'equipment', 'entries', 'exits', 'requests', 'reports'],
+    // « affectations » : rubrique propre à l'espace Demandeur (spécification)
+    pages: ['dashboard', 'equipment', 'entries', 'affectations', 'exits', 'requests', 'reports'],
     signRole: null,
     canApprove: false,
     levelLock: 'dynamic',

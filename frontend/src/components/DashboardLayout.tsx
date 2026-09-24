@@ -27,6 +27,9 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isMobile, setIsMobile] = useState(false)
 
+  // Navigation programmatique depuis un écran (ex. PV de réception → journal).
+  // Passée aux écrans via la prop onNavigate.
+
   // Fonctionnalité : config du rôle connecté
   const userRole = (user.role || 'depositaire') as AppRole
   const roleConfig = ROLES_CONFIG[userRole]
@@ -62,7 +65,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
       case "dashboard":
         return <Dashboard />
       case "arrivee":
-        return <MaterialEntry user={user} />
+        return <MaterialEntry user={user} onNavigate={handleSectionChange} />
       case "journal":
         return <Journal />
       case "equipment":

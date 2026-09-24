@@ -34,6 +34,7 @@ import {
   persistReception,
   resolveActiveRole,
 } from "../lib/role-access";
+import { appendJournalEntryFromReception, journalEntryExists } from "../lib/journal-store";
 import {
   AppNotification,
   countUnread,
@@ -86,6 +87,8 @@ import {
 
 interface MaterialEntryProps {
   user: User;
+  /** Navigation programmatique fournie par DashboardLayout (ex. ouvrir le journal). */
+  onNavigate?: (section: string) => void;
 }
 
 const STEP_LABELS = [
@@ -1240,10 +1243,12 @@ function Step4PVReception({
   data,
   magasinierName,
   depositaireName,
+  onOpenJournal,
 }: {
   data: ReceptionData;
   magasinierName: string;
   depositaireName: string;
+  onOpenJournal: () => void;
 }) {
   const totalValeur = data.articles.reduce(
     (sum, a) => sum + a.quantiteLivree * a.prixUnitaire,
@@ -1448,6 +1453,28 @@ function Step4PVReception({
         </Card>
       </div>
 
+      {/* Lien vers l'écriture réelle enregistrée au journal (étape 3) */}
+      {journalEntryExists(data.journalEntryId) && (
+        <Card className="print-hidden border-primary/30 bg-primary/5">
+          <CardContent className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <BookOpen className="h-4 w-4 text-primary shrink-0" />
+              <span>
+                Écriture{" "}
+                <span className="font-mono font-semibold">
+                  {data.journalEntryId}
+                </span>{" "}
+                enregistrée au journal de comptabilité matière.
+              </span>
+            </div>
+            <Button variant="outline" size="sm" onClick={onOpenJournal}>
+              Voir dans le journal
+              <ArrowRight className="h-4 w-4 ml-2" />
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Print-specific CSS */}
       <style>{`
         @media print {
@@ -1496,7 +1523,7 @@ function Step4PVReception({
 // Composant principal — Orchestrateur
 // ══════════════════════════════════════════════
 
-export function MaterialEntry({ user }: MaterialEntryProps) {
+export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // Session simulée : sélecteur « Connecté en tant que ».
   // Initialisé sur le rôle de l'utilisateur réellement connecté (session App).
   const [activeRole, setActiveRole] = useState<AppRole>(() =>
@@ -1649,13 +1676,22 @@ export function MaterialEntry({ user }: MaterialEntryProps) {
     }
 
     if (currentStep === 3) {
-      // Enregistrement : horodatage + persistance + notification au magasinier.
+      // Enregistrement : horodatage + écriture au journal + persistance +
+      // notification au magasinier.
       const withDate: ReceptionData = {
         ...receptionData,
         dateEnregistrement: new Date().toISOString(),
       };
       setReceptionData(withDate);
       persistReception(withDate);
+
+      // Écriture RÉELLE au journal comptable (une ligne par article) —
+      // visible dans Journal.tsx pour tous les rôles. Idempotent.
+      const journalLines = appendJournalEntryFromReception(withDate, {
+        createdBy: depositaireName,
+        controlePar: magasinierName,
+      });
+
       pushNotification(
         "magasinier",
         "enregistrement",
@@ -1665,7 +1701,9 @@ export function MaterialEntry({ user }: MaterialEntryProps) {
       );
       refreshNotifications();
       toast.success("Enregistrement validé", {
-        description: `Écriture ${withDate.journalEntryId} générée au journal.`,
+        description: journalLines
+          ? `Écriture ${withDate.journalEntryId} enregistrée au journal (${journalLines.length} ligne(s)).`
+          : `Écriture ${withDate.journalEntryId} générée au journal.`,
       });
     }
 
@@ -1856,6 +1894,7 @@ export function MaterialEntry({ user }: MaterialEntryProps) {
           data={receptionData}
           magasinierName={magasinierName}
           depositaireName={depositaireName}
+          onOpenJournal={() => onNavigate?.("journal")}
         />
       )}
 

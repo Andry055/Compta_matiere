@@ -51,6 +51,9 @@ import {
   FiltresJournal,
   OptionsAffichage,
 } from "../types/accounting";
+import {
+  getJournalEntries,
+} from "../lib/journal-store";
 import { toast } from "sonner";
 
 // Données fictives pour le journal comptable
@@ -199,9 +202,13 @@ const mockJournalEntries: JournalEntry[] = [
 type ViewMode = "table" | "grid";
 
 export function Journal() {
-  const [entries, setEntries] = useState<JournalEntry[]>(mockJournalEntries);
+  // Jeu de démonstration + écritures réellement enregistrées par le flux de
+  // réception (localStorage) — les deux cohabitent dans la même vue.
+  const [entries, setEntries] = useState<JournalEntry[]>(() =>
+    getJournalEntries(mockJournalEntries)
+  );
   const [filteredEntries, setFilteredEntries] =
-    useState<JournalEntry[]>(mockJournalEntries);
+    useState<JournalEntry[]>(entries);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
@@ -220,6 +227,18 @@ export function Journal() {
     afficherValeurs: true,
     afficherDetails: true,
   });
+
+  // Rafraîchit la liste si des écritures de réception sont ajoutées ailleurs
+  // (autre onglet de la même session navigateur).
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === "compta_journal_receptions") {
+        setEntries(getJournalEntries(mockJournalEntries));
+      }
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
 
   // Effet pour filtrer les entrées
   useEffect(() => {
@@ -451,6 +470,20 @@ export function Journal() {
     setSelectedEntry(entry);
     setShowDetailsModal(true);
   };
+
+  /** La validation de l'étape 3 du flux de réception écrit directement via
+   *  appendJournalEntryFromReception (idempotent) — on rafraîchit juste la vue
+   *  ici, au cas où l'écriture aurait été posée depuis un autre onglet. */
+  const syncFromReception = () => {
+    setEntries(getJournalEntries(mockJournalEntries));
+  };
+
+  // Rafraîchissement périodique léger : capte l'ajout d'une écriture posée
+  // pendant que le journal est ouvert (même session, autre onglet).
+  useEffect(() => {
+    const interval = setInterval(syncFromReception, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   const exportJournal = (format: "csv" | "pdf") => {
     toast.success(`Export du journal en ${format.toUpperCase()} initié`, {
@@ -741,6 +774,15 @@ export function Journal() {
                           <h3 className="font-medium">{entry.designation}</h3>
                         </div>
                         <div className="flex gap-2">
+                          {entry.source === "reception" && (
+                            <Badge
+                              variant="outline"
+                              className="bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-800"
+                            >
+                              <Package className="h-3 w-3 mr-1" />
+                              Réception
+                            </Badge>
+                          )}
                           {getStatutBadge(entry.statut)}
                           {getOrigineBadge(entry.origine.type)}
                         </div>
@@ -848,9 +890,20 @@ export function Journal() {
                 >
                   <CardContent className="p-4 space-y-4">
                     <div className="flex items-center justify-between">
-                      <Badge variant="outline" className="font-mono">
-                        {entry.numeroOrdre}
-                      </Badge>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="outline" className="font-mono">
+                          {entry.numeroOrdre}
+                        </Badge>
+                        {entry.source === "reception" && (
+                          <Badge
+                            variant="outline"
+                            className="bg-violet-50 text-violet-700 border-violet-200 dark:bg-violet-900/20 dark:text-violet-300 dark:border-violet-800"
+                          >
+                            <Package className="h-3 w-3 mr-1" />
+                            Réception
+                          </Badge>
+                        )}
+                      </div>
                       {getStatutBadge(entry.statut)}
                     </div>
 

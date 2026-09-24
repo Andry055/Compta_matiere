@@ -17,6 +17,9 @@ export interface JournalEntry {
   observations?: string // Notes et observations
   createdBy: string // Utilisateur qui a créé l'entrée
   updatedAt: string // Dernière mise à jour
+  /** Origine applicative de l'écriture : "reception" = générée par le flux
+   *  d'entrée de matériel (étape 3), absent = saisie manuelle / démo. */
+  source?: 'reception'
 }
 
 export interface OrigineSortie {

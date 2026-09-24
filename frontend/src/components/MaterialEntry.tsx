@@ -1,15 +1,18 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo } from "react";
 import {
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   Bell,
+  BookCheck,
+  BookOpen,
   Check,
   CheckCircle2,
   ClipboardCheck,
   FileText,
   Lock,
   Package,
+  PackageCheck,
   Plus,
   Printer,
   Save,
@@ -489,6 +492,183 @@ function ReadOnlyNotice({ requiredRoleLabel }: { requiredRoleLabel: string }) {
         Lecture seule — en attente du {requiredRoleLabel}.
       </span>
     </div>
+  );
+}
+
+// ──────────────────────────────────────────────
+// Vue simplifiée MAGASINIER — il ne voit que SON onglet
+// ──────────────────────────────────────────────
+
+/** Cloche de notifications du magasinier (version compacte du panneau). */
+function NotificationsBell({
+  role,
+  open,
+  onOpenChange,
+  onRefresh,
+}: {
+  role: AppRole;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onRefresh: () => void;
+}) {
+  const notifications = getNotificationsForRole(role);
+  const unread = notifications.filter((n) => !n.read).length;
+
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          className="print-hidden gap-2 w-fit"
+          title="Notifications"
+        >
+          <Bell className="h-4 w-4" />
+          Mes notifications
+          {unread > 0 && (
+            <Badge className="bg-red-500 text-white px-1.5 min-w-5 h-5">
+              {unread > 9 ? "9+" : unread}
+            </Badge>
+          )}
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="w-80 p-0">
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+          <span className="text-sm font-semibold">
+            Notifications — {ROLES_CONFIG[role].label}
+          </span>
+          {notifications.length > 0 && (
+            <button
+              type="button"
+              className="text-xs text-primary hover:underline"
+              onClick={() => {
+                markAllRead(role);
+                onRefresh();
+              }}
+            >
+              Tout marquer lu
+            </button>
+          )}
+        </div>
+        <div className="max-h-72 overflow-auto">
+          {notifications.length === 0 ? (
+            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
+              Aucune notification pour le moment.
+            </div>
+          ) : (
+            notifications.map((n) => (
+              <div
+                key={n.id}
+                className={`px-3 py-2.5 border-b border-border/60 last:border-0 ${
+                  !n.read ? "bg-primary/5" : ""
+                }`}
+              >
+                <div className="flex items-start gap-2">
+                  {n.type === "ecart" ? (
+                    <Lock className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                  ) : n.type === "reception_confirmee" ? (
+                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                  ) : (
+                    <ClipboardCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                  )}
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium leading-snug">{n.title}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      {n.body}
+                    </p>
+                    <p className="text-[10px] text-muted-foreground mt-1">
+                      {new Date(n.date).toLocaleString("fr-FR")}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/** Badge d'état de l'onglet du magasinier (en-tête de la vue simplifiée). */
+function Step2Badge({ certified }: { certified: boolean }) {
+  return (
+    <Badge
+      variant="outline"
+      className={
+        certified
+          ? "border-green-500 text-green-600 dark:text-green-400"
+          : "border-primary/50 text-primary"
+      }
+    >
+      {certified ? "Certifié" : "À contrôler"}
+    </Badge>
+  );
+}
+
+/** Écran d'attente : aucun BL saisi par le dépositaire → rien à contrôler. */
+function MagasinierLockedNotice({
+  depositaireName,
+}: {
+  depositaireName: string;
+}) {
+  return (
+    <Card className="print-hidden border-dashed">
+      <CardContent className="py-10 text-center space-y-3">
+        <div className="mx-auto w-12 h-12 rounded-full bg-muted flex items-center justify-center">
+          <Lock className="h-5 w-5 text-muted-foreground" />
+        </div>
+        <div>
+          <p className="font-medium text-foreground">
+            Aucun matériel à contrôler pour le moment
+          </p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+            Dès que {depositaireName} saisira un bon de livraison, il
+            apparaîtra ici pour votre contrôle physique à l'arrivée.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Écran de fin : contrôle certifié → l'étape 3 passe au dépositaire. */
+function MagasinierDoneCard({
+  numeroBL,
+  onOpenJournal,
+  onOpenPV,
+}: {
+  numeroBL: string;
+  onOpenJournal: () => void;
+  onOpenPV: () => void;
+}) {
+  return (
+    <Card className="print-hidden border-green-500 bg-green-50/50 dark:bg-green-950/20">
+      <CardContent className="py-8 text-center space-y-3">
+        <div className="mx-auto w-12 h-12 rounded-full bg-green-600 flex items-center justify-center">
+          <PackageCheck className="h-6 w-6 text-white" />
+        </div>
+        <div>
+          <p className="font-medium text-foreground">
+            Réception certifiée — BL {numeroBL}
+          </p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+            Vous avez contrôlé et certifié l'arrivée de ce matériel. Le
+            dépositaire comptable a été notifié pour l'enregistrement au
+            journal. Plus rien ne vous est réservé sur ce dossier.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center justify-center gap-2 pt-1">
+          <Button variant="outline" className="gap-2" onClick={onOpenJournal}>
+            <BookCheck className="h-4 w-4" />
+            Voir l'écriture au journal
+          </Button>
+          <Button className="gap-2" onClick={onOpenPV}>
+            <FileText className="h-4 w-4" />
+            PV de réception
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -1519,16 +1699,77 @@ function Step4PVReception({
   );
 }
 
-// ══════════════════════════════════════════════
-// Composant principal — Orchestrateur
-// ══════════════════════════════════════════════
+/** Badge d'état de l'onglet du dépositaire (en-tête de la vue simplifiée). */
+function DepositaireBadge({ currentStep }: { currentStep: number }) {
+  const config =
+    currentStep === 1
+      ? { label: "À saisir", className: "border-primary/50 text-primary" }
+      : currentStep === 2
+      ? {
+          label: "En attente magasinier",
+          className:
+            "border-amber-500 text-amber-600 dark:text-amber-400",
+        }
+      : currentStep === 3
+      ? { label: "À enregistrer", className: "border-primary/50 text-primary" }
+ : {
+          label: "Terminé",
+          className:
+            "border-green-500 text-green-600 dark:text-green-400",
+        };
+  return (
+    <Badge variant="outline" className={config.className}>
+      {config.label}
+    </Badge>
+  );
+}
+
+/** Écran d'attente du dépositaire : BL transmis, le magasinier doit certifier
+ *  la réception physique avant l'enregistrement au journal. */
+function DepositaireWaitingCard({
+  numeroBL,
+  magasinierName,
+  onEditBL,
+}: {
+  numeroBL: string;
+  magasinierName: string;
+  onEditBL: () => void;
+}) {
+  return (
+    <Card className="print-hidden">
+      <CardContent className="py-8 text-center space-y-3">
+        <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+          <ClipboardCheck className="h-6 w-6 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <p className="font-medium text-foreground">
+            BL {numeroBL} transmis — en attente du magasinier
+          </p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+            {magasinierName} doit contrôler l'état du matériel et certifier la
+            réception physique. Vous serez notifié dès que ce sera fait, pour
+            procéder à l'enregistrement au journal.
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={onEditBL}>
+          Modifier le BL
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // Session simulée : sélecteur « Connecté en tant que ».
   // Initialisé sur le rôle de l'utilisateur réellement connecté (session App).
+  // Simplification : le magasinier connecté ne peut PAS changer de rôle —
+  // il ne voit que SON onglet (contrôle à l'arrivée).
+  const isFixedMagasinier = user?.role === "magasinier";
+  const isFixedDepositaire = user?.role === "depositaire";
   const [activeRole, setActiveRole] = useState<AppRole>(() =>
     resolveActiveRole(user?.role)
   );
+  const isMagasinierSession = isFixedMagasinier && activeRole === "magasinier";
 
   // Réception en cours : reprend celle persistée si elle existe
   // (transmission simulée entre les deux postes), sinon état pré-rempli.
@@ -1541,9 +1782,17 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // BL (ou l'enregistrement si le magasinier a déjà certifié), le magasinier
   // sur le contrôle de l'état (ou l'étape 1 en lecture seule si le BL n'est
   // pas encore saisi).
-  const [currentStep, setCurrentStep] = useState<number>(() =>
-    getRoleHomeStep(resolveActiveRole(user?.role), loadPersistedReception() ?? createInitialData(true))
-  );
+  const [currentStep, setCurrentStep] = useState<number>(() => {
+    if (isFixedMagasinier) return 2; // le magasinier atterrit sur SON onglet : le contrôle
+    if (isFixedDepositaire) {
+      // Le dépositaire atterrit sur SA première action : la saisie du BL.
+      // Si un BL a déjà été transmis (persisté), il est repositionné sur
+      // l'état correspondant : attente magasinier, enregistrement ou PV.
+      const persisted = loadPersistedReception();
+      return getRoleHomeStep("depositaire", persisted ?? createInitialData(false));
+    }
+    return getRoleHomeStep(resolveActiveRole(user?.role), loadPersistedReception() ?? createInitialData(true));
+  });
 
   const sessionName = getSessionUserName(activeRole, user ?? null);
   const magasinierName = getSessionUserName("magasinier", user ?? null);
@@ -1561,11 +1810,35 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   useEffect(() => {
     refreshNotifications(activeRole);
     setNotifOpen(false);
-    // Chacun joue son rôle : au changement de rôle, on repositionne sur son
-    // étape d'accueil.
-    setCurrentStep(getRoleHomeStep(activeRole, receptionData));
+    // Chacun joue son rôle : au changement de rôle (autres que magasinier), on
+    // repositionne sur son étape d'accueil. Le magasinier reste sur son
+    // onglet unique (étape 2).
+    if (!isFixedMagasinier && !isFixedDepositaire) {
+      setCurrentStep(getRoleHomeStep(activeRole, receptionData));
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRole]);
+
+  // Vue simplifiée magasinier : dès qu'il certifie la réception physique, on
+  // persiste et on notifie le dépositaire — l'équivalent de l'ancien bouton
+  // « Suivant » de l'étape 2, qui n'est plus affiché dans sa vue.
+  const certifiedRef = useRef(receptionData.magasinierCertifie);
+  useEffect(() => {
+    if (!isMagasinierSession) return;
+    if (receptionData.magasinierCertifie && !certifiedRef.current) {
+      certifiedRef.current = true;
+      persistReception(receptionData);
+      pushNotification(
+        "depositaire",
+        "reception_confirmee",
+        "Réception physique certifiée",
+        `${magasinierName} a contrôlé et certifié la réception du BL ${receptionData.numeroBL}. L'enregistrement au journal est en attente.`,
+        receptionData.numeroBL
+      );
+      refreshNotifications();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isMagasinierSession, receptionData.magasinierCertifie]);
 
   const unreadCount = countUnread(activeRole);
 
@@ -1719,7 +1992,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   const handleNewReception = () => {
     const fresh = createInitialData(false);
     setReceptionData(fresh);
-    setCurrentStep(getRoleHomeStep(activeRole, fresh));
+    setCurrentStep(isFixedMagasinier ? 2 : getRoleHomeStep(activeRole, fresh));
   };
 
   return (
@@ -1732,18 +2005,39 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
             Réception de Matériel
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Enregistrement d'une arrivée de matériel en {STEP_LABELS.length}{" "}
-            étapes
+            {isMagasinierSession
+              ? "Contrôle du matériel à l'arrivée au magasin"
+              : isFixedDepositaire
+              ? "Saisie du bon de livraison, puis enregistrement au journal"
+              : `Enregistrement d'une arrivée de matériel en ${STEP_LABELS.length} étapes`}
           </p>
         </div>
-        {currentStep === 4 && (
-          <Button variant="outline" onClick={handleNewReception} className="print-hidden">
-            Nouvelle réception
-          </Button>
-        )}
+        <div className="flex items-center gap-2">
+          {isMagasinierSession && (
+            <Step2Badge certified={receptionData.magasinierCertifie} />
+          )}
+          {isFixedDepositaire && <DepositaireBadge currentStep={currentStep} />}
+          {currentStep === 4 && (
+            <Button variant="outline" onClick={handleNewReception} className="print-hidden">
+              Nouvelle réception
+            </Button>
+          )}
+        </div>
       </div>
 
-      {/* Simulateur de session — Connecté en tant que */}
+      {/* Notifications du rôle connecté (vue simplifiée : SON onglet uniquement) */}
+      {(isMagasinierSession || isFixedDepositaire) && (
+        <NotificationsBell
+          role={activeRole}
+          open={notifOpen}
+          onOpenChange={setNotifOpen}
+          onRefresh={refreshNotifications}
+        />
+      )}
+
+      {/* Simulateur de session — masqué pour les rôles métier connectés
+          (magasinier, dépositaire) : chacun voit uniquement SES actions. */}
+      {!isMagasinierSession && !isFixedDepositaire && (
       <Card className="print-hidden border-primary/30">
         <CardContent className="px-4 py-3">
           <div className="flex flex-col lg:flex-row lg:items-center gap-3">
@@ -1754,6 +2048,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
             <Select
               value={activeRole}
               onValueChange={(value) => setActiveRole(value as AppRole)}
+              disabled={isFixedMagasinier}
             >
               <SelectTrigger className="w-full lg:w-[340px] h-9">
                 <SelectValue />
@@ -1851,20 +2146,50 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           </div>
         </CardContent>
       </Card>
+      )}
 
-      {/* Suivi de la répartition des rôles */}
-      <RoleWorkflowStatus
-        data={receptionData}
-        activeRole={activeRole}
-        currentStep={currentStep}
-        onGoToStep={(step) => setCurrentStep(step)}
-      />
+      {/* Circuit complet et indicateur 4 étapes : réservés à l'admin — les
+          rôles métier connectés ne voient que LEURS onglets. */}
+      {!isMagasinierSession && !isFixedDepositaire && (
+        <>
+          {/* Suivi de la répartition des rôles */}
+          <RoleWorkflowStatus
+            data={receptionData}
+            activeRole={activeRole}
+            currentStep={currentStep}
+            onGoToStep={(step) => setCurrentStep(step)}
+          />
 
-      {/* Step indicator */}
-      <StepIndicator currentStep={currentStep} steps={STEP_LABELS} />
+          {/* Step indicator */}
+          <StepIndicator currentStep={currentStep} steps={STEP_LABELS} />
+        </>
+      )}
 
-      {/* Step content */}
-      {currentStep === 1 && (
+      {/* Vue simplifiée du magasinier : SON onglet uniquement */}
+      {isMagasinierSession && !step1Complete(receptionData) && (
+        <MagasinierLockedNotice depositaireName={depositaireName} />
+      )}
+      {isMagasinierSession &&
+        step1Complete(receptionData) &&
+        !receptionData.magasinierCertifie && (
+          <Step2ControleMagasinier
+            data={receptionData}
+            onChange={handleDataChange}
+            canEdit={canPerformStepAction(activeRole, 2)}
+            requiredRoleLabel={ROLES_CONFIG.magasinier.label}
+            depositaireName={depositaireName}
+          />
+        )}
+      {isMagasinierSession &&
+        step1Complete(receptionData) &&
+        receptionData.magasinierCertifie && (
+          <MagasinierDoneCard
+            numeroBL={receptionData.numeroBL}
+            onOpenJournal={() => onNavigate?.("journal")}
+            onOpenPV={() => setCurrentStep(4)}
+          />
+        )}
+      {!isMagasinierSession && currentStep === 1 && (
         <Step1BonLivraison
           data={receptionData}
           onChange={handleDataChange}
@@ -1872,7 +2197,16 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           requiredRoleLabel={ROLES_CONFIG.depositaire.label}
         />
       )}
-      {currentStep === 2 && (
+      {/* Dépositaire connecté : à l'étape 2 il n'a rien à faire — écran
+          d'attente dédié au lieu du formulaire de contrôle du magasinier. */}
+      {!isMagasinierSession && isFixedDepositaire && currentStep === 2 && (
+        <DepositaireWaitingCard
+          numeroBL={receptionData.numeroBL}
+          magasinierName={magasinierName}
+          onEditBL={() => setCurrentStep(1)}
+        />
+      )}
+      {!isMagasinierSession && !isFixedDepositaire && currentStep === 2 && (
         <Step2ControleMagasinier
           data={receptionData}
           onChange={handleDataChange}
@@ -1881,7 +2215,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           depositaireName={depositaireName}
         />
       )}
-      {currentStep === 3 && (
+      {!isMagasinierSession && currentStep === 3 && (
         <Step3EnregistrementDepositaire
           data={receptionData}
           onChange={handleDataChange}
@@ -1889,7 +2223,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           requiredRoleLabel={ROLES_CONFIG.depositaire.label}
         />
       )}
-      {currentStep === 4 && (
+      {!isMagasinierSession && currentStep === 4 && (
         <Step4PVReception
           data={receptionData}
           magasinierName={magasinierName}
@@ -1898,7 +2232,22 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         />
       )}
 
-      {/* Navigation — hidden on print */}
+      {/* Dépositaire connecté : une seule action contextuelle à la fois
+          (transmission du BL, puis validation de l'enregistrement). */}
+      {isFixedDepositaire && (currentStep === 1 || currentStep === 3) && (
+        <div className="print-hidden flex justify-end pt-4 border-t border-border">
+          <Button onClick={goNext} disabled={!canProceed} className="gap-2">
+            {currentStep === 1
+              ? "Transmettre au magasin"
+              : "Valider l'enregistrement"}
+            <ArrowRight className="h-4 w-4" />
+          </Button>
+        </div>
+      )}
+
+      {/* Navigation complète — réservée à l'admin (les rôles métier n'ont pas
+          de Précédent/Suivant entre les étapes des autres) */}
+      {!isMagasinierSession && !isFixedDepositaire && (
       <div className="print-hidden flex items-center justify-between pt-4 border-t border-border">
         <Button
           variant="outline"
@@ -1934,6 +2283,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           </Button>
         )}
       </div>
+      )}
     </div>
   );
 }

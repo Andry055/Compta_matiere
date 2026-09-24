@@ -8,11 +8,11 @@ import {
   User as UserIcon,
   Settings,
   X,
-  Truck,
   BookOpen,
   ArrowDownToLine,
   ArrowUpFromLine,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Truck
 } from "lucide-react"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"

@@ -38,12 +38,14 @@ import {
 import {
   creerEntree,
   fetchDirections,
+  fetchEntrees,
   fetchFournisseurs,
   fetchMaterials,
   fetchServices,
   MaterialOption,
   RefOption,
 } from "../lib/api";
+import { getEntreesTransfert } from "../lib/transfers";
 import {
   DIRECTIONS_REPLI,
   SERVICES_REPLI,
@@ -56,6 +58,7 @@ import {
   genererPdfOrdreEntree,
   genererExcelOrdreEntree,
 } from "../lib/ordreDocument";
+import { NewTransfertPage } from "./NewTransfertPage";
 
 // Processus métier : DIRECTION → SERVICE → ENTRÉE EN STOCK → VÉRIFICATION →
 // VALIDATION PAR LES RESPONSABLES DU SERVICE → STOCK DU SERVICE.
@@ -105,6 +108,23 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
   const [busyDoc, setBusyDoc] = useState<"" | "pdf" | "excel">("");
   const [loadingReferences, setLoadingReferences] = useState(true);
   const [referencesError, setReferencesError] = useState<string | null>(null);
+  const [entryMode, setEntryMode] = useState<"stock" | "transfert" | null>(null);
+  const [entrees, setEntrees] = useState<EntreeRecord[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEntrees()
+      .then((data) => {
+        if (cancelled) return;
+        setEntrees([...(data && data.length ? data : []), ...getEntreesTransfert()]);
+      })
+      .catch(() => {
+        if (!cancelled) setEntrees([...getEntreesTransfert()]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // Étape 1 — destination (DIRECTION → SERVICE → responsables automatiques)
   const [directionId, setDirectionId] = useState("");
@@ -557,6 +577,81 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
       <script>window.onload=()=>window.print()</script></body></html>`);
     win.document.close();
   };
+
+  if (entryMode === "transfert") {
+    return (
+      <NewTransfertPage
+        user={user}
+        entrees={entrees}
+        onClose={() => setEntryMode(null)}
+        onCreated={onCreated}
+      />
+    );
+  }
+
+  if (entryMode === null) {
+    return (
+      <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 pb-24 sm:pb-6">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <button
+            onClick={onClose}
+            className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Entrées
+          </button>
+          <span>/</span>
+          <span className="text-foreground font-medium">Nouvelle entrée</span>
+        </div>
+
+        <div className="flex items-start gap-3">
+          <div className="p-2.5 bg-primary/10 rounded-lg flex-shrink-0">
+            <Plus className="h-6 w-6 text-primary" />
+          </div>
+          <div>
+            <h1 className="text-2xl sm:text-3xl tracking-tight text-foreground">
+              NOUVELLE ENTRÉE
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base mt-1">
+              Choisissez le type d'entrée.
+            </p>
+          </div>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => setEntryMode("stock")}
+            className="group rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:border-primary/50 hover:bg-primary/5"
+          >
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <Package className="h-6 w-6" />
+            </div>
+            <div className="text-xl font-semibold text-foreground">Nouvelle entrée en stock</div>
+            <p className="mt-2 text-sm text-muted-foreground">Réception d'un nouveau matériel</p>
+            <div className="mt-6 inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">
+              Sélectionner
+            </div>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setEntryMode("transfert")}
+            className="group rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:border-primary/50 hover:bg-primary/5"
+          >
+            <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+              <ArrowLeft className="h-6 w-6" />
+            </div>
+            <div className="text-xl font-semibold text-foreground">Entrée suite à transfert entre Directions</div>
+            <p className="mt-2 text-sm text-muted-foreground">Matériel provenant d'une autre Direction</p>
+            <div className="mt-6 inline-flex items-center justify-center rounded-lg bg-primary px-3 py-2 text-sm font-medium text-primary-foreground">
+              Sélectionner
+            </div>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   if (finalPreview) {
     return (

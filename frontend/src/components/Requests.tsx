@@ -1,96 +1,109 @@
-import { useState, useEffect } from "react"
-import { Clipboard, Plus, Check, X, Clock, Search, Loader2, RotateCcw } from "lucide-react"
+import { useEffect, useState } from "react"
+import { Clipboard, Plus, Check, X, Clock, Filter, Search, Loader2, RotateCcw, AlertCircle, FileText, ArrowRight, History, Package } from "lucide-react"
 import { User as UserType } from "../App"
-import { getDemandes, saveDemandes, approveDemande } from "../lib/store"
-import { DemandeMateriel } from "../types/accounting"
+import { Request, mockRequests } from "../lib/requests"
+import { sortieRecords, getSortieTrace, splitDepartement } from "../lib/movements"
+import { MyRequests } from "./MyRequests"
 
-export function Requests({ user }: { user?: UserType }) {
+interface RequestsProps {
+  user?: UserType
+  /** Ouvre directement le détail d'une demande (lien « Demande associée » venu de la page Sorties) */
+  detailRequestId?: number
+  /** Notifie le parent que le détail demandé a été ouvert */
+  onDetailConsumed?: () => void
+}
+
+export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("Tous")
-  const [loadingRequests, setLoadingRequests] = useState<{ [key: string]: string }>({})
+  const [loadingRequests, setLoadingRequests] = useState<{ [key: number]: string }>({})
   const [showSuccessMessage, setShowSuccessMessage] = useState<{ message: string; type: string } | null>(null)
-  
-  const [requests, setRequests] = useState<DemandeMateriel[]>([])
-  
-  useEffect(() => {
-    setRequests(getDemandes())
-  }, [])
-
+  const [requests, setRequests] = useState<Request[]>(mockRequests)
   const [showNewRequestModal, setShowNewRequestModal] = useState(false)
   const [newRequest, setNewRequest] = useState<{
-    equipmentDemande: string
-    motif: string
-    quantite: number
-    priorite: DemandeMateriel['priorite']
-    typeDemande: DemandeMateriel['typeDemande']
+    equipment: string
+    reason: string
+    quantity: number
+    priority: Request['priority']
+    type: Request['type']
   }>({
-    equipmentDemande: "",
-    motif: "",
-    quantite: 1,
-    priorite: "Normal",
-    typeDemande: "Sortie",
+    equipment: "",
+    reason: "",
+    quantity: 1,
+    priority: "Normal",
+    type: "Sortie",
   })
+
+  const [detailRequest, setDetailRequest] = useState<Request | null>(null)
+
+  // Ouverture automatique du détail (lien « Demande associée » depuis Sorties)
+  useEffect(() => {
+    if (!detailRequestId) return
+    const target = requests.find((r) => r.id === detailRequestId)
+    if (target) {
+      setDetailRequest(target)
+    }
+    // Toujours libérer la demande demandée (même si elle n'existe pas encore)
+    onDetailConsumed?.()
+  }, [detailRequestId, requests, onDetailConsumed])
 
   // Fonctionnalité : cloisonnement par périmètre et par rôle
   const isDemandeur = user?.role === "demandeur"
-  const isDepositaire = user?.role === "depositaire"
+
+  // Espace Demandeur : page dédiée « Mes demandes »
+  if (isDemandeur) {
+    return (
+      <MyRequests
+        user={user}
+        detailRequestId={detailRequestId}
+        onDetailConsumed={onDetailConsumed}
+      />
+    )
+  }
 
   const scopedRequests =
     isDemandeur && user?.department
-      ? requests.filter((request) => request.direction === user.department)
+      ? requests.filter((request) => request.department === user.department)
       : requests
 
   const handleCreateRequest = () => {
-    if (!newRequest.equipmentDemande.trim()) return
-    const created: DemandeMateriel = {
-      id: `D-${new Date().getFullYear()}-${String(requests.length + 1).padStart(3, '0')}`,
-      typeDemande: newRequest.typeDemande,
-      equipementDemande: newRequest.equipmentDemande.trim(),
-      demandeurId: user?.id || "EMP-Unknown",
-      demandeurNom: user?.name || "Demandeur Inconnu",
-      direction: user?.department || "—",
-      motif: newRequest.motif.trim() || "—",
-      quantite: Number(newRequest.quantite) || 1,
-      dateDemande: new Date().toISOString().slice(0, 10),
-      statut: "en_attente",
-      priorite: newRequest.priorite,
+    if (!newRequest.equipment.trim()) return
+    const created: Request = {
+      id: Math.max(0, ...requests.map((r) => r.id)) + 1,
+      type: newRequest.type,
+      equipment: newRequest.equipment.trim(),
+      requestedBy: user?.name || "Demandeur",
+      department: user?.department || "—",
+      reason: newRequest.reason.trim() || "—",
+      quantity: Number(newRequest.quantity) || 1,
+      requestDate: new Date().toISOString().slice(0, 10),
+      status: "En attente",
+      priority: newRequest.priority,
     }
-    const updatedRequests = [created, ...requests]
-    setRequests(updatedRequests)
-    saveDemandes(updatedRequests)
-    
+    setRequests((prev) => [created, ...prev])
     setShowNewRequestModal(false)
-    setNewRequest({ equipmentDemande: "", motif: "", quantite: 1, priorite: "Normal", typeDemande: "Sortie" })
+    setNewRequest({ equipment: "", reason: "", quantity: 1, priority: "Normal", type: "Sortie" })
     setShowSuccessMessage({ message: "Demande créée avec succès!", type: "create" })
     setTimeout(() => setShowSuccessMessage(null), 4000)
   }
 
   const filteredRequests = scopedRequests.filter(request => {
-    const matchesSearch = request.equipementDemande.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         request.demandeurNom.toLowerCase().includes(searchTerm.toLowerCase())
-    const matchesStatus = statusFilter === "Tous" 
-      ? true 
-      : (statusFilter === "En attente" && request.statut === "en_attente") ||
-        (statusFilter === "Approuvé" && request.statut === "approuvee") ||
-        (statusFilter === "Rejeté" && request.statut === "rejetee")
+    const matchesSearch = request.equipment.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         request.requestedBy.toLowerCase().includes(searchTerm.toLowerCase())
+    const matchesStatus = statusFilter === "Tous" || request.status === statusFilter
     return matchesSearch && matchesStatus
   })
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'approuvee': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
-      case 'en_attente': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
-      case 'rejetee': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
+      case 'Approuvé': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Validée': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Préparée': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Effectuée': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'Historisé': return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
+      case 'En attente': return 'bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400'
+      case 'Rejeté': return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'
       default: return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400'
-    }
-  }
-  
-  const getStatusLabel = (status: string) => {
-    switch (status) {
-      case 'approuvee': return 'Approuvé'
-      case 'en_attente': return 'En attente'
-      case 'rejetee': return 'Rejeté'
-      default: return status
     }
   }
 
@@ -103,27 +116,19 @@ export function Requests({ user }: { user?: UserType }) {
     }
   }
 
-  const pendingCount = scopedRequests.filter(r => r.statut === 'en_attente').length
-  const todayStr = new Date().toISOString().slice(0, 10)
-  const approvedToday = scopedRequests.filter(r => r.statut === 'approuvee' && r.dateApprobation === todayStr).length
+  const pendingCount = scopedRequests.filter(r => r.status === 'En attente').length
+  const approvedToday = scopedRequests.filter(r => r.status === 'Approuvé' && r.requestDate === '2025-01-20').length
 
-  const handleStatusChange = async (requestId: string, newStatus: 'approuvee' | 'rejetee' | 'en_attente', actionType: string) => {
+  const handleStatusChange = async (requestId: number, newStatus: 'Approuvé' | 'Rejeté' | 'En attente', actionType: string) => {
     setLoadingRequests(prev => ({ ...prev, [requestId]: actionType }))
     
+    // Simulate API call delay
     setTimeout(() => {
-      if (newStatus === 'approuvee' && user) {
-        approveDemande(requestId, user.id, user.name);
-      } else {
-        const currentRequests = getDemandes();
-        const req = currentRequests.find(r => r.id === requestId);
-        if (req) {
-          req.statut = newStatus;
-          saveDemandes(currentRequests);
-        }
-      }
-      
-      // Refresh state
-      setRequests(getDemandes());
+      setRequests(prev => prev.map(request => 
+        request.id === requestId 
+          ? { ...request, status: newStatus, approver: newStatus !== 'En attente' ? 'Admin' : undefined }
+          : request
+      ))
       
       setLoadingRequests(prev => {
         const updated = { ...prev }
@@ -131,8 +136,9 @@ export function Requests({ user }: { user?: UserType }) {
         return updated
       })
 
+      // Show success message
       const messages = {
-        'approve': 'Demande approuvée. Une sortie est générée et attend les signatures.',
+        'approve': 'Demande approuvée avec succès!',
         'reject': 'Demande rejetée avec succès!',
         'pending': 'Demande remise en attente!'
       }
@@ -143,7 +149,7 @@ export function Requests({ user }: { user?: UserType }) {
       })
       
       setTimeout(() => setShowSuccessMessage(null), 4000)
-    }, 800)
+    }, 1200)
   }
 
   return (
@@ -152,14 +158,25 @@ export function Requests({ user }: { user?: UserType }) {
       {showSuccessMessage && (
         <div className="fixed top-4 right-4 z-50 flex items-center gap-3 px-6 py-4 bg-gradient-to-r from-green-50 to-green-100 border border-green-200 rounded-lg shadow-xl text-green-800 dark:from-green-900/30 dark:to-green-800/30 dark:border-green-800 dark:text-green-400 animate-in slide-in-from-right-full duration-300">
           <div className="flex items-center justify-center w-8 h-8 bg-green-100 rounded-full dark:bg-green-900/50">
-            {showSuccessMessage.type === "approve" && <Check className="h-4 w-4 text-green-600 dark:text-green-400" />}
-            {showSuccessMessage.type === "reject" && <X className="h-4 w-4 text-red-600 dark:text-red-400" />}
-            {showSuccessMessage.type === "pending" && <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />}
-            {showSuccessMessage.type === "create" && <Check className="h-4 w-4 text-green-600 dark:text-green-400" />}
+            {showSuccessMessage.type === "approve" && (
+              <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+            )}
+            {showSuccessMessage.type === "reject" && (
+              <X className="h-4 w-4 text-red-600 dark:text-red-400" />
+            )}
+            {showSuccessMessage.type === "pending" && (
+              <Clock className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+            )}
+            {showSuccessMessage.type === "create" && (
+              <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
+            )}
           </div>
           <div>
             <div className="font-semibold text-sm">
               {showSuccessMessage.message}
+            </div>
+            <div className="text-xs text-green-700 dark:text-green-300">
+              Action effectuée avec succès.
             </div>
           </div>
           <button
@@ -181,15 +198,13 @@ export function Requests({ user }: { user?: UserType }) {
             Suivi des demandes d'entrée et de sortie d'équipements
           </p>
         </div>
-        {isDemandeur && (
-          <button
-            onClick={() => setShowNewRequestModal(true)}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
-          >
-            <Plus className="h-4 w-4" />
-            Nouvelle Demande
-          </button>
-        )}
+        <button
+          onClick={() => setShowNewRequestModal(true)}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        >
+          <Plus className="h-4 w-4" />
+          Nouvelle Demande
+        </button>
       </div>
 
       {/* Statistics Cards */}
@@ -198,8 +213,12 @@ export function Requests({ user }: { user?: UserType }) {
           <div className="flex items-center gap-3">
             <Clipboard className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
-              <div className="text-sm text-muted-foreground">Total Demandes</div>
-              <div className="text-xl text-card-foreground">{scopedRequests.length}</div>
+              <div className="text-sm text-muted-foreground">
+                Total Demandes
+              </div>
+              <div className="text-xl text-card-foreground">
+                {scopedRequests.length}
+              </div>
             </div>
           </div>
         </div>
@@ -218,21 +237,29 @@ export function Requests({ user }: { user?: UserType }) {
           <div className="flex items-center gap-3">
             <Check className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
-              <div className="text-sm text-muted-foreground">Approuvées Aujourd'hui</div>
-              <div className="text-xl text-card-foreground">{approvedToday}</div>
+              <div className="text-sm text-muted-foreground">
+                Approuvées Aujourd'hui
+              </div>
+              <div className="text-xl text-card-foreground">
+                {approvedToday}
+              </div>
             </div>
           </div>
         </div>
 
         <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
           <div className="flex items-center gap-3">
-            <div className="h-8 w-8 p-2 bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400 flex items-center justify-center text-xs font-bold">
+            <div className="h-8 w-8 p-2 bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400 flex items-center justify-center text-xs">
               !
             </div>
             <div>
               <div className="text-sm text-muted-foreground">Urgentes</div>
               <div className="text-xl text-card-foreground">
-                {scopedRequests.filter((r) => r.priorite === "Urgent" || r.priorite === "Critique").length}
+                {
+                  scopedRequests.filter(
+                    (r) => r.priority === "Urgent" || r.priority === "Critique"
+                  ).length
+                }
               </div>
             </div>
           </div>
@@ -277,15 +304,30 @@ export function Requests({ user }: { user?: UserType }) {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Type</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">ID</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Équipement</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Demandeur</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Direction</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Motif</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Priorité</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Statut</th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">Actions</th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Type
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Équipement
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Demandeur
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Direction
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Raison
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Priorité
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Statut
+                  </th>
+                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -295,109 +337,200 @@ export function Requests({ user }: { user?: UserType }) {
                     className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
                   >
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${
-                          request.typeDemande === "Entrée"
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${
+                          request.type === "Entrée"
                             ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
                             : "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
-                        }`}>
-                        {request.typeDemande}
+                        }`}
+                      >
+                        {request.type}
                       </span>
                     </td>
-                    <td className="py-3 px-4 text-sm font-mono text-muted-foreground">{request.id}</td>
-                    <td className="py-3 px-4 text-sm font-medium">{request.equipementDemande} (x{request.quantite})</td>
-                    <td className="py-3 px-4 text-sm text-card-foreground">{request.demandeurNom}</td>
-                    <td className="py-3 px-4 text-sm text-card-foreground">{request.direction}</td>
-                    <td className="py-3 px-4 text-sm text-card-foreground max-w-[150px] truncate" title={request.motif}>
-                      {request.motif}
+                    <td className="py-3 px-4 text-sm text-card-foreground">
+                      {request.equipment}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-card-foreground">
+                      {request.requestedBy}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-card-foreground">
+                      {request.department}
+                    </td>
+                    <td className="py-3 px-4 text-sm text-card-foreground max-w-[150px] truncate">
+                      {request.reason}
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getPriorityColor(request.priorite)}`}>
-                        {request.priorite}
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getPriorityColor(
+                          request.priority
+                        )}`}
+                      >
+                        {request.priority}
                       </span>
                     </td>
                     <td className="py-3 px-4">
-                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getStatusColor(request.statut)}`}>
-                        {getStatusLabel(request.statut)}
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getStatusColor(
+                          request.status
+                        )}`}
+                      >
+                        {request.status}
                       </span>
                     </td>
                     <td className="py-3 px-4">
                       <div className="flex items-center gap-2">
-                        {isDemandeur && <span className="text-sm text-muted-foreground">—</span>}
-                        {isDepositaire && request.statut === "en_attente" && (
+                        <button
+                          onClick={() => setDetailRequest(request)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs text-primary hover:bg-primary/10 rounded transition-colors"
+                        >
+                          <FileText className="h-3 w-3" />
+                          Détails
+                        </button>
+                        {!isDemandeur && request.status === "En attente" && (
                           <>
+                            {/* Approve Button */}
                             <button
-                              onClick={() => handleStatusChange(request.id, "approuvee", "approve")}
-                              disabled={loadingRequests[request.id] === "approve"}
-                              className="group relative inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg shadow-md hover:shadow-lg disabled:opacity-50 text-xs font-medium"
+                              onClick={() =>
+                                handleStatusChange(
+                                  request.id,
+                                  "Approuvé",
+                                  "approve"
+                                )
+                              }
+                              disabled={
+                                loadingRequests[request.id] === "approve"
+                              }
+                              className="group relative inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-lg shadow-md shadow-green-500/25 hover:shadow-lg hover:shadow-green-500/40 hover:scale-105 active:scale-95 transition-all duration-200 transform-gpu overflow-hidden text-xs font-medium disabled:cursor-not-allowed disabled:scale-100"
+                              aria-label="Approuver la demande"
                             >
-                              {loadingRequests[request.id] === "approve" ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                              Approuver
+                              <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/15 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+
+                              {loadingRequests[request.id] === "approve" ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <Check className="h-3 w-3 group-hover:scale-110 transition-transform duration-200" />
+                              )}
+
+                              <span className="relative">
+                                {loadingRequests[request.id] === "approve"
+                                  ? "Approuv..."
+                                  : "Approuver"}
+                              </span>
+
+                              <div className="absolute inset-0 border border-white/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                             </button>
+
+                            {/* Reject Button */}
                             <button
-                              onClick={() => handleStatusChange(request.id, "rejetee", "reject")}
-                              disabled={loadingRequests[request.id] === "reject"}
-                              className="group relative inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg shadow-md hover:shadow-lg disabled:opacity-50 text-xs font-medium"
+                              onClick={() =>
+                                handleStatusChange(
+                                  request.id,
+                                  "Rejeté",
+                                  "reject"
+                                )
+                              }
+                              disabled={
+                                loadingRequests[request.id] === "reject"
+                              }
+                              className="group relative inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-lg shadow-md shadow-red-500/25 hover:shadow-lg hover:shadow-red-500/40 hover:scale-105 active:scale-95 transition-all duration-200 transform-gpu overflow-hidden text-xs font-medium disabled:cursor-not-allowed disabled:scale-100"
+                              aria-label="Rejeter la demande"
                             >
-                              {loadingRequests[request.id] === "reject" ? <Loader2 className="h-3 w-3 animate-spin" /> : <X className="h-3 w-3" />}
-                              Rejeter
+                              <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/15 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+
+                              {loadingRequests[request.id] === "reject" ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <X className="h-3 w-3 group-hover:scale-110 transition-transform duration-200" />
+                              )}
+
+                              <span className="relative">
+                                {loadingRequests[request.id] === "reject"
+                                  ? "Rejet..."
+                                  : "Rejeter"}
+                              </span>
+
+                              <div className="absolute inset-0 border border-white/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                             </button>
                           </>
                         )}
-                        {isDepositaire && (request.statut === "approuvee" || request.statut === "rejetee") && (
+
+                        {/* Reset to Pending Button (for approved/rejected requests) */}
+                        {!isDemandeur &&
+                          (request.status === "Approuvé" ||
+                            request.status === "Rejeté") && (
                           <button
-                            onClick={() => handleStatusChange(request.id, "en_attente", "pending")}
+                            onClick={() =>
+                              handleStatusChange(
+                                request.id,
+                                "En attente",
+                                "pending"
+                              )
+                            }
                             disabled={loadingRequests[request.id] === "pending"}
-                            className="group relative inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg shadow-md hover:shadow-lg disabled:opacity-50 text-xs font-medium"
+                            className="group relative inline-flex items-center gap-2 px-3 py-1.5 bg-gradient-to-r from-orange-500 to-orange-600 text-white rounded-lg shadow-md shadow-orange-500/25 hover:shadow-lg hover:shadow-orange-500/40 hover:scale-105 active:scale-95 transition-all duration-200 transform-gpu overflow-hidden text-xs font-medium disabled:cursor-not-allowed disabled:scale-100"
+                            aria-label="Remettre en attente"
                           >
-                            {loadingRequests[request.id] === "pending" ? <Loader2 className="h-3 w-3 animate-spin" /> : <RotateCcw className="h-3 w-3" />}
-                            Annuler
+                            <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/15 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+
+                            {loadingRequests[request.id] === "pending" ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RotateCcw className="h-3 w-3 group-hover:rotate-180 transition-transform duration-300" />
+                            )}
+
+                            <span className="relative">
+                              {loadingRequests[request.id] === "pending"
+                                ? "Remise..."
+                                : "En attente"}
+                            </span>
+
+                            <div className="absolute inset-0 border border-white/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
                           </button>
                         )}
-                        {!isDemandeur && !isDepositaire && <span className="text-sm text-muted-foreground">Lecture seule</span>}
                       </div>
                     </td>
                   </tr>
                 ))}
-                {filteredRequests.length === 0 && (
-                  <tr>
-                    <td colSpan={9} className="text-center py-8 text-muted-foreground">
-                      Aucune demande trouvée.
-                    </td>
-                  </tr>
-                )}
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      {/* Modal Nouvelle Demande */}
+      {/* Nouvelle Demande Modal */}
       {showNewRequestModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
           <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg text-card-foreground">Nouvelle Demande</h3>
-              <button onClick={() => setShowNewRequestModal(false)} className="text-muted-foreground hover:text-foreground">
+              <button
+                onClick={() => setShowNewRequestModal(false)}
+                className="text-muted-foreground hover:text-foreground transition-colors"
+              >
                 <X className="h-5 w-5" />
               </button>
             </div>
             <div className="space-y-4">
               <div>
-                <label className="block text-sm text-muted-foreground mb-1">Équipement</label>
+                <label className="block text-sm text-muted-foreground mb-1">
+                  Équipement
+                </label>
                 <input
                   type="text"
-                  value={newRequest.equipmentDemande}
-                  onChange={(e) => setNewRequest({ ...newRequest, equipmentDemande: e.target.value })}
+                  value={newRequest.equipment}
+                  onChange={(e) => setNewRequest({ ...newRequest, equipment: e.target.value })}
                   placeholder="Désignation du matériel"
                   className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring text-sm"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Type</label>
+                  <label className="block text-sm text-muted-foreground mb-1">
+                    Type
+                  </label>
                   <select
-                    value={newRequest.typeDemande}
-                    onChange={(e) => setNewRequest({ ...newRequest, typeDemande: e.target.value as DemandeMateriel['typeDemande'] })}
+                    value={newRequest.type}
+                    onChange={(e) => setNewRequest({ ...newRequest, type: e.target.value as Request['type'] })}
                     className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring text-sm"
                   >
                     <option value="Entrée">Entrée</option>
@@ -405,21 +538,25 @@ export function Requests({ user }: { user?: UserType }) {
                   </select>
                 </div>
                 <div>
-                  <label className="block text-sm text-muted-foreground mb-1">Quantité</label>
+                  <label className="block text-sm text-muted-foreground mb-1">
+                    Quantité
+                  </label>
                   <input
                     type="number"
                     min={1}
-                    value={newRequest.quantite}
-                    onChange={(e) => setNewRequest({ ...newRequest, quantite: Number(e.target.value) })}
+                    value={newRequest.quantity}
+                    onChange={(e) => setNewRequest({ ...newRequest, quantity: Number(e.target.value) })}
                     className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring text-sm"
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm text-muted-foreground mb-1">Priorité</label>
+                <label className="block text-sm text-muted-foreground mb-1">
+                  Priorité
+                </label>
                 <select
-                  value={newRequest.priorite}
-                  onChange={(e) => setNewRequest({ ...newRequest, priorite: e.target.value as DemandeMateriel['priorite'] })}
+                  value={newRequest.priority}
+                  onChange={(e) => setNewRequest({ ...newRequest, priority: e.target.value as Request['priority'] })}
                   className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring text-sm"
                 >
                   <option value="Normal">Normal</option>
@@ -428,10 +565,12 @@ export function Requests({ user }: { user?: UserType }) {
                 </select>
               </div>
               <div>
-                <label className="block text-sm text-muted-foreground mb-1">Motif</label>
+                <label className="block text-sm text-muted-foreground mb-1">
+                  Motif
+                </label>
                 <textarea
-                  value={newRequest.motif}
-                  onChange={(e) => setNewRequest({ ...newRequest, motif: e.target.value })}
+                  value={newRequest.reason}
+                  onChange={(e) => setNewRequest({ ...newRequest, reason: e.target.value })}
                   rows={3}
                   placeholder="Justification de la demande"
                   className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring text-sm resize-none"
@@ -439,16 +578,377 @@ export function Requests({ user }: { user?: UserType }) {
               </div>
             </div>
             <div className="flex gap-3 mt-6">
-              <button onClick={() => setShowNewRequestModal(false)} className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition-colors">
+              <button
+                onClick={() => setShowNewRequestModal(false)}
+                className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition-colors"
+              >
                 Annuler
               </button>
-              <button onClick={handleCreateRequest} className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+              <button
+                onClick={handleCreateRequest}
+                className="flex-1 px-4 py-2 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+              >
                 Envoyer la demande
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* Détails / traçabilité de la demande */}
+      {detailRequest &&
+        (() => {
+          const linkedSortie = sortieRecords.find(
+            (s) => s.demandeId === detailRequest.id
+          )
+          const orga = splitDepartement(detailRequest.department)
+          const isApproved = detailRequest.status === "Approuvé"
+          const isRejected = detailRequest.status === "Rejeté"
+          const isPrepared =
+            !!linkedSortie &&
+            ["Validée", "Sortie effectuée", "En préparation"].includes(
+              linkedSortie.statut
+            )
+          const isOut = linkedSortie?.statut === "Sortie effectuée"
+
+          // Demande → Validation → Préparation → Sortie → Traçabilité
+          const steps = [
+            { label: "Demande", statut: "Créée", ok: true },
+            {
+              label: "Validation",
+              statut: isApproved
+                ? "Validée"
+                : isRejected
+                ? "Rejetée"
+                : "En attente",
+              ok: isApproved,
+            },
+            {
+              label: "Préparation du matériel",
+              statut: isPrepared ? "Préparée" : "En attente",
+              ok: isPrepared,
+            },
+            {
+              label: "Sortie du matériel",
+              statut: isOut ? "Effectuée" : "En attente",
+              ok: isOut,
+            },
+            {
+              label: "Traçabilité du mouvement",
+              statut: isOut ? "Historisé" : "—",
+              ok: isOut,
+            },
+          ]
+
+          const historique: Array<{
+            date: string
+            utilisateur: string
+            action: string
+            statut: string
+          }> = [
+            {
+              date: detailRequest.requestDate,
+              utilisateur: detailRequest.requestedBy,
+              action: "Demande créée",
+              statut: "En attente",
+            },
+            ...(detailRequest.approver
+              ? [
+                  {
+                    date: detailRequest.requestDate,
+                    utilisateur: detailRequest.approver,
+                    action: isApproved
+                      ? "Demande validée"
+                      : isRejected
+                      ? "Demande rejetée"
+                      : "Demande traitée",
+                    statut: detailRequest.status,
+                  },
+                ]
+              : []),
+            ...(linkedSortie
+              ? getSortieTrace(linkedSortie)
+                  .filter((event) => event.statut !== "—" && event.statut !== "En attente")
+                  .map((event) => ({
+                    date: event.date,
+                    utilisateur: event.utilisateur,
+                    action: event.action,
+                    statut: event.statut,
+                  }))
+              : []),
+          ]
+
+          return (
+            <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+              <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+                {/* Header */}
+                <div className="flex items-start justify-between p-6 border-b border-border">
+                  <div>
+                    <h3 className="text-lg text-card-foreground flex items-center gap-2">
+                      <Clipboard className="h-5 w-5 text-primary" />
+                      Demande n° {detailRequest.id}
+                    </h3>
+                    <div className="flex flex-wrap items-center gap-2 mt-2">
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getStatusColor(
+                          detailRequest.status
+                        )}`}
+                      >
+                        {detailRequest.status}
+                      </span>
+                      <span
+                        className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getPriorityColor(
+                          detailRequest.priority
+                        )}`}
+                      >
+                        {detailRequest.priority}
+                      </span>
+                      <span className="text-xs text-muted-foreground">
+                        {detailRequest.type} - {detailRequest.equipment}
+                      </span>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setDetailRequest(null)}
+                    className="text-muted-foreground hover:text-foreground transition-colors"
+                    aria-label="Fermer"
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
+
+                <div className="p-6 space-y-6">
+                  {/* Chaîne de traçabilité */}
+                  <div>
+                    <h4 className="text-sm text-card-foreground mb-3">
+                      Suivi de la demande
+                    </h4>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {steps.map((step, index) => (
+                        <div key={step.label} className="flex items-center gap-2">
+                          <div
+                            className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs ${
+                              step.ok
+                                ? "border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-900/20 dark:text-green-400"
+                                : "border-border bg-muted/30 text-muted-foreground"
+                            }`}
+                          >
+                            <span className="font-medium">{step.label}</span>
+                            <span className="opacity-70">({step.statut})</span>
+                          </div>
+                          {index < steps.length - 1 && (
+                            <ArrowRight className="h-3.5 w-3.5 text-muted-foreground" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Informations */}
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Statut</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.status}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Équipement demandé
+                      </div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.equipment}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Quantité</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.quantity}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Demandeur</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.requestedBy}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Direction</div>
+                      <div className="text-sm text-card-foreground">
+                        {orga.direction}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Service</div>
+                      <div className="text-sm text-card-foreground">{orga.service}</div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">
+                        Date de demande
+                      </div>
+                      <div className="text-sm text-card-foreground">
+                        {new Date(detailRequest.requestDate).toLocaleDateString("fr-FR")}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Motif</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.reason}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground mb-1">Priorité</div>
+                      <div className="text-sm text-card-foreground">
+                        {detailRequest.priority}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Validations */}
+                  <div className="p-4 border border-border rounded-lg bg-muted/20">
+                    <h4 className="text-sm text-card-foreground mb-2 flex items-center gap-2">
+                      <Check className="h-4 w-4" />
+                      Validations
+                    </h4>
+                    <div className="text-sm text-muted-foreground">
+                      {detailRequest.approver ? (
+                        <>
+                          Validée par <span className="text-card-foreground">
+                            {detailRequest.approver}
+                          </span>{" "}
+                          le {new Date(detailRequest.requestDate).toLocaleDateString("fr-FR")}
+                        </>
+                      ) : (
+                        "En attente de validation par le responsable habilité."
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Sortie associée */}
+                  <div className="p-4 border border-border rounded-lg bg-muted/20">
+                    <h4 className="text-sm text-card-foreground mb-3 flex items-center gap-2">
+                      <Package className="h-4 w-4" />
+                      Sortie associée
+                    </h4>
+                    {linkedSortie ? (
+                      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Référence de sortie
+                          </div>
+                          <div className="text-sm font-mono text-card-foreground">
+                            {linkedSortie.reference}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Date de sortie
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {new Date(linkedSortie.dateSortie).toLocaleDateString(
+                              "fr-FR"
+                            )}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Statut
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.statut}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Bénéficiaire
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.beneficiaire}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Responsable
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.responsable}
+                          </div>
+                        </div>
+                        <div>
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Direction / Service
+                          </div>
+                          <div className="text-sm text-card-foreground">
+                            {linkedSortie.direction} / {linkedSortie.serviceDemandeur}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-sm text-muted-foreground">
+                        Aucune sortie enregistrée pour le moment.
+                      </p>
+                    )}
+                  </div>
+
+                  {/* Historique */}
+                  <div>
+                    <h4 className="text-sm text-card-foreground mb-3 flex items-center gap-2">
+                      <History className="h-4 w-4" />
+                      Historique
+                    </h4>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead>
+                          <tr className="border-b border-border">
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Date
+                            </th>
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Utilisateur
+                            </th>
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Action
+                            </th>
+                            <th className="text-left py-2 px-3 text-sm text-muted-foreground">
+                              Statut
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {historique.map((event, index) => (
+                            <tr
+                              key={index}
+                              className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
+                            >
+                              <td className="py-2 px-3 text-sm text-card-foreground">
+                                {new Date(event.date).toLocaleDateString("fr-FR")}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-card-foreground">
+                                {event.utilisateur}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-card-foreground">
+                                {event.action}
+                              </td>
+                              <td className="py-2 px-3 text-sm">
+                                <span
+                                  className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs ${getStatusColor(
+                                    event.statut
+                                  )}`}
+                                >
+                                  {event.statut}
+                                </span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )
+        })()}
     </div>
   );
 }

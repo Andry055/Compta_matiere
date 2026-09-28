@@ -18,9 +18,33 @@ import {
   Euro,
   BarChart3,
   Hash,
+  Activity,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  Inbox,
+  Hourglass,
+  ClipboardCheck,
 } from "lucide-react";
 import { useState } from "react";
+import { User } from "../App";
 import { AllEquipmentModal } from "./AllEquipmentModal";
+import { mockRequests } from "../lib/requests";
+import {
+  entreeRecords,
+  sortieRecords,
+  getRecentActivity,
+  getStatistiquesSorties,
+  sortiesPerimetre,
+  getStatutEntreeAffiche,
+  ActivityItem,
+} from "../lib/movements";
+import {
+  getDemandesForUser,
+  getStatsDemandes,
+  getActiviteDemandeur,
+  getRepartitionDemandes,
+} from "../lib/demandes";
+import { mockEquipment } from "./Equipment";
 
 interface JournalMovement {
   id: number;
@@ -86,8 +110,319 @@ const mockJournalMovements: JournalMovement[] = [
   },
 ];
 
-export function Dashboard() {
+function getActivityIcon(type: ActivityItem["type"]) {
+  switch (type) {
+    case "demande":
+      return Clipboard;
+    case "validation":
+      return ClipboardCheck;
+    case "preparation":
+      return Inbox;
+    case "sortie":
+      return ArrowUpFromLine;
+    case "entree":
+    default:
+      return ArrowDownToLine;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Espace Demandeur : vue d'ensemble de SES demandes, équipements et mouvements
+// ---------------------------------------------------------------------------
+function DemandeurDashboard({ user }: { user?: User }) {
+  const demandes = getDemandesForUser(user);
+  const stats = getStatsDemandes(demandes);
+  const mesSorties = sortiesPerimetre(sortieRecords, user);
+  const statsSorties = getStatistiquesSorties(mesSorties);
+
+  // Matériels reçus (sorties effectuées dans mon périmètre)
+  const materielsRecus = mesSorties
+    .filter((s) => s.statut === "Sortie effectuée")
+    .reduce((sum, s) => sum + (s.quantite || 0), 0);
+
+  // Équipements disponibles dans le stock
+  const equipementsDisponibles = mockEquipment.filter(
+    (item) => item.status === "Disponible"
+  ).length;
+
+  // Entrées récentes consultables (signées / en cours de signature)
+  const entreesRecentes = entreeRecords.filter((e) => {
+    const statut = getStatutEntreeAffiche(e);
+    return statut === "Validée" || statut === "Partiellement signée";
+  }).length;
+
+  // Alertes : demandes en attente + entrées rejetées
+  const alertes =
+    stats.enAttente +
+    entreeRecords.filter((e) => getStatutEntreeAffiche(e) === "Rejetée")
+      .length;
+
+  const activites = getActiviteDemandeur(demandes, mesSorties);
+  const repartition = getRepartitionDemandes(demandes);
+
+  const cards = [
+    {
+      label: "Mes demandes",
+      value: stats.total,
+      icon: Clipboard,
+      iconClass:
+        "bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400",
+      foot: "Demandes de mon périmètre",
+    },
+    {
+      label: "Demandes en attente",
+      value: stats.enAttente,
+      icon: Hourglass,
+      iconClass:
+        "bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400",
+      foot: "En attente de validation",
+    },
+    {
+      label: "Demandes validées",
+      value: stats.validees,
+      icon: Check,
+      iconClass:
+        "bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400",
+      foot: "Validées par le responsable",
+    },
+    {
+      label: "Matériels reçus",
+      value: materielsRecus,
+      icon: Inbox,
+      iconClass:
+        "bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400",
+      foot: "Unités reçues par mon service",
+    },
+    {
+      label: "Sorties du mois",
+      value: statsSorties.duMois,
+      icon: ArrowUpFromLine,
+      iconClass:
+        "bg-indigo-100 text-indigo-600 rounded-lg dark:bg-indigo-900/30 dark:text-indigo-400",
+      foot: statsSorties.moisLabel,
+    },
+    {
+      label: "Équipements disponibles",
+      value: equipementsDisponibles,
+      icon: Package,
+      iconClass:
+        "bg-cyan-100 text-cyan-600 rounded-lg dark:bg-cyan-900/30 dark:text-cyan-400",
+      foot: "Disponibles à la demande",
+    },
+    {
+      label: "Entrées récentes",
+      value: entreesRecentes,
+      icon: ArrowDownToLine,
+      iconClass:
+        "bg-teal-100 text-teal-600 rounded-lg dark:bg-teal-900/30 dark:text-teal-400",
+      foot: "Entrées consultables",
+    },
+    {
+      label: "Alertes",
+      value: alertes,
+      icon: AlertTriangle,
+      iconClass:
+        "bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400",
+      foot: "À traiter en priorité",
+    },
+  ];
+
+  return (
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
+          Tableau de Bord
+        </h1>
+        <p className="text-muted-foreground text-sm sm:text-base">
+          Vue d'ensemble de vos demandes, équipements et mouvements
+        </p>
+      </div>
+
+      {/* Indicateurs */}
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 md:grid-cols-2 lg:grid-cols-4">
+        {cards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.label}
+              className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
+            >
+              <div className="flex items-center gap-3">
+                <Icon className={`h-8 w-8 p-2 ${card.iconClass} flex-shrink-0`} />
+                <div className="min-w-0">
+                  <div className="text-xs sm:text-sm text-muted-foreground truncate">
+                    {card.label}
+                  </div>
+                  <div className="text-lg sm:text-xl text-card-foreground">
+                    {card.value}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate hidden sm:block">
+                    {card.foot}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Activités récentes + état des demandes */}
+      <div className="grid gap-4 lg:grid-cols-3">
+        {/* Mes activités récentes */}
+        <div className="lg:col-span-2 bg-card border border-border rounded-lg shadow-sm">
+          <div className="p-4 sm:p-6 border-b border-border">
+            <h3 className="text-base sm:text-lg text-card-foreground">
+              Mes activités récentes
+            </h3>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+              Dernières demandes, validations et sorties de mon périmètre
+            </p>
+          </div>
+          <div className="p-4 sm:p-6 space-y-4">
+            {activites.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                Aucune activité récente.
+              </div>
+            ) : (
+              activites.map((item, index) => {
+                const Icon = getActivityIcon(item.type);
+                return (
+                  <div key={index} className="flex items-start gap-3">
+                    <Icon className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400 flex-shrink-0" />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-card-foreground">
+                          {item.label}
+                        </span>
+                        <span className="text-xs text-muted-foreground whitespace-nowrap">
+                          {new Date(item.date).toLocaleDateString("fr-FR")}
+                        </span>
+                      </div>
+                      <div className="text-xs text-muted-foreground truncate">
+                        {item.detail}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+
+        {/* État de mes demandes */}
+        <div className="bg-card border border-border rounded-lg shadow-sm">
+          <div className="p-4 sm:p-6 border-b border-border">
+            <h3 className="text-base sm:text-lg text-card-foreground">
+              État de mes demandes
+            </h3>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+              Répartition par statut
+            </p>
+          </div>
+          <div className="p-4 sm:p-6 space-y-4">
+            {repartition.length === 0 ? (
+              <div className="text-center py-8 text-sm text-muted-foreground">
+                Aucune demande pour le moment.
+              </div>
+            ) : (
+              repartition.map((row) => (
+                <div key={row.statut}>
+                  <div className="flex items-center justify-between text-xs mb-1">
+                    <span className="text-card-foreground">{row.statut}</span>
+                    <span className="text-muted-foreground">
+                      {row.count} ({row.percent}%)
+                    </span>
+                  </div>
+                  <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden">
+                    <div
+                      className={`h-full ${row.color} rounded-full transition-all`}
+                      style={{ width: `${row.percent}%` }}
+                    />
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function Dashboard({ user }: { user?: User }) {
   const [showAllEquipmentModal, setShowAllEquipmentModal] = useState(false);
+
+  // Fonctionnalité : espace dédié au profil Demandeur
+  const isDemandeur = user?.role === "demandeur";
+  if (isDemandeur) {
+    return <DemandeurDashboard user={user} />;
+  }
+  const mesDemandes =
+    isDemandeur && user?.department
+      ? mockRequests.filter((request) => request.department === user.department)
+      : mockRequests;
+  const mesSorties = isDemandeur
+    ? sortieRecords.filter(
+        (sortie) =>
+          sortie.dansMonPerimetre || sortie.demandeur === user?.name
+      )
+    : sortieRecords;
+  const entreesDisponibles = entreeRecords.filter(
+    (entry) => entry.statut === "Validée" || entry.statut === "Vérifiée"
+  );
+  const recentActivity = getRecentActivity(mockRequests);
+
+  const demandeurCards = [
+    {
+      label: "Mes demandes",
+      value: mesDemandes.length,
+      icon: Clipboard,
+      iconClass:
+        "bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400",
+      foot: "Demandes de mon périmètre",
+    },
+    {
+      label: "Demandes en attente",
+      value: mesDemandes.filter((r) => r.status === "En attente").length,
+      icon: Hourglass,
+      iconClass:
+        "bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400",
+      foot: "En attente de validation",
+    },
+    {
+      label: "Demandes validées",
+      value: mesDemandes.filter((r) => r.status === "Approuvé").length,
+      icon: Check,
+      iconClass:
+        "bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400",
+      foot: "Validées par le responsable",
+    },
+    {
+      label: "Mes dernières sorties",
+      value: mesSorties.length,
+      icon: ArrowUpFromLine,
+      iconClass:
+        "bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400",
+      foot: "Sorties de mon service / direction",
+    },
+    {
+      label: "Dernières entrées disponibles",
+      value: entreesDisponibles.length,
+      icon: ArrowDownToLine,
+      iconClass:
+        "bg-cyan-100 text-cyan-600 rounded-lg dark:bg-cyan-900/30 dark:text-cyan-400",
+      foot: "Entrées vérifiées / validées",
+    },
+    {
+      label: "Alertes importantes",
+      value: 3,
+      icon: AlertTriangle,
+      iconClass:
+        "bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400",
+      foot: "À traiter en priorité",
+    },
+  ];
 
   const getStatutColor = (statut: string) => {
     switch (statut) {
@@ -223,6 +558,78 @@ export function Dashboard() {
               <div className="text-xl text-card-foreground">3</div>
             </div>
           </div>
+        </div>
+      </div>
+
+      {/* Espace Demandeur */}
+      {isDemandeur && (
+        <div>
+          <div className="mb-3">
+            <h3 className="text-lg text-card-foreground">Mon espace Demandeur</h3>
+            <p className="text-sm text-muted-foreground mt-1">
+              Le suivi de mes demandes, sorties et alertes
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {demandeurCards.map((card) => {
+              const Icon = card.icon;
+              return (
+                <div
+                  key={card.label}
+                  className="bg-card border border-border rounded-lg p-4 shadow-sm"
+                >
+                  <div className="flex items-center gap-3">
+                    <Icon className={`h-8 w-8 p-2 ${card.iconClass}`} />
+                    <div>
+                      <div className="text-sm text-muted-foreground">
+                        {card.label}
+                      </div>
+                      <div className="text-xl text-card-foreground">
+                        {card.value}
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        {card.foot}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Activité récente */}
+      <div className="bg-card border border-border rounded-lg shadow-sm">
+        <div className="p-6 border-b border-border">
+          <h3 className="text-lg text-card-foreground">Activité récente</h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Demandes créées et validées, matériels préparés, sorties
+            effectuées et dernières entrées enregistrées
+          </p>
+        </div>
+        <div className="p-6 space-y-4">
+          {recentActivity.map((item, index) => {
+            const Icon = getActivityIcon(item.type);
+            return (
+              <div key={index} className="flex items-start gap-3">
+                <Icon className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400 flex-shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-3">
+                    <span className="text-sm text-card-foreground">
+                      {item.label}
+                    </span>
+                    <span className="text-xs text-muted-foreground whitespace-nowrap">
+                      {new Date(item.date).toLocaleDateString("fr-FR")}
+                    </span>
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {item.detail}
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 

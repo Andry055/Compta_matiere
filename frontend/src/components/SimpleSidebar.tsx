@@ -9,8 +9,11 @@ import {
   User as UserIcon,
   Settings,
   X,
-  Truck,
-  BookOpen
+  BookOpen,
+  ArrowDownToLine,
+  ArrowUpFromLine,
+  ArrowLeftRight,
+  Truck
 } from "lucide-react"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
@@ -39,6 +42,24 @@ const navItems = [
     icon: Package,
     key: "equipment",
     description: "Inventaire détaillé"
+  },
+  {
+    title: "Entrées",
+    icon: ArrowDownToLine,
+    key: "entries",
+    description: "Suivi des entrées de matériels"
+  },
+  {
+    title: "Affectations",
+    icon: ArrowLeftRight,
+    key: "affectations",
+    description: "Affectations entre services"
+  },
+  {
+    title: "Sorties",
+    icon: ArrowUpFromLine,
+    key: "exits",
+    description: "Suivi des sorties de matériels"
   },
   {
     title: "Distribution",
@@ -149,7 +170,9 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
                   <div className="truncate">{item.title}</div>
                   {item.description && (
                     <div className="text-xs text-sidebar-foreground/50 mt-0.5 truncate hidden sm:block">
-                      {item.description}
+                      {item.key === "requests" && user?.role === "demandeur"
+                        ? "Gestion de mes demandes"
+                        : item.description}
                     </div>
                   )}
                 </div>

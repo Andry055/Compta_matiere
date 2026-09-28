@@ -1,0 +1,74 @@
+{
+  "kind": "collectionType",
+  "collectionName": "sorties",
+  "info": {
+    "singularName": "sortie",
+    "pluralName": "sorties",
+    "displayName": "sortie"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "reference": {
+      "type": "string",
+      "unique": true
+    },
+    "date_sortie": {
+      "type": "date",
+      "required": true
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": [
+        "demandee",
+        "en_preparation",
+        "validee",
+        "sortie_effectuee",
+        "annulee"
+      ],
+      "default": "demandee"
+    },
+    "direction": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::direction.direction"
+    },
+    "service": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::service.service"
+    },
+    "demande": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::demande.demande",
+      "inversedBy": "sorties"
+    },
+    "beneficiaire": {
+      "type": "string"
+    },
+    "responsable": {
+      "type": "string"
+    },
+    "justificatif": {
+      "type": "string"
+    },
+    "observations": {
+      "type": "text"
+    },
+    "lignes": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::sortie-ligne.sortie-ligne",
+      "mappedBy": "sortie"
+    },
+    "mouvements": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::mouvement.mouvement",
+      "mappedBy": "sortie"
+    }
+  }
+}

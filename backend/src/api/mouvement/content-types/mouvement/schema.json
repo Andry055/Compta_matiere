@@ -1,0 +1,65 @@
+{
+  "kind": "collectionType",
+  "collectionName": "mouvements",
+  "info": {
+    "singularName": "mouvement",
+    "pluralName": "mouvements",
+    "displayName": "mouvement"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "reference": {
+      "type": "string",
+      "required": true
+    },
+    "type": {
+      "type": "enumeration",
+      "enum": ["entree", "sortie", "demande"],
+      "required": true
+    },
+    "date_mouvement": {
+      "type": "date",
+      "required": true
+    },
+    "utilisateur": {
+      "type": "string"
+    },
+    "action": {
+      "type": "string",
+      "required": true
+    },
+    "materiel": {
+      "type": "string"
+    },
+    "quantite": {
+      "type": "integer"
+    },
+    "statut": {
+      "type": "string"
+    },
+    "entree": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::entree.entree",
+      "inversedBy": "mouvements"
+    },
+    "sortie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie.sortie",
+      "inversedBy": "mouvements"
+    },
+    "demande": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::demande.demande",
+      "inversedBy": "mouvements"
+    },
+    "observations": {
+      "type": "text"
+    }
+  }
+}

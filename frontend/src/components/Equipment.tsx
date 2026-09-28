@@ -17,6 +17,7 @@ import { AllEquipmentModal } from "./AllEquipmentModal";
 import { EquipmentActions } from "./EquipmentActions";
 import { User as UserType } from "../App";
 import { JournalEntry } from "../types/accounting";
+import { splitDepartement } from "../lib/movements";
 import { toast } from "sonner";
 
 interface EquipmentItem {
@@ -40,6 +41,10 @@ interface EquipmentItem {
   numeroNomenclature?: string;
   brand?: string;
   model?: string;
+  /** Quantité disponible à la demande (vue lecture seule du Demandeur) */
+  quantity?: number;
+  /** Localisation physique (vue lecture seule du Demandeur) */
+  location?: string;
 }
 
 // Mock current user - in real app this would come from props
@@ -73,7 +78,7 @@ interface NewEquipmentData {
   image?: string;
 }
 
-const mockEquipment: EquipmentItem[] = [
+export const mockEquipment: EquipmentItem[] = [
   {
     id: 1,
     name: "Ordinateur portable HP EliteBook",
@@ -95,6 +100,8 @@ const mockEquipment: EquipmentItem[] = [
     numeroNomenclature: "INFO-001",
     brand: "HP",
     model: "EliteBook 840",
+    quantity: 0,
+    location: "Bureau IT - Développement",
   },
   {
     id: 2,
@@ -116,6 +123,8 @@ const mockEquipment: EquipmentItem[] = [
     numeroNomenclature: "PER-001",
     brand: "Logitech",
     model: "MX Mechanical",
+    quantity: 25,
+    location: "Magasin central",
   },
   {
     id: 3,
@@ -137,6 +146,8 @@ const mockEquipment: EquipmentItem[] = [
     numeroNomenclature: "AFF-001",
     brand: "Dell",
     model: "UltraSharp U2422H",
+    quantity: 0,
+    location: "Atelier de réparation",
   },
   {
     id: 4,
@@ -159,6 +170,8 @@ const mockEquipment: EquipmentItem[] = [
     numeroNomenclature: "IMP-001",
     brand: "Canon",
     model: "i-SENSYS LBP623Cdw",
+    quantity: 0,
+    location: "Service Comptabilité",
   },
   {
     id: 5,
@@ -180,6 +193,8 @@ const mockEquipment: EquipmentItem[] = [
     numeroNomenclature: "COM-001",
     brand: "Cisco",
     model: "IP Phone 7841",
+    quantity: 12,
+    location: "Magasin central",
   },
 ];
 
@@ -219,6 +234,44 @@ export function Equipment({ user }: { user?: UserType }) {
         return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
+    }
+  };
+
+  // Badges du Demandeur : Disponible / Affecté / Indisponible
+  const getStatutDemandeur = (status: string) => {
+    switch (status) {
+      case "Disponible":
+        return {
+          label: "\u{1F7E2} Disponible",
+          className:
+            "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
+        };
+      case "Attribué":
+        return {
+          label: "\u{1F535} Affecté",
+          className:
+            "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400",
+        };
+      default:
+        return {
+          label: "\u{1F534} Indisponible",
+          className:
+            "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400",
+        };
+    }
+  };
+
+  // État physique affiché au Demandeur
+  const getEtatDemandeur = (status: string) => {
+    switch (status) {
+      case "Disponible":
+        return "Bon état";
+      case "Attribué":
+        return "En service";
+      case "Maintenance":
+        return "En réparation";
+      default:
+        return "Retiré";
     }
   };
 
@@ -345,11 +398,12 @@ export function Equipment({ user }: { user?: UserType }) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
-            Registre des Équipements
+            {isDemandeur ? "Équipements" : "Registre des Équipements"}
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Inventaire complet avec traçabilité comptable et pièces
-            justificatives
+            {isDemandeur
+              ? "Consultez les équipements disponibles et leur état"
+              : "Inventaire complet avec traçabilité comptable et pièces\n            justificatives"}
           </p>
         </div>
         <div className="flex gap-2">
@@ -379,6 +433,14 @@ export function Equipment({ user }: { user?: UserType }) {
           )}
         </div>
       </div>
+
+      {isDemandeur && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
+          <Eye className="h-4 w-4" />
+          Consultation seule : la création, la modification et la suppression
+          d'équipements relèvent des responsables habilités.
+        </div>
+      )}
 
       {/* Statistics Cards */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
@@ -572,7 +634,107 @@ export function Equipment({ user }: { user?: UserType }) {
           ))}
         </div>
 
+        {/* Desktop Table View — Demandeur : consultation seule */}
+        {isDemandeur && (
+          <div className="hidden lg:block p-6">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead>
+                  <tr className="border-b border-border">
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Référence</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Désignation</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Catégorie</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">État</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Quantité disponible</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Direction</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Service</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Localisation</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Statut</th>
+                    <th className="text-left py-3 px-4 text-sm text-muted-foreground">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filteredEquipment.length === 0 ? (
+                    <tr>
+                      <td colSpan={10} className="py-10 text-center text-sm text-muted-foreground">
+                        Aucun équipement ne correspond aux critères.
+                      </td>
+                    </tr>
+                  ) : (
+                    filteredEquipment.map((item) => {
+                      const { direction, service } = splitDepartement(item.department);
+                      const badge = getStatutDemandeur(item.status);
+                      return (
+                        <tr
+                          key={item.id}
+                          className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
+                        >
+                          <td className="py-3 px-4 text-sm font-mono text-card-foreground">
+                            {item.serialNumber}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-card-foreground max-w-[220px] truncate">
+                            {item.name}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-card-foreground">
+                            {item.category}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-card-foreground">
+                            {getEtatDemandeur(item.status)}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-card-foreground">
+                            {item.status === "Disponible" ? item.quantity ?? 0 : 0}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-card-foreground">
+                            {direction}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-card-foreground max-w-[160px] truncate">
+                            {service}
+                          </td>
+                          <td className="py-3 px-4 text-sm text-card-foreground max-w-[180px] truncate">
+                            {item.location || "—"}
+                          </td>
+                          <td className="py-3 px-4">
+                            <span
+                              className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${badge.className}`}
+                            >
+                              {badge.label}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4">
+                            <div className="flex items-center gap-1">
+                              <button
+                                title="Voir les détails"
+                                onClick={() => handleViewEquipment(item)}
+                                className="p-1.5 rounded text-primary hover:bg-primary/10 transition-colors"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                              <EquipmentActions
+                                equipment={item}
+                                currentUser={user || mockCurrentUser}
+                                onView={handleViewEquipment}
+                                onEdit={handleEditEquipment}
+                                onDelete={handleDeleteEquipment}
+                                onDuplicate={handleDuplicateEquipment}
+                                onExport={handleExportEquipment}
+                                onShare={handleShareEquipment}
+                                onArchive={handleArchiveEquipment}
+                                onViewHistory={handleViewHistory}
+                              />
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+
         {/* Desktop Table View */}
+        {!isDemandeur && (
         <div className="hidden lg:block p-6">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -671,6 +833,7 @@ export function Equipment({ user }: { user?: UserType }) {
             </table>
           </div>
         </div>
+        )}
 
         {filteredEquipment.length === 0 && (
           <div className="p-8 text-center">

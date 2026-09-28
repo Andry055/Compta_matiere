@@ -1,0 +1,120 @@
+{
+  "kind": "collectionType",
+  "collectionName": "affectations",
+  "info": {
+    "singularName": "affectation",
+    "pluralName": "affectations",
+    "displayName": "Affectation",
+    "description": "Affectation d'un matériel entre deux services d'une même Direction (workflow 4 validations)"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "reference": {
+      "type": "string",
+      "required": true,
+      "unique": true
+    },
+    "date": {
+      "type": "date",
+      "required": true
+    },
+    "direction": {
+      "type": "string"
+    },
+    "service_source": {
+      "type": "string"
+    },
+    "service_destinataire": {
+      "type": "string"
+    },
+    "materiel": {
+      "type": "string"
+    },
+    "materiel_reference": {
+      "type": "string"
+    },
+    "quantite": {
+      "type": "integer",
+      "default": 1
+    },
+    "motif": {
+      "type": "string"
+    },
+    "observation": {
+      "type": "text"
+    },
+    "createur": {
+      "type": "string"
+    },
+    "createur_email": {
+      "type": "string"
+    },
+    "responsable_transfert": {
+      "type": "string"
+    },
+    "depositaire": {
+      "type": "string"
+    },
+    "chef_service_1": {
+      "type": "string"
+    },
+    "chef_service_2": {
+      "type": "string"
+    },
+    "responsable_transfert_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "depositaire_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "chef_service_1_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "chef_service_2_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "date_signature_responsable_transfert": {
+      "type": "string"
+    },
+    "date_signature_depositaire": {
+      "type": "string"
+    },
+    "date_signature_chef_service_1": {
+      "type": "string"
+    },
+    "date_signature_chef_service_2": {
+      "type": "string"
+    },
+    "signataire_responsable_transfert": {
+      "type": "string"
+    },
+    "signataire_depositaire": {
+      "type": "string"
+    },
+    "signataire_chef_service_1": {
+      "type": "string"
+    },
+    "signataire_chef_service_2": {
+      "type": "string"
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": ["en_attente", "validee"],
+      "default": "en_attente"
+    },
+    "historique": {
+      "type": "json"
+    },
+    "qr_token": {
+      "type": "string",
+      "unique": true
+    }
+  }
+}

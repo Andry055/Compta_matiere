@@ -1,0 +1,24 @@
+# Dépendances
+node_modules/
+
+# Builds et artefacts
+dist/
+build/
+build.log
+
+# Caches
+.vite/
+*.tsbuildinfo
+.eslintcache
+
+# Logs
+*.log
+
+# OS / éditeur
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Artefacts Vite
+*.timestamp-*.mjs

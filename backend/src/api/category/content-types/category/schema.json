@@ -1,0 +1,31 @@
+{
+  "kind": "collectionType",
+  "collectionName": "categories",
+  "info": {
+    "singularName": "category",
+    "pluralName": "categories",
+    "displayName": "category"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "nom": {
+      "type": "string",
+      "required": true
+    },
+    "code": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "materiaux": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::material.material",
+      "mappedBy": "categorie"
+    }
+  }
+}

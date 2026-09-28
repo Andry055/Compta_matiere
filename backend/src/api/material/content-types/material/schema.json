@@ -1,0 +1,58 @@
+{
+  "kind": "collectionType",
+  "collectionName": "materials",
+  "info": {
+    "singularName": "material",
+    "pluralName": "materials",
+    "displayName": "material"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "designation": {
+      "type": "string",
+      "required": true
+    },
+    "numero_serie": {
+      "type": "string"
+    },
+    "nomenclature": {
+      "type": "string"
+    },
+    "categorie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::category.category",
+      "inversedBy": "materiaux"
+    },
+    "quantite_stock": {
+      "type": "integer",
+      "default": 0
+    },
+    "valeur_unitaire": {
+      "type": "decimal"
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": ["en_stock", "distribue", "maintenance", "reforme", "sortie"],
+      "default": "en_stock"
+    },
+    "observations": {
+      "type": "text"
+    },
+    "lignes_entree": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::entree-ligne.entree-ligne",
+      "mappedBy": "materiel"
+    },
+    "lignes_sortie": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::sortie-ligne.sortie-ligne",
+      "mappedBy": "materiel"
+    }
+  }
+}

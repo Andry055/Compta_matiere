@@ -8,6 +8,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { User as UserType } from "../App";
+import { AppRole } from "../types/roles";
+import { strapiLogin, StrapiAuthUser } from "../lib/api";
 
 interface LoginScreenProps {
   onLogin: (user: UserType) => void;
@@ -82,6 +84,34 @@ const mockUserDatabase: Array<UserType & { password: string }> = [
   },
 ];
 
+// Rôles métier reconnus par l'application (rôle Strapi -> rôle applicatif)
+const KNOWN_APP_ROLES: AppRole[] = [
+  "depositaire",
+  "magasinier",
+  "logistique",
+  "comptable",
+  "demandeur",
+];
+
+/** Transforme un utilisateur Strapi (JWT) en profil applicatif */
+function mapStrapiUser(user: StrapiAuthUser): UserType | null {
+  const role = (user.role?.type || user.role?.code || "").toLowerCase();
+  const isKnown =
+    role === "admin" ||
+    (KNOWN_APP_ROLES as string[]).includes(role);
+  if (!isKnown) return null;
+
+  return {
+    id: user.documentId || String(user.id),
+    name: user.username,
+    email: user.email,
+    role: role as UserType["role"],
+    department: user.department || "",
+    permissions: ["equipment.view"],
+    ...(role === "demandeur" ? { demandeurLevel: "service" as const } : {}),
+  };
+}
+
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -96,6 +126,34 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setError("");
     setIsLoading(true);
 
+    const applyRememberMe = () => {
+      if (rememberMe) {
+        localStorage.setItem("rememberMe", "true");
+        localStorage.setItem("savedEmail", email);
+      } else {
+        localStorage.removeItem("rememberMe");
+        localStorage.removeItem("savedEmail");
+      }
+    };
+
+    // -----------------------------------------------------------------------
+    // 1) API Strapi (JWT) : la vraie persistance côté serveur
+    // -----------------------------------------------------------------------
+    const strapiAuth = await strapiLogin(email, password);
+    if (strapiAuth) {
+      const mapped = mapStrapiUser(strapiAuth.user);
+      if (mapped) {
+        applyRememberMe();
+        setIsLoading(false);
+        onLogin(mapped);
+        return;
+      }
+      // Rôle inconnu : on retombe sur les comptes de démonstration locaux
+    }
+
+    // -----------------------------------------------------------------------
+    // 2) Repli hors ligne : comptes de démonstration de l'application
+    // -----------------------------------------------------------------------
     // Simulate API call delay
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
@@ -111,13 +169,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       onLogin(userWithoutPassword);
 
       // Store remember me preference
-      if (rememberMe) {
-        localStorage.setItem("rememberMe", "true");
-        localStorage.setItem("savedEmail", email);
-      } else {
-        localStorage.removeItem("rememberMe");
-        localStorage.removeItem("savedEmail");
-      }
+      applyRememberMe();
     } else {
       setError("Email ou mot de passe incorrect");
     }
@@ -314,7 +366,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                     >
                       <div className="text-blue-700 dark:text-blue-300">
                         👤 <strong>Rakotomalala Hery</strong> - Dépositaire
-                        comptable
+                        par service
                       </div>
                       <div className="text-blue-600 dark:text-blue-400">
                         hery.rakoto@mtefop.gov.mg / depositaire123

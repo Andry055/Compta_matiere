@@ -1,0 +1,38 @@
+{
+  "kind": "collectionType",
+  "collectionName": "sortie_lignes",
+  "info": {
+    "singularName": "sortie-ligne",
+    "pluralName": "sortie-lignes",
+    "displayName": "sortieLigne"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "sortie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie.sortie",
+      "inversedBy": "lignes"
+    },
+    "materiel": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::material.material",
+      "inversedBy": "lignes_sortie"
+    },
+    "quantite": {
+      "type": "integer",
+      "required": true,
+      "default": 1
+    },
+    "valeur_unitaire": {
+      "type": "decimal"
+    },
+    "observations": {
+      "type": "string"
+    }
+  }
+}

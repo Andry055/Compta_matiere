@@ -53,6 +53,7 @@ import {
 } from "../types/accounting";
 import {
   getJournalEntries,
+  getMovementsByJournalId,
 } from "../lib/journal-store";
 import { toast } from "sonner";
 
@@ -1162,13 +1163,41 @@ export function Journal() {
               {selectedEntry.observations && (
                 <div>
                   <label className="text-sm font-medium text-muted-foreground">
-                    Observations
+                    Observations & Contrôles
                   </label>
                   <p className="mt-1 text-sm bg-muted/20 p-3 rounded">
                     {selectedEntry.observations}
                   </p>
                 </div>
               )}
+
+              {/* Mouvements de stock associés */}
+              {selectedEntry.numeroOrdre &&
+                getMovementsByJournalId(selectedEntry.numeroOrdre).length > 0 && (
+                  <div>
+                    <label className="text-sm font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Package className="h-4 w-4 text-emerald-600" />
+                      Mouvements de stock générés
+                    </label>
+                    <div className="mt-1.5 space-y-1.5">
+                      {getMovementsByJournalId(selectedEntry.numeroOrdre).map(
+                        (mvt) => (
+                          <div
+                            key={mvt.id}
+                            className="text-xs p-2.5 rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                          >
+                            <span className="font-mono font-medium">
+                              {mvt.id} : +{mvt.quantiteMouvement} unité(s)
+                            </span>
+                            <span className="text-muted-foreground text-[11px]">
+                              {mvt.motif}
+                            </span>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  </div>
+                )}
 
               {/* Métadonnées */}
               <div className="border-t pt-4">

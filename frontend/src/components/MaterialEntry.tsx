@@ -1,15 +1,18 @@
 import { useEffect, useRef, useState, useMemo } from "react";
 import {
+  AlertTriangle,
   ArrowDown,
   ArrowLeft,
   ArrowRight,
   Bell,
   BookCheck,
   BookOpen,
+  Camera,
   Check,
   CheckCircle2,
   ClipboardCheck,
   FileText,
+  Info,
   Lock,
   Package,
   PackageCheck,
@@ -18,6 +21,7 @@ import {
   Save,
   Trash2,
   UserCheck,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { User } from "../App";
@@ -37,7 +41,13 @@ import {
   persistReception,
   resolveActiveRole,
 } from "../lib/role-access";
-import { appendJournalEntryFromReception, journalEntryExists } from "../lib/journal-store";
+import {
+  appendJournalEntryFromReception,
+  appendMovementsFromReception,
+  generateSequentialJournalId,
+  getMovementsByJournalId,
+  journalEntryExists,
+} from "../lib/journal-store";
 import {
   AppNotification,
   countUnread,
@@ -158,9 +168,7 @@ function generateArticleId() {
 }
 
 function generateJournalEntryId() {
-  const year = new Date().getFullYear();
-  const seq = Math.floor(Math.random() * 900 + 100); // 3-digit random for demo
-  return `JE-${year}-${String(seq).padStart(4, "0")}`;
+  return generateSequentialJournalId();
 }
 
 function formatAriary(value: number) {
@@ -720,6 +728,10 @@ function Step1BonLivraison({
     0
   );
 
+  const ecartsQte = data.articles.filter(
+    (a) => a.quantiteCommandee > 0 && a.quantiteLivree !== a.quantiteCommandee
+  );
+
   return (
     <div className="space-y-6">
       {!canEdit && <ReadOnlyNotice requiredRoleLabel={requiredRoleLabel} />}
@@ -807,7 +819,21 @@ function Step1BonLivraison({
             )}
           </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {ecartsQte.length > 0 && (
+            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm">
+              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-semibold">
+                  {ecartsQte.length} écart(s) de quantité détecté(s) (commandé ≠ livré)
+                </p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
+                  La quantité livrée diffère de la quantité initialement commandée. Ces écarts seront tracés dans les observations comptables et les mouvements de stock.
+                </p>
+              </div>
+            </div>
+          )}
+
           {data.articles.length === 0 ? (
             <div className="text-center py-8 text-muted-foreground">
               Aucun article. Cliquez sur « Ajouter » pour commencer.
@@ -877,7 +903,7 @@ function Step1BonLivraison({
                             disabled={!canEdit}
                           />
                         </TableCell>
-                        <TableCell>
+                        <TableCell className="align-top">
                           <Input
                             type="number"
                             min={0}
@@ -892,6 +918,20 @@ function Step1BonLivraison({
                             className="h-8 text-sm text-right w-20"
                             disabled={!canEdit}
                           />
+                          {article.quantiteCommandee > 0 &&
+                            article.quantiteLivree !== article.quantiteCommandee && (
+                              <span
+                                className={`block text-[11px] text-right font-medium mt-1 ${
+                                  article.quantiteLivree < article.quantiteCommandee
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-blue-600 dark:text-blue-400"
+                                }`}
+                              >
+                                {article.quantiteLivree < article.quantiteCommandee
+                                  ? `Manque ${article.quantiteCommandee - article.quantiteLivree}`
+                                  : `Surplus +${article.quantiteLivree - article.quantiteCommandee}`}
+                              </span>
+                            )}
                         </TableCell>
                         <TableCell>
                           <Input
@@ -1018,6 +1058,20 @@ function Step1BonLivraison({
                             className="h-8 text-sm"
                             disabled={!canEdit}
                           />
+                          {article.quantiteCommandee > 0 &&
+                            article.quantiteLivree !== article.quantiteCommandee && (
+                              <span
+                                className={`block text-[10px] font-medium mt-0.5 ${
+                                  article.quantiteLivree < article.quantiteCommandee
+                                    ? "text-amber-600 dark:text-amber-400"
+                                    : "text-blue-600 dark:text-blue-400"
+                                }`}
+                              >
+                                {article.quantiteLivree < article.quantiteCommandee
+                                  ? `Manque ${article.quantiteCommandee - article.quantiteLivree}`
+                                  : `Surplus +${article.quantiteLivree - article.quantiteCommandee}`}
+                              </span>
+                            )}
                         </div>
                         <div>
                           <Label className="text-xs">Prix unit.</Label>
@@ -1054,9 +1108,125 @@ function Step1BonLivraison({
 }
 
 // ──────────────────────────────────────────────
-// ÉTAPE 2 — Contrôle magasinier (BL et articles en lecture seule ;
-// l'état et la conformité sont vérifiés par le magasinier)
+// Capture photo du matériel (contrôle magasinier)
 // ──────────────────────────────────────────────
+
+/** Redimensionne/comprime une image (Data URL) avant stockage : max 800px,
+ *  qualité JPEG 0.7 — les Data URLs restent légères pour le localStorage. */
+function compressImageFile(file: File, maxDim = 800, quality = 0.7): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) {
+          reject(new Error("Canvas non disponible"));
+          return;
+        }
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.onerror = () => reject(new Error("Image illisible"));
+      img.src = reader.result as string;
+    };
+    reader.onerror = () => reject(new Error("Fichier illisible"));
+    reader.readAsDataURL(file);
+  });
+}
+
+/** Capture/attachement de photos par article lors du contrôle physique.
+ *  Caméra arrière sur mobile (capture="environment"), sinon fichier. */
+function PhotoCapture({
+  photos,
+  onAdd,
+  onRemove,
+  disabled,
+}: {
+  photos?: string[];
+  onAdd: (dataUrl: string) => void;
+  onRemove: (index: number) => void;
+  disabled?: boolean;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+
+  const handleFiles = async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setBusy(true);
+    try {
+      for (const file of Array.from(files)) {
+        if (!file.type.startsWith("image/")) continue;
+        const dataUrl = await compressImageFile(file);
+        onAdd(dataUrl);
+        await new Promise((r) => setTimeout(r, 50));
+      }
+    } catch {
+      toast.error("Impossible de traiter la photo.");
+    } finally {
+      setBusy(false);
+      if (inputRef.current) inputRef.current.value = "";
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2 flex-wrap">
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={(e) => handleFiles(e.target.files)}
+        />
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="gap-2 h-8"
+          disabled={disabled || busy}
+          onClick={() => inputRef.current?.click()}
+        >
+          <Camera className="h-4 w-4" />
+          {busy ? "Traitement..." : "Prendre une photo"}
+        </Button>
+        {photos && photos.length > 0 && (
+          <Badge variant="outline" className="text-xs">
+            {photos.length} photo(s)
+          </Badge>
+        )}
+      </div>
+      {photos && photos.length > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {photos.map((p, i) => (
+            <div key={i} className="relative group">
+              <img
+                src={p}
+                alt={`Photo ${i + 1}`}
+                className="h-16 w-16 object-cover rounded-md border"
+              />
+              {!disabled && (
+                <button
+                  type="button"
+                  onClick={() => onRemove(i)}
+                  className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-destructive text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  title="Supprimer la photo"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function Step2ControleMagasinier({
   data,
@@ -1087,6 +1257,14 @@ function Step2ControleMagasinier({
     });
   };
 
+  const reservesCount = data.controles.filter(
+    (c) => !c.conforme || c.etat === "defaillant"
+  ).length;
+
+  const missingRemarks = data.controles.filter(
+    (c) => (!c.conforme || c.etat === "defaillant") && !c.remarque.trim()
+  ).length;
+
   return (
     <div className="space-y-6">
       {!canEdit && <ReadOnlyNotice requiredRoleLabel={requiredRoleLabel} />}
@@ -1100,7 +1278,7 @@ function Step2ControleMagasinier({
           <CardDescription>
             Bon de livraison saisi par {depositaireName} —{" "}
             <span className="font-mono">{data.numeroBL}</span> (
-            {data.fournisseur}). Vérifiez l'état de chaque article livré.
+            {data.fournisseur}). Vérifiez l'état et la conformité de chaque article livré.
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -1109,29 +1287,51 @@ function Step2ControleMagasinier({
               (c) => c.articleId === article.id
             );
             if (!controle) return null;
+            const hasIssue = !controle.conforme || controle.etat === "defaillant";
+
             return (
               <div key={article.id}>
                 {index > 0 && <Separator className="mb-4" />}
                 <div className="space-y-3">
-                  <div className="flex items-start justify-between">
+                  <div className="flex items-start justify-between gap-2">
                     <div>
                       <h4 className="text-sm font-semibold text-foreground">
                         {article.designation}
                       </h4>
                       <p className="text-xs text-muted-foreground font-mono">
                         {article.referenceNomenclature} — Qté livrée :{" "}
-                        {article.quantiteLivree}
+                        <span className="font-semibold text-foreground">
+                          {article.quantiteLivree}
+                        </span>
+                        {article.quantiteCommandee > 0 &&
+                          article.quantiteLivree !== article.quantiteCommandee && (
+                            <span className="ml-2 font-sans font-medium text-amber-600 dark:text-amber-400">
+                              (Cmd : {article.quantiteCommandee} —{" "}
+                              {article.quantiteLivree < article.quantiteCommandee
+                                ? `Manque ${article.quantiteCommandee - article.quantiteLivree}`
+                                : `Surplus +${article.quantiteLivree - article.quantiteCommandee}`}
+                              )
+                            </span>
+                          )}
                       </p>
                     </div>
-                    <Badge
-                      className={
-                        controle.conforme
-                          ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                          : "bg-muted text-muted-foreground"
-                      }
-                    >
-                      {controle.conforme ? "Conforme" : "Non vérifié"}
-                    </Badge>
+                    <div className="flex items-center gap-2 shrink-0">
+                      {hasIssue && (
+                        <Badge variant="destructive" className="gap-1 text-xs">
+                          <AlertTriangle className="h-3 w-3" />
+                          Réserve
+                        </Badge>
+                      )}
+                      <Badge
+                        className={
+                          controle.conforme
+                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                            : "bg-muted text-muted-foreground"
+                        }
+                      >
+                        {controle.conforme ? "Conforme" : "Non conforme"}
+                      </Badge>
+                    </div>
                   </div>
 
                   <div className="grid gap-4 sm:grid-cols-3">
@@ -1161,7 +1361,14 @@ function Step2ControleMagasinier({
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Remarque</Label>
+                      <div className="flex items-center justify-between">
+                        <Label>Remarque</Label>
+                        {hasIssue && (
+                          <span className="text-[11px] font-medium text-destructive">
+                            * Motif requis
+                          </span>
+                        )}
+                      </div>
                       <Input
                         value={controle.remarque}
                         onChange={(e) =>
@@ -1173,8 +1380,16 @@ function Step2ControleMagasinier({
                             ),
                           })
                         }
-                        placeholder="Optionnel..."
-                        className="h-9"
+                        placeholder={
+                          hasIssue
+                            ? "Préciser impérativement la réserve..."
+                            : "Optionnel..."
+                        }
+                        className={`h-9 ${
+                          hasIssue && !controle.remarque.trim()
+                            ? "border-destructive focus-visible:ring-destructive"
+                            : ""
+                        }`}
                         disabled={!canEdit}
                       />
                     </div>
@@ -1202,12 +1417,63 @@ function Step2ControleMagasinier({
                       </div>
                     </div>
                   </div>
+
+                  {/* Preuves photographiques de l'article (magasinier) */}
+                  <div className="pt-1 border-t border-border/60">
+                    <Label className="text-xs text-muted-foreground">
+                      Photos du matériel (preuves à l'arrivée)
+                    </Label>
+                    <PhotoCapture
+                      photos={controle.photos}
+                      onAdd={(dataUrl) =>
+                        onChange({
+                          controles: data.controles.map((c) =>
+                            c.articleId === article.id
+                              ? { ...c, photos: [...(c.photos ?? []), dataUrl] }
+                              : c
+                          ),
+                        })
+                      }
+                      onRemove={(idx) =>
+                        onChange({
+                          controles: data.controles.map((c) =>
+                            c.articleId === article.id
+                              ? {
+                                  ...c,
+                                  photos: (c.photos ?? []).filter(
+                                    (_, i) => i !== idx
+                                  ),
+                                }
+                              : c
+                          ),
+                        })
+                      }
+                      disabled={!canEdit}
+                    />
+                  </div>
                 </div>
               </div>
             );
           })}
         </CardContent>
       </Card>
+
+      {/* Alerte sur les réserves constatées */}
+      {reservesCount > 0 && (
+        <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-amber-800 dark:text-amber-300 space-y-1">
+          <div className="flex items-center gap-2 font-semibold">
+            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
+            <span>
+              {reservesCount} article(s) signalé(s) avec réserve ou non conforme(s)
+            </span>
+          </div>
+          <p className="text-xs text-amber-700 dark:text-amber-400">
+            {missingRemarks > 0
+              ? `⚠️ Une remarque explicative est obligatoire pour les ${missingRemarks} article(s) concerné(s) avant de pouvoir certifier la réception.`
+              : "Tous les motifs de réserves ont été renseignés. Vous pouvez certifier la réception physique avec réserves."}
+          </p>
+        </div>
+      )}
 
       {/* Certification du magasinier */}
       <Card
@@ -1225,7 +1491,7 @@ function Step2ControleMagasinier({
               onCheckedChange={(checked) =>
                 onChange({ magasinierCertifie: checked === true })
               }
-              disabled={!canEdit}
+              disabled={!canEdit || missingRemarks > 0}
               className="mt-0.5"
             />
             <div>
@@ -1240,6 +1506,11 @@ function Step2ControleMagasinier({
                 l'état et la quantité de chaque article livré, à partir du bon
                 de livraison saisi par {depositaireName}.
               </p>
+              {missingRemarks > 0 && (
+                <p className="text-xs text-destructive mt-1 font-medium">
+                  Remplissez le motif pour chaque article en réserve pour activer la certification.
+                </p>
+              )}
               {!canEdit && (
                 <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
                   <Lock className="h-3 w-3" />
@@ -1274,9 +1545,169 @@ function Step3EnregistrementDepositaire({
     0
   );
 
+  const conformesCount = data.controles.filter(
+    (c) => c.conforme && c.etat !== "defaillant"
+  ).length;
+
+  // Strictement les articles ayant une réserve réelle (non conforme ou défaillant)
+  const articlesAvecReserves = data.controles.filter(
+    (c) => !c.conforme || c.etat === "defaillant"
+  );
+
+  // Remarques informatives sur articles conformes (ex: "c'est bon", "emballage intact")
+  const observationsArticlesConformes = data.controles.filter(
+    (c) => c.conforme && c.etat !== "defaillant" && c.remarque.trim().length > 0
+  );
+
+  const ecartsQte = data.articles.filter(
+    (a) => a.quantiteCommandee > 0 && a.quantiteLivree !== a.quantiteCommandee
+  );
+
   return (
     <div className="space-y-6">
       {!canEdit && <ReadOnlyNotice requiredRoleLabel={requiredRoleLabel} />}
+
+      {/* Synthèse du contrôle physique effectué par le magasinier */}
+      <Card className="border-l-4 border-l-blue-500">
+        <CardHeader className="py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <CardTitle className="text-base">
+                Synthèse du contrôle physique (Magasinier)
+              </CardTitle>
+            </div>
+            <Badge
+              className={
+                data.magasinierCertifie
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+              }
+            >
+              {data.magasinierCertifie
+                ? "Certifié par le magasinier"
+                : "En attente de certification"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <div className="p-2.5 rounded bg-muted/60">
+              <span className="text-xs text-muted-foreground block">
+                Articles conformes
+              </span>
+              <span className="text-base font-semibold text-green-600 dark:text-green-400">
+                {conformesCount} / {data.articles.length}
+              </span>
+            </div>
+            <div className="p-2.5 rounded bg-muted/60">
+              <span className="text-xs text-muted-foreground block">
+                Articles avec réserve(s)
+              </span>
+              <span
+                className={`text-base font-semibold ${
+                  articlesAvecReserves.length > 0
+                    ? "text-destructive"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {articlesAvecReserves.length}
+              </span>
+            </div>
+            <div className="p-2.5 rounded bg-muted/60">
+              <span className="text-xs text-muted-foreground block">
+                Écarts de quantité
+              </span>
+              <span
+                className={`text-base font-semibold ${
+                  ecartsQte.length > 0
+                    ? "text-amber-600 dark:text-amber-400"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {ecartsQte.length}
+              </span>
+            </div>
+          </div>
+
+          {/* Réserves réelles (anomalies ou défauts) */}
+          {articlesAvecReserves.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Réserves émises par le magasinier ({articlesAvecReserves.length}) :
+              </p>
+              <div className="space-y-1.5">
+                {articlesAvecReserves.map((c) => {
+                  const art = data.articles.find((a) => a.id === c.articleId);
+                  return (
+                    <div
+                      key={c.articleId}
+                      className="text-xs p-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                    >
+                      <div>
+                        <span className="font-semibold text-destructive">
+                          {art?.designation || "Article"} :
+                        </span>{" "}
+                        <span>{c.remarque || "(Aucun motif saisi)"}</span>
+                      </div>
+                      <Badge
+                        variant="destructive"
+                        className="text-[10px] shrink-0 self-start sm:self-auto"
+                      >
+                        État : {ETAT_LABELS[c.etat]} — Non conforme
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Observations sur articles conformes (notes informatives) */}
+          {observationsArticlesConformes.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              <p className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                <Info className="h-3.5 w-3.5 text-primary" />
+                Remarques du magasinier sur les articles conformes :
+              </p>
+              <div className="space-y-1.5">
+                {observationsArticlesConformes.map((c) => {
+                  const art = data.articles.find((a) => a.id === c.articleId);
+                  return (
+                    <div
+                      key={c.articleId}
+                      className="text-xs p-2.5 rounded-lg bg-muted/60 border border-border text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                    >
+                      <div>
+                        <span className="font-semibold text-foreground">
+                          {art?.designation || "Article"} :
+                        </span>{" "}
+                        <span className="text-muted-foreground">
+                          {c.remarque}
+                        </span>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className="text-[10px] shrink-0 self-start sm:self-auto text-muted-foreground border-border"
+                      >
+                        État : {ETAT_LABELS[c.etat]} — Conforme
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-300">
+            <PackageCheck className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
+            <span>
+              La validation de cette étape créera automatiquement les entrées correspondantes dans le grand livre des mouvements de stock.
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
@@ -1434,6 +1865,7 @@ function Step4PVReception({
     (sum, a) => sum + a.quantiteLivree * a.prixUnitaire,
     0
   );
+  const stockMovements = getMovementsByJournalId(data.journalEntryId);
   const now = new Date().toLocaleDateString("fr-FR", {
     year: "numeric",
     month: "long",
@@ -1583,6 +2015,43 @@ function Step4PVReception({
               </div>
             )}
 
+            {/* Preuves photographiques du contrôle magasinier */}
+            {(() => {
+              const articlesWithPhotos = data.articles
+                .map((a) => ({
+                  article: a,
+                  photos: data.controles.find((c) => c.articleId === a.id)?.photos ?? [],
+                }))
+                .filter((x) => x.photos.length > 0);
+              if (articlesWithPhotos.length === 0) return null;
+              return (
+                <div className="space-y-2">
+                  <Separator />
+                  <h4 className="text-sm font-semibold flex items-center gap-2">
+                    <Camera className="h-4 w-4 text-muted-foreground" />
+                    Preuves photographiques — contrôle magasinier
+                  </h4>
+                  {articlesWithPhotos.map(({ article, photos }) => (
+                    <div key={article.id} className="space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">
+                        {article.designation} ({photos.length} photo(s))
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        {photos.map((p, i) => (
+                          <img
+                            key={i}
+                            src={p}
+                            alt={`${article.designation} — photo ${i + 1}`}
+                            className="h-20 w-20 object-cover rounded border print:h-24 print:w-24"
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
             <Separator />
 
             {/* Signatures */}
@@ -1651,6 +2120,24 @@ function Step4PVReception({
               Voir dans le journal
               <ArrowRight className="h-4 w-4 ml-2" />
             </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Mouvements de stock générés */}
+      {stockMovements.length > 0 && (
+        <Card className="print-hidden border-emerald-500/30 bg-emerald-500/5">
+          <CardContent className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm text-emerald-900 dark:text-emerald-300">
+              <PackageCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span>
+                <strong>{stockMovements.length} mouvement(s) de stock d'entrée</strong> créé(s) avec la pièce justificative{" "}
+                <span className="font-mono font-semibold">{data.numeroBL}</span>.
+              </span>
+            </div>
+            <Badge variant="outline" className="border-emerald-500/40 text-emerald-700 dark:text-emerald-300 self-start sm:self-auto">
+              Stock incrémenté
+            </Badge>
           </CardContent>
         </Card>
       )}
@@ -1828,11 +2315,22 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     if (receptionData.magasinierCertifie && !certifiedRef.current) {
       certifiedRef.current = true;
       persistReception(receptionData);
+      // Aligné sur le chemin admin (goNext) : le dépositaire est informé du
+      // nombre de réserves émises par le magasinier, s'il y en a.
+      const anomaliesCount = receptionData.controles.filter(
+        (c) => !c.conforme || c.etat === "defaillant"
+      ).length;
       pushNotification(
         "depositaire",
         "reception_confirmee",
-        "Réception physique certifiée",
-        `${magasinierName} a contrôlé et certifié la réception du BL ${receptionData.numeroBL}. L'enregistrement au journal est en attente.`,
+        anomaliesCount > 0
+          ? `Réception certifiée (${anomaliesCount} réserve(s))`
+          : "Réception physique certifiée",
+        `${magasinierName} a contrôlé et certifié le BL ${receptionData.numeroBL}${
+          anomaliesCount > 0
+            ? ` avec ${anomaliesCount} article(s) sous réserve`
+            : ""
+        }. L'enregistrement au journal est en attente.`,
         receptionData.numeroBL
       );
       refreshNotifications();
@@ -1896,8 +2394,12 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         );
         return hasSupplier && hasBL && hasDate && hasArticles && allArticlesValid;
       }
-      case 2:
-        return receptionData.magasinierCertifie;
+      case 2: {
+        const hasUnjustifiedAnomalies = receptionData.controles.some(
+          (c) => (!c.conforme || c.etat === "defaillant") && !c.remarque.trim()
+        );
+        return receptionData.magasinierCertifie && !hasUnjustifiedAnomalies;
+      }
       case 3:
         return receptionData.depositaireCertifie;
       case 4:
@@ -1938,11 +2440,20 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
 
     if (currentStep === 2) {
       persistReception(receptionData);
+      const anomaliesCount = receptionData.controles.filter(
+        (c) => !c.conforme || c.etat === "defaillant"
+      ).length;
       pushNotification(
         "depositaire",
         "reception_confirmee",
-        "Réception physique certifiée",
-        `${magasinierName} a contrôlé et certifié la réception du BL ${receptionData.numeroBL}. L'enregistrement au journal est en attente.`,
+        anomaliesCount > 0
+          ? `Réception certifiée (${anomaliesCount} réserve(s))`
+          : "Réception physique certifiée",
+        `${magasinierName} a contrôlé et certifié le BL ${receptionData.numeroBL}${
+          anomaliesCount > 0
+            ? ` avec ${anomaliesCount} article(s) sous réserve`
+            : ""
+        }. L'enregistrement au journal est en attente.`,
         receptionData.numeroBL
       );
       refreshNotifications();
@@ -1950,7 +2461,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
 
     if (currentStep === 3) {
       // Enregistrement : horodatage + écriture au journal + persistance +
-      // notification au magasinier.
+      // mouvements de stock + notification au magasinier.
       const withDate: ReceptionData = {
         ...receptionData,
         dateEnregistrement: new Date().toISOString(),
@@ -1965,6 +2476,11 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         controlePar: magasinierName,
       });
 
+      // Mouvements RÉELS de stock générés
+      const stockMovements = appendMovementsFromReception(withDate, {
+        operateur: depositaireName,
+      });
+
       pushNotification(
         "magasinier",
         "enregistrement",
@@ -1974,9 +2490,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
       );
       refreshNotifications();
       toast.success("Enregistrement validé", {
-        description: journalLines
-          ? `Écriture ${withDate.journalEntryId} enregistrée au journal (${journalLines.length} ligne(s)).`
-          : `Écriture ${withDate.journalEntryId} générée au journal.`,
+        description: `Écriture ${withDate.journalEntryId} enregistrée (${journalLines?.length ?? withDate.articles.length} ligne(s) journal + ${stockMovements?.length ?? withDate.articles.length} mouvement(s) de stock).`,
       });
     }
 

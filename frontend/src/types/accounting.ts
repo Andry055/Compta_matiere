@@ -183,6 +183,9 @@ export interface ControleArticle {
   etat: EtatConstate;
   conforme: boolean;
   remarque: string;
+  /** Photos prises par le magasinier lors du contrôle physique (Data URLs
+   *  compressées). Preuves attachées à l'article, reprises dans le PV. */
+  photos?: string[];
 }
 
 export interface ReceptionData {

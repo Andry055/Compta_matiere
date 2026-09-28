@@ -12,10 +12,38 @@
 import {
   EtatConstate,
   JournalEntry,
+  MouvementStock,
   ReceptionData,
 } from "../types/accounting";
 
 const JOURNAL_KEY = "compta_journal_receptions";
+const MOVEMENTS_KEY = "compta_mouvements_stock";
+const JOURNAL_SEQ_KEY = "compta_journal_seq";
+
+// ──────────────────────────────────────────────
+// ID séquentiel du journal (remplace Math.random)
+// ──────────────────────────────────────────────
+
+/** Génère un n° d'écriture séquentiel unique : JE-{année}-{séquence sur 4 chiffres}.
+ *  Le compteur est persisté en localStorage pour survivre aux rechargements. */
+export function generateSequentialJournalId(): string {
+  const year = new Date().getFullYear();
+  try {
+    const raw = localStorage.getItem(JOURNAL_SEQ_KEY);
+    const data = raw ? JSON.parse(raw) : { year, seq: 0 };
+    // Réinitialiser le compteur si on change d'année.
+    if (data.year !== year) {
+      data.year = year;
+      data.seq = 0;
+    }
+    data.seq += 1;
+    localStorage.setItem(JOURNAL_SEQ_KEY, JSON.stringify(data));
+    return `JE-${year}-${String(data.seq).padStart(4, "0")}`;
+  } catch {
+    // Fallback : timestamp-based pour éviter les doublons.
+    return `JE-${year}-${Date.now().toString(36).slice(-4).toUpperCase()}`;
+  }
+}
 
 /** Correspondance code nomenclature → espèce (catégorie) du matériel. */
 const ESPECE_BY_CODE: Record<string, string> = {
@@ -80,11 +108,19 @@ export function appendJournalEntryFromReception(
     const today = now.split("T")[0];
     const nonConformes = data.controles.filter((c) => !c.conforme).length;
 
+    // Écarts de quantité commandée vs livrée
+    const ecartsQte = data.articles.filter(
+      (a) => a.quantiteCommandee > 0 && a.quantiteLivree !== a.quantiteCommandee
+    );
+
     const observations = [
       `Enregistré depuis la réception BL ${data.numeroBL} (${data.fournisseur})`,
       data.observationsBL || null,
       nonConformes > 0
         ? `${nonConformes} article(s) signalé(s) non conforme(s) au contrôle magasinier`
+        : null,
+      ecartsQte.length > 0
+        ? `${ecartsQte.length} article(s) avec écart de quantité (commandée ≠ livrée)`
         : null,
     ]
       .filter(Boolean)
@@ -147,4 +183,89 @@ export function journalEntryExists(journalEntryId: string): boolean {
   } catch {
     return false;
   }
+}
+
+// ──────────────────────────────────────────────
+// Mouvements de stock
+// ──────────────────────────────────────────────
+
+/** Crée un mouvement de stock d'entrée pour chaque article de la réception.
+ *  Appelé en même temps que l'écriture au journal (étape 3).
+ *  Idempotent : vérifie par journalEntryId. */
+export function appendMovementsFromReception(
+  data: ReceptionData,
+  options: { operateur: string }
+): MouvementStock[] | null {
+  try {
+    const raw = localStorage.getItem(MOVEMENTS_KEY);
+    const existing: MouvementStock[] = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(existing)) return null;
+
+    // Idempotence
+    if (existing.some((m) => m.journalEntryId === data.journalEntryId)) {
+      return null;
+    }
+
+    const now = new Date().toISOString();
+    const today = now.split("T")[0];
+
+    const created: MouvementStock[] = data.articles.map((article, index) => {
+      const ecart =
+        article.quantiteCommandee > 0 &&
+        article.quantiteLivree !== article.quantiteCommandee;
+      const motifParts = [
+        `Réception fournisseur — ${data.fournisseur}`,
+        ecart
+          ? `Écart quantité : commandé ${article.quantiteCommandee}, livré ${article.quantiteLivree}`
+          : null,
+      ]
+        .filter(Boolean)
+        .join(" — ");
+
+      return {
+        id: `mvt-${data.journalEntryId}-${index + 1}`,
+        journalEntryId: data.journalEntryId,
+        type: "entree" as const,
+        numeroOrdre: data.journalEntryId,
+        dateOperation: data.dateBL || today,
+        quantiteAvant: 0, // Pas de stock antérieur dans ce prototype
+        quantiteMouvement: article.quantiteLivree,
+        quantiteApres: article.quantiteLivree,
+        operateur: options.operateur,
+        motif: motifParts,
+        pieceJustificative: data.numeroBL,
+      };
+    });
+
+    if (created.length === 0) return null;
+
+    localStorage.setItem(
+      MOVEMENTS_KEY,
+      JSON.stringify([...existing, ...created])
+    );
+    return created;
+  } catch {
+    return null;
+  }
+}
+
+/** Récupère tous les mouvements de stock persistés. */
+export function getMovements(): MouvementStock[] {
+  try {
+    const raw = localStorage.getItem(MOVEMENTS_KEY);
+    if (!raw) return [];
+    const persisted = JSON.parse(raw) as MouvementStock[];
+    return Array.isArray(persisted) ? persisted : [];
+  } catch {
+    return [];
+  }
+}
+
+/** Récupère les mouvements liés à une écriture journal spécifique. */
+export function getMovementsByJournalId(
+  journalEntryId: string
+): MouvementStock[] {
+  return getMovements().filter(
+    (m) => m.journalEntryId === journalEntryId
+  );
 }

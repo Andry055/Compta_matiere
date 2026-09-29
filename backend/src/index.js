@@ -210,6 +210,15 @@ const DEMAND_ACTIONS = [
 // l'accès aux routes custom et à la lecture des fournisseurs / matériaux.
 // ---------------------------------------------------------------------------
 const ENTREE_SIGN_ACTIONS = [
+  // Lecture des entrées : find/findOne sont désormais authentifiés (routes
+  // déclarées sans `auth: false` pour que le sanitizer préserve les
+  // relations lignes/fournisseur) -> il faut accorder la permission.
+  'api::entree.entree.find',
+  'api::entree.entree.findOne',
+  // Lecture des lignes : le sanitizer Content-API ne peuplerait la relation
+  // `lignes` que si le rôle peut lire le content-type cible.
+  'api::entree-ligne.entree-ligne.find',
+  'api::entree-ligne.entree-ligne.findOne',
   'api::entree.entree.createComplete',
   'api::entree.entree.sign',
   'api::entree.entree.reject',
@@ -235,6 +244,32 @@ const AFFECTATION_ACTIONS = [
 
 // Rôles habilités à créer / signer / rejeter une entrée (jamais le Demandeur).
 const ROLES_SIGNATAIRES = ['depositaire', 'magasinier', 'logistique', 'comptable'];
+
+// ---------------------------------------------------------------------------
+// Reddition de compte : lecture seule des rapports (recapitulation, etat
+// appreciatif, inventaire, grand-livre, bordereau) + CRUD de l'ouverture
+// d'exercice (stock initial par nomenclature). Réservé aux profils
+// dépositaire / comptable / logistique (contrôle aussi dans le contrôleur
+// via utils/rapportsGuard.js).
+// ---------------------------------------------------------------------------
+const RAPPORT_ACTIONS = [
+  'api::rapport.rapport.recapitulation',
+  'api::rapport.rapport.recapitulations',
+  'api::rapport.rapport.etatAppreciatif',
+  'api::rapport.rapport.inventaire',
+  'api::rapport.rapport.grandLivre',
+  'api::rapport.rapport.bordereau',
+];
+
+const OUVERTURE_ACTIONS = [
+  'api::ouverture-exercice.ouverture-exercice.find',
+  'api::ouverture-exercice.ouverture-exercice.findOne',
+  'api::ouverture-exercice.ouverture-exercice.create',
+  'api::ouverture-exercice.ouverture-exercice.update',
+  'api::ouverture-exercice.ouverture-exercice.delete',
+];
+
+const ROLES_RAPPORTS = ['depositaire', 'comptable', 'logistique'];
 
 // ---------------------------------------------------------------------------
 // Demandeur : il peut ENREGISTRER une entrée (elle démarre « En attente »,
@@ -370,6 +405,24 @@ async function ensureAuthSetup(strapi) {
     }
   }
 
+  // 2quinquies) Permissions « Reddition de compte » : rapports (lecture) et
+  // ouverture d'exercice (CRUD du stock initial), accordées aux rôles
+  // dépositaire / comptable / logistique. Le Demandeur n'y a jamais accès.
+  for (const type of ROLES_RAPPORTS) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of [...RAPPORT_ACTIONS, ...OUVERTURE_ACTIONS]) {
+      if (granted.has(`${role.type}:${action}`)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+    }
+  }
+  if (authenticated) {
+    for (const action of [...RAPPORT_ACTIONS, ...OUVERTURE_ACTIONS]) {
+      if (granted.has(`authenticated:${action}`)) continue;
+      await permQuery.create({ data: { action, role: authenticated.id } });
+    }
+  }
+
   // L'admin (rôle authenticated créé par Strapi) garde un accès complet via
   // l'interface d'administration ; on lui accorde aussi les routes custom.
   if (authenticated) {
@@ -460,6 +513,8 @@ async function seedOrganisation(strapi) {
   );
 }
 
+const { seedReddition } = require('./utils/seedReddition');
+
 module.exports = {
   /**
    * An asynchronous register function that runs before
@@ -486,6 +541,11 @@ module.exports = {
       await seedOrganisation(strapi);
     } catch (err) {
       strapi.log.error(`[seed] Échec du seed : ${err.message}`);
+    }
+    try {
+      await seedReddition(strapi);
+    } catch (err) {
+      strapi.log.error(`[seed-reddition] Échec : ${err.message}`);
     }
   },
 };

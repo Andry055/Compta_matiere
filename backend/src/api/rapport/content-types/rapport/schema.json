@@ -1,0 +1,13 @@
+{
+  "kind": "singleType",
+  "info": {
+    "singularName": "rapport",
+    "pluralName": "rapports",
+    "displayName": "rapport"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {}
+}

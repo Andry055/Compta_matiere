@@ -16,6 +16,7 @@ import {
   getStatutEntreeAffiche,
   getReferenceDate,
 } from "../lib/movements"
+import { RedditionSection } from "./RedditionSection"
 
 interface ReportData {
   id: string;
@@ -133,9 +134,9 @@ export function Reports({ user }: { user?: User }) {
   }
 
   const handleExport = (reportId: string, format: string) => {
-    // Simulation d'export
-    console.log(`Exporting ${reportId} in ${format} format`)
-    alert(`Export du rapport en ${format} démarré...`)
+    // Les exports réels (PDF/Excel) sont générés dans la section
+    // « Reddition de compte » ; ici, on ouvre l'aperçu du rapport demandé.
+    setSelectedReport(reportId)
   }
 
   const totalReports = availableReports.length
@@ -164,6 +165,9 @@ export function Reports({ user }: { user?: User }) {
           Rapport Personnalisé
         </button>
       </div>
+
+      {/* Reddition de compte (dépositaire, comptable, logistique) */}
+      <RedditionSection user={user} />
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">

@@ -699,12 +699,14 @@ export interface ApiEntreeLigneEntreeLigne extends Struct.CollectionTypeSchema {
     draftAndPublish: false;
   };
   attributes: {
+    conforme: Schema.Attribute.Boolean;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     designation: Schema.Attribute.String;
     entree: Schema.Attribute.Relation<'manyToOne', 'api::entree.entree'>;
     espece: Schema.Attribute.String;
+    etat: Schema.Attribute.Enumeration<['neuf', 'bon', 'moyen', 'defaillant']>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -939,6 +941,76 @@ export interface ApiMouvementMouvement extends Struct.CollectionTypeSchema {
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     utilisateur: Schema.Attribute.String;
+  };
+}
+
+export interface ApiOuvertureExerciceOuvertureExercice
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'ouverture_exercices';
+  info: {
+    description: "Stock d'ouverture par nomenclature au 1er janvier d'un exercice (point de d\u00E9part de la reddition de compte)";
+    displayName: 'ouvertureExercice';
+    pluralName: 'ouverture-exercices';
+    singularName: 'ouverture-exercice';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    annee: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.SetMinMax<
+        {
+          max: 2100;
+          min: 2000;
+        },
+        number
+      >;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::ouverture-exercice.ouverture-exercice'
+    > &
+      Schema.Attribute.Private;
+    montant_existant: Schema.Attribute.Decimal &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    nomenclature: Schema.Attribute.String & Schema.Attribute.Required;
+    observations: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiRapportRapport extends Struct.SingleTypeSchema {
+  collectionName: 'rapport';
+  info: {
+    displayName: 'rapport';
+    pluralName: 'rapports';
+    singularName: 'rapport';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::rapport.rapport'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
   };
 }
 
@@ -1591,6 +1663,8 @@ declare module '@strapi/strapi' {
       'api::fournisseur.fournisseur': ApiFournisseurFournisseur;
       'api::material.material': ApiMaterialMaterial;
       'api::mouvement.mouvement': ApiMouvementMouvement;
+      'api::ouverture-exercice.ouverture-exercice': ApiOuvertureExerciceOuvertureExercice;
+      'api::rapport.rapport': ApiRapportRapport;
       'api::service.service': ApiServiceService;
       'api::sortie-ligne.sortie-ligne': ApiSortieLigneSortieLigne;
       'api::sortie.sortie': ApiSortieSortie;

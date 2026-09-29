@@ -57,6 +57,18 @@
     },
     "observations": {
       "type": "string"
+    },
+    "etat": {
+      "type": "enumeration",
+      "enum": [
+        "neuf",
+        "bon",
+        "moyen",
+        "defaillant"
+      ]
+    },
+    "conforme": {
+      "type": "boolean"
     }
   }
 }

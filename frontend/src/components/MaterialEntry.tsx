@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   FileText,
   Info,
+  Loader2,
   Lock,
   Package,
   PackageCheck,
@@ -25,6 +26,11 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { User } from "../App";
+import type { EntreeRecord } from "../lib/movements";
+import {
+  creerEntree,
+  NouvelleEntreePayload,
+} from "../lib/api";
 import {
   BonLivraisonArticle,
   ControleArticle,
@@ -2107,14 +2113,13 @@ function Step4PVReception({
         <Card className="print-hidden border-primary/30 bg-primary/5">
           <CardContent className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm">
-              <BookOpen className="h-4 w-4 text-primary shrink-0" />
-              <span>
-                Écriture{" "}
-                <span className="font-mono font-semibold">
-                  {data.journalEntryId}
-                </span>{" "}
-                enregistrée au journal de comptabilité matière.
-              </span>
+              <BookOpen className="h-4 w-4 text-primary shrink-0" />                <span>
+                  Écriture{" "}
+                  <span className="font-mono font-semibold">
+                    {data.journalEntryId}
+                  </span>{" "}
+                  enregistrée au journal de comptabilité matière.
+                </span>
             </div>
             <Button variant="outline" size="sm" onClick={onOpenJournal}>
               Voir dans le journal
@@ -2265,6 +2270,12 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     return persisted ?? createInitialData(true);
   });
 
+  // Étape 1 branchée sur l'API réelle : l'entrée créée côté serveur (avec sa
+  // référence ENT-AAAA-NNN) et l'état de soumission (anti double-clic). Les
+  // étapes 2 à 4 restent pour l'instant sur la persistance locale.
+  const [entreeServeur, setEntreeServeur] = useState<EntreeRecord | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
 // Chacun atterrit directement sur SON étape : le dépositaire sur la saisie du
   // BL (ou l'enregistrement si le magasinier a déjà certifié), le magasinier
   // sur le contrôle de l'état (ou l'étape 1 en lecture seule si le BL n'est
@@ -2407,9 +2418,9 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
       default:
         return false;
     }
-  }, [currentStep, receptionData]);
+  }, [currentStep, receptionData, isSubmitting]);
 
-  const goNext = () => {
+  const goNext = async () => {
     if (currentStep >= 4) return;
 
     // Verrou logique sur la navigation aussi : un rôle ne peut pas valider
@@ -2426,16 +2437,60 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     if (!canProceed) return;
 
     if (currentStep === 1) {
-      // Transmission simulée : le magasinier retrouvera la liste à l'étape 2.
-      persistReception(receptionData);
-      pushNotification(
-        "magasinier",
-        "enregistrement",
-        "Nouveau bon de livraison à contrôler",
-        `${depositaireName} a saisi le BL ${receptionData.numeroBL} (${receptionData.articles.length} article(s)). Vérifiez l'état du matériel en magasin.`,
-        receptionData.numeroBL
-      );
-      refreshNotifications();
+      // Étape 1 branchée sur l'API réelle : création de l'entrée côté serveur
+      // (POST /api/entrees/create-complete). Le fournisseur est envoyé en
+      // texte brut : le contrôleur fait le find-or-create silencieux. Les
+      // affectations chef_service_1/chef_service_2 restent vides jusqu'à la
+      // première signature de chaque rôle (décision 1).
+      setIsSubmitting(true);
+      try {
+        const payload: NouvelleEntreePayload = {
+          date_entree: receptionData.dateBL || new Date().toISOString().split("T")[0],
+          bon_livraison: receptionData.numeroBL,
+          date_bon_livraison: receptionData.dateBL || undefined,
+          fournisseur: receptionData.fournisseur.trim(),
+          responsable: depositaireName,
+          notes: receptionData.observationsBL || undefined,
+          lignes: receptionData.articles.map((article, index) => ({
+            numero_ordre: index + 1,
+            designation: article.designation,
+            reference: article.referenceNomenclature || undefined,
+            quantite: article.quantiteLivree,
+            valeur_unitaire: article.prixUnitaire,
+            nomenclature: article.referenceNomenclature || undefined,
+          })),
+        };
+        const entree = await creerEntree(payload);
+        setEntreeServeur(entree);
+        // Transmission au magasinier : la référence affichée à partir d'ici
+        // est celle générée par le serveur (ENT-AAAA-NNN).
+        persistReception(receptionData);
+        pushNotification(
+          "magasinier",
+          "enregistrement",
+          "Nouveau bon de livraison à contrôler",
+          `${depositaireName} a saisi le BL ${receptionData.numeroBL} (${receptionData.articles.length} article(s)). Vérifiez l'état du matériel en magasin.`,
+          receptionData.numeroBL
+        );
+        refreshNotifications();
+        toast.success(`Entrée ${entree.reference} créée`, {
+          description: `${entree.lignes.length} ligne(s) enregistrée(s) en base.`,
+        });
+      } catch (err) {
+        // Erreur serveur/validation : message clair, la saisie reste intacte
+        // (aucun setReceptionData ici) et l'utilisateur peut corriger et
+        // resoumettre.
+        const axiosErr = err as { response?: { data?: { error?: { message?: string } } } };
+        const serverMessage =
+          axiosErr?.response?.data?.error?.message ||
+          (err instanceof Error ? err.message : "Erreur inconnue");
+        toast.error("Création de l'entrée impossible", {
+          description: serverMessage,
+        });
+        setIsSubmitting(false);
+        return;
+      }
+      setIsSubmitting(false);
     }
 
     if (currentStep === 2) {
@@ -2547,6 +2602,32 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           onOpenChange={setNotifOpen}
           onRefresh={refreshNotifications}
         />
+      )}
+
+      {/* Étape 1 branchée sur l'API : la référence ENT-AAAA-NNN retournée par
+          le serveur est affichée à la place de l'identifiant local — c'est la
+          seule valeur à considérer comme « vraie » pour cette étape. */}
+      {entreeServeur && (
+        <Card className="print-hidden border-primary/30 bg-primary/5">
+          <CardContent className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-sm">
+              <BookOpen className="h-4 w-4 text-primary shrink-0" />
+              <span>
+                Entrée en base :{" "}
+                <span className="font-mono font-semibold">
+                  {entreeServeur.reference}
+                </span>{" "}
+                — statut serveur :{" "}
+                <span className="font-semibold">{entreeServeur.statut}</span>
+                {entreeServeur.signatures.chefService1 && (
+                  <span className="text-muted-foreground">
+                    {" "}· signée par {entreeServeur.signataires.chefService1}
+                  </span>
+                )}
+              </span>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {/* Simulateur de session — masqué pour les rôles métier connectés
@@ -2750,11 +2831,21 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           (transmission du BL, puis validation de l'enregistrement). */}
       {isFixedDepositaire && (currentStep === 1 || currentStep === 3) && (
         <div className="print-hidden flex justify-end pt-4 border-t border-border">
-          <Button onClick={goNext} disabled={!canProceed} className="gap-2">
+          <Button
+            onClick={goNext}
+            disabled={!canProceed || isSubmitting}
+            className="gap-2"
+          >
             {currentStep === 1
-              ? "Transmettre au magasin"
+              ? isSubmitting
+                ? "Création de l'entrée..."
+                : "Transmettre au magasin"
               : "Valider l'enregistrement"}
-            <ArrowRight className="h-4 w-4" />
+            {isSubmitting ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <ArrowRight className="h-4 w-4" />
+            )}
           </Button>
         </div>
       )}
@@ -2780,7 +2871,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         {currentStep < 4 ? (
           <Button
             onClick={goNext}
-            disabled={!canProceed}
+            disabled={!canProceed || isSubmitting}
             className="gap-2"
           >
             {currentStep === 3 ? "Valider l'enregistrement" : "Suivant"}

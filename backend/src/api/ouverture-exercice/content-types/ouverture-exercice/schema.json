@@ -1,0 +1,34 @@
+{
+  "kind": "collectionType",
+  "collectionName": "ouverture_exercices",
+  "info": {
+    "singularName": "ouverture-exercice",
+    "pluralName": "ouverture-exercices",
+    "displayName": "ouvertureExercice",
+    "description": "Stock d'ouverture par nomenclature au 1er janvier d'un exercice (point de départ de la reddition de compte)"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "annee": {
+      "type": "integer",
+      "required": true,
+      "min": 2000,
+      "max": 2100
+    },
+    "nomenclature": {
+      "type": "string",
+      "required": true
+    },
+    "montant_existant": {
+      "type": "decimal",
+      "required": true,
+      "default": 0
+    },
+    "observations": {
+      "type": "text"
+    }
+  }
+}

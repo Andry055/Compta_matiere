@@ -62,11 +62,13 @@
     "@vitejs/plugin-react-swc": "^3.10.2",
     "playwright": "^1.63.0",
     "typescript": "^7.0.2",
-    "vite": "^5.4.19"
+    "vite": "^5.4.19",
+    "vitest": "^2.1.9"
   },
   "scripts": {
     "dev": "vite",
-    "build": "vite build"
+    "build": "vite build",
+    "test": "vitest run"
   },
   "allowScripts": {
     "@swc/core@1.13.5": true,

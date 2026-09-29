@@ -23,11 +23,12 @@ const ENTREE_UID = 'api::entree.entree';
 const LIGNE_UID = 'api::entree-ligne.entree-ligne';
 const MATERIEL_UID = 'api::material.material';
 const MOUVEMENT_UID = 'api::mouvement.mouvement';
+const FOURNISSEUR_UID = 'api::fournisseur.fournisseur';
 
 const SIGNATURE_ROLES = {
-  depositaire: { flag: 'depositaire_signed', dateField: 'date_signature_depositaire', signerField: 'signataire_depositaire', order: 1 },
-  chef_service_1: { flag: 'chef_service_1_signed', dateField: 'date_signature_chef_service_1', signerField: 'signataire_chef_service_1', order: 2 },
-  chef_service_2: { flag: 'chef_service_2_signed', dateField: 'date_signature_chef_service_2', signerField: 'signataire_chef_service_2', order: 3 },
+  depositaire: { flag: 'depositaire_signed', dateField: 'date_signature_depositaire', signerField: 'signataire_depositaire', affectationField: 'affectation_depositaire', order: 1 },
+  chef_service_1: { flag: 'chef_service_1_signed', dateField: 'date_signature_chef_service_1', signerField: 'signataire_chef_service_1', affectationField: 'affectation_chef_service_1', order: 2 },
+  chef_service_2: { flag: 'chef_service_2_signed', dateField: 'date_signature_chef_service_2', signerField: 'signataire_chef_service_2', affectationField: 'affectation_chef_service_2', order: 3 },
 };
 
 function forbid(ctx, message, status = 403) {
@@ -53,6 +54,59 @@ function badRequest(ctx, message) {
 /** Token unique pour le QR Code de l'entrée (jamais de données sensibles dedans) */
 function genererQrToken() {
   return `ENT-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`.toUpperCase();
+}
+
+/** Clé de comparaison d'un nom de fournisseur : insensible à la casse et aux
+ *  espaces superflus (décision 2). */
+function cleFournisseur(nom) {
+  return String(nom || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/**
+ * Décision 2 — find-or-create silencieux du fournisseur à partir du nom saisi
+ * en texte libre à l'écran (flux « Arrivée matériel »). Aucun écran de gestion
+ * fournisseurs : on crée un enregistrement minimal (nom uniquement) si aucun
+ * existant ne correspond.
+ */
+async function findOrCreateFournisseur(strapi, nom) {
+  const nomPropre = String(nom || '').trim().replace(/\s+/g, ' ');
+  if (!nomPropre) return null;
+
+  // Recherche directe (insensible à la casse)…
+  try {
+    const directs = await strapi.documents(FOURNISSEUR_UID).findMany({
+      filters: { nom: { $eqi: nomPropre } },
+      limit: 1,
+    });
+    if (directs && directs.length > 0) return directs[0];
+  } catch (e) {
+    // On tente la comparaison normalisée ci-dessous.
+  }
+
+  // …puis comparaison normalisée (espaces superflus / casse mélangée).
+  try {
+    const tous = await strapi.documents(FOURNISSEUR_UID).findMany({ limit: -1 });
+    const cle = cleFournisseur(nomPropre);
+    const existant = (tous || []).find((f) => cleFournisseur(f.nom) === cle);
+    if (existant) return existant;
+  } catch (e) {
+    // Création ci-dessous.
+  }
+
+  try {
+    return await strapi.documents(FOURNISSEUR_UID).create({ data: { nom: nomPropre } });
+  } catch (e) {
+    // Course concurrente (deux créations simultanées) : retenter la lecture.
+    try {
+      const directs = await strapi.documents(FOURNISSEUR_UID).findMany({
+        filters: { nom: { $eqi: nomPropre } },
+        limit: 1,
+      });
+      return directs && directs.length > 0 ? directs[0] : null;
+    } catch (e2) {
+      return null;
+    }
+  }
 }
 
 /**
@@ -151,6 +205,13 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
     // --- Validation des champs obligatoires -------------------------------
     // `brouillon: true` : enregistrement partiel autorisé (validation assouplie)
     const estBrouillon = body.brouillon === true;
+    // Décision 1 — le flux « Arrivée matériel » (MaterialEntry) crée l'entrée
+    // SANS affectations pré-remplies : affectation_depositaire est dérivée de
+    // la session, chef_service_1/chef_service_2 sont posés par la première
+    // signature de chaque rôle. Le circuit historique (EntriesPage/NewEntry)
+    // continue d'exiger les 3 affectations : il les envoie explicitement et
+    // n'envoie pas le drapeau ci-dessous (non-régression).
+    const affectationsExigees = body.exigerAffectations !== false;
     if (!estBrouillon) {
       if (!body.fournisseur && !body.fournisseur_id) {
         return badRequest(ctx, 'Fournisseur obligatoire.');
@@ -158,14 +219,16 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
       if (!body.date_entree) {
         return badRequest(ctx, "Date d'entrée obligatoire.");
       }
-      if (!body.affectation_depositaire) {
-        return badRequest(ctx, 'Veuillez sélectionner le dépositaire par service.');
-      }
-      if (!body.affectation_chef_service_1) {
-        return badRequest(ctx, 'Veuillez sélectionner le Chef de service 1.');
-      }
-      if (!body.affectation_chef_service_2) {
-        return badRequest(ctx, 'Veuillez sélectionner le Chef de service 2.');
+      if (affectationsExigees) {
+        if (!body.affectation_depositaire) {
+          return badRequest(ctx, 'Veuillez sélectionner le dépositaire par service.');
+        }
+        if (!body.affectation_chef_service_1) {
+          return badRequest(ctx, 'Veuillez sélectionner le Chef de service 1.');
+        }
+        if (!body.affectation_chef_service_2) {
+          return badRequest(ctx, 'Veuillez sélectionner le Chef de service 2.');
+        }
       }
     }
     const lignes = Array.isArray(body.lignes) ? body.lignes : [];
@@ -201,6 +264,14 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
       reference = `${prefixe}${String(suivant).padStart(3, '0')}`;
     }
 
+    // --- Décision 2 : fournisseur texte libre -> relation ------------------
+    // find-or-create silencieux quand seul un nom est fourni (sans id).
+    let fournisseurId = body.fournisseur_id || null;
+    if (!fournisseurId && typeof body.fournisseur === 'string' && body.fournisseur.trim()) {
+      const fournisseur = await findOrCreateFournisseur(app, body.fournisseur);
+      fournisseurId = fournisseur ? fournisseur.documentId : null;
+    }
+
     // --- Création de l'entrée ---------------------------------------------
     let entree;
     try {
@@ -209,12 +280,19 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
           reference,
           date_entree: body.date_entree,
           numero_facture: body.numero_facture || null,
-          fournisseur: body.fournisseur_id || body.fournisseur || null,
+          fournisseur: fournisseurId,
           direction: body.direction_id || null,
           service: body.service_id || null,
           responsable: body.responsable || null,
           statut: estBrouillon ? 'brouillon' : 'en_attente',
-        affectation_depositaire: body.affectation_depositaire || null,
+        // Décision 1 : affectations nullables jusqu'à signature. Le
+        // dépositaire est dérivé de la session quand il n'est pas fourni ;
+        // chef_service_1/2 sont fixés par la première signature de chaque
+        // rôle (voir sign()).
+        affectation_depositaire:
+          body.affectation_depositaire ||
+          (ctx.state && ctx.state.user && (ctx.state.user.username || ctx.state.user.email)) ||
+          null,
         affectation_chef_service_1: body.affectation_chef_service_1 || null,
         affectation_chef_service_2: body.affectation_chef_service_2 || null,
         qr_token: genererQrToken(),
@@ -353,12 +431,15 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
     }
 
     // --- Pose de la signature -------------------------------------------------
+    // Décision 1 : la première signature de chaque rôle fixe son affectation
+    // (une signature ne pouvant jamais être reposée, premier = unique).
     const signataire = user.username || user.email || `Utilisateur #${user.id}`;
     await app.documents(ENTREE_UID).update({
       documentId,
       data: {
         [config.flag]: true,
         [config.signerField]: signataire,
+        [config.affectationField]: entree[config.affectationField] || signataire,
       },
     });
 

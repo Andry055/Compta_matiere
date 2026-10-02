@@ -42,6 +42,11 @@
     "responsable": {
       "type": "string"
     },
+    "demandeur": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
     "statut": {
       "type": "enumeration",
       "enum": ["brouillon", "en_attente", "verifiee", "validee", "rejetee"],

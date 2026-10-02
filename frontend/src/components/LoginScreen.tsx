@@ -8,8 +8,8 @@ import {
   Loader2,
 } from "lucide-react";
 import { User as UserType } from "../App";
-import { AppRole } from "../types/roles";
-import { strapiLogin, StrapiAuthUser } from "../lib/api";
+import { strapiLogin, fetchSessionRole, setStrapiSession } from "../lib/api";
+import { mapStrapiUser } from "../lib/session";
 
 interface LoginScreenProps {
   onLogin: (user: UserType) => void;
@@ -84,33 +84,9 @@ const mockUserDatabase: Array<UserType & { password: string }> = [
   },
 ];
 
-// Rôles métier reconnus par l'application (rôle Strapi -> rôle applicatif)
-const KNOWN_APP_ROLES: AppRole[] = [
-  "depositaire",
-  "magasinier",
-  "logistique",
-  "comptable",
-  "demandeur",
-];
-
-/** Transforme un utilisateur Strapi (JWT) en profil applicatif */
-function mapStrapiUser(user: StrapiAuthUser): UserType | null {
-  const role = (user.role?.type || user.role?.code || "").toLowerCase();
-  const isKnown =
-    role === "admin" ||
-    (KNOWN_APP_ROLES as string[]).includes(role);
-  if (!isKnown) return null;
-
-  return {
-    id: user.documentId || String(user.id),
-    name: user.username,
-    email: user.email,
-    role: role as UserType["role"],
-    department: user.department || "",
-    permissions: ["equipment.view"],
-    ...(role === "demandeur" ? { demandeurLevel: "service" as const } : {}),
-  };
-}
+// NB : les rôles métier reconnus et la transformation Strapi -> profil
+// applicatif vivent dans ../lib/session (partagés avec App.tsx, qui les
+// applique aussi à la reprise de session).
 
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState("");
@@ -141,14 +117,26 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     // -----------------------------------------------------------------------
     const strapiAuth = await strapiLogin(email, password);
     if (strapiAuth) {
-      const mapped = mapStrapiUser(strapiAuth.user);
+      // La réponse de /api/auth/local ne contient PAS `role` (le sanitizer
+      // Content API retire la relation vers users-permissions.user) : on va
+      // le chercher sur /api/session/role, qui lit le rôle réel du jeton.
+      // SANS cette étape, le rôle restait indéfini et l'écran basculait sur
+      // les comptes de démonstration — affichant parfois « Magasinier » alors
+      // que le jeton appartenait à un autre compte, signature refusée en 403.
+      const user = await fetchSessionRole();
+      // On remplace l'utilisateur stocké (sans rôle) par celui, complet, renvoyé
+      // par /api/session/role : la reprise de session repartira de la même donnée.
+      if (user) setStrapiSession(strapiAuth.jwt, user);
+      const mapped = mapStrapiUser(user ?? strapiAuth.user);
       if (mapped) {
         applyRememberMe();
         setIsLoading(false);
         onLogin(mapped);
         return;
       }
-      // Rôle inconnu : on retombe sur les comptes de démonstration locaux
+      // Rôle inconnu ET endpoint injoignable : on retombe sur les comptes de
+      // démonstration locaux (mode hors ligne). Le jetonStrapi, lui, reste
+      // valide : c'est lui qui fait foi côté serveur.
     }
 
     // -----------------------------------------------------------------------

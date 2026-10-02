@@ -34,7 +34,7 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { getAllDemandes } from "../lib/demandes";
 import { User } from "../App";
-import { rejeterEntree, signerEntree } from "../lib/api";
+import { rejeterEntree, signerEntree, type ControleLignePayload } from "../lib/api";
 import { getHistoriqueAffectations } from "../lib/transfers";
 import {
   construireOrdreEntree,
@@ -159,7 +159,29 @@ export function MovementDetailModal({
     setBusy(true);
     setErreur("");
     try {
-      const updated = await signerEntree(entree!.id, role);
+      // La signature du magasinier (chef_service_1) DOIT être groupée avec le
+      // contrôle par ligne. Sans `controles`, le serveur passe outre tout le
+      // bloc de mise à jour des lignes : la signature part bien, mais aucun
+      // état n'est enregistré et le chef logistique voit « Non contrôlé »
+      // sur tous les articles. On refuse donc plutôt que de signer « à vide ».
+      let controles: ControleLignePayload[] | undefined;
+      if (role === "chef_service_1") {
+        const lignes = entree?.lignes ?? [];
+        const manquants = lignes.filter((l) => l.etat == null || l.conforme == null);
+        if (manquants.length > 0) {
+          throw new Error(
+            `Contrôle physique incomplet (${manquants.length} article(s) sans état constaté) : ` +
+              `effectuez la certification depuis l'écran « Arrivée matériel » pour saisir l'état de chaque article.`
+          );
+        }
+        controles = lignes.map((l) => ({
+          numero_ordre: l.numeroOrdre,
+          etat: l.etat as ControleLignePayload["etat"],
+          conforme: l.conforme as boolean,
+          ...(l.observation?.trim() ? { observations: l.observation.trim() } : {}),
+        }));
+      }
+      const updated = await signerEntree(entree!.id, role, controles);
       entree!.signatures = updated.signatures;
       entree!.signataires = updated.signataires;
       entree!.statut = updated.statut;
@@ -170,7 +192,10 @@ export function MovementDetailModal({
       onChanged?.();
     } catch (e: unknown) {
       const axiosErr = e as { response?: { data?: { error?: { message?: string } } } };
-      setErreur(axiosErr.response?.data?.error?.message || "Signature impossible.");
+      setErreur(
+        axiosErr.response?.data?.error?.message ||
+          (e instanceof Error ? e.message : "Signature impossible.")
+      );
     } finally {
       setBusy(false);
     }

@@ -14,6 +14,12 @@
  * valider : le contrôle est effectué ICI, côté serveur (roleGuard.js).
  * Une signature enregistrée n'est jamais modifiable (double signature
  * refusée avec 409).
+ *
+ * Lecture (`GET /entrees`, `GET /entrees/:id`) : les handlers core sont
+ * surchargés pour n'appliquer qu'au profil « demandeur » un filtrage
+ * d'APPROPRIATION — il ne voit que les entrées dont il est le créateur
+ * (relation `demandeur`, alimentée par `createComplete` depuis la session).
+ * Même règle et même mécanisme que `demande.find` / `demande.findOne`.
  */
 
 const { createCoreController } = require('@strapi/strapi').factories;
@@ -26,17 +32,22 @@ const MOUVEMENT_UID = 'api::mouvement.mouvement';
 const FOURNISSEUR_UID = 'api::fournisseur.fournisseur';
 
 const SIGNATURE_ROLES = {
-  depositaire: { flag: 'depositaire_signed', dateField: 'date_signature_depositaire', signerField: 'signataire_depositaire', affectationField: 'affectation_depositaire', order: 1 },
-  chef_service_1: { flag: 'chef_service_1_signed', dateField: 'date_signature_chef_service_1', signerField: 'signataire_chef_service_1', affectationField: 'affectation_chef_service_1', order: 2 },
-  chef_service_2: { flag: 'chef_service_2_signed', dateField: 'date_signature_chef_service_2', signerField: 'signataire_chef_service_2', affectationField: 'affectation_chef_service_2', order: 3 },
+  // Décision 4 — ordre définitif : magasinier (chef_service_1) → logistique
+  // (chef_service_2) → dépositaire (depositaire). La 3ᵉ signature déclenche
+  // la validation finale + l'impact stock unique (mécanisme existant,
+  // inchangé : nbSignatures === 3).
+  depositaire: { flag: 'depositaire_signed', dateField: 'date_signature_depositaire', signerField: 'signataire_depositaire', affectationField: 'affectation_depositaire', order: 3 },
+  chef_service_1: { flag: 'chef_service_1_signed', dateField: 'date_signature_chef_service_1', signerField: 'signataire_chef_service_1', affectationField: 'affectation_chef_service_1', order: 1 },
+  chef_service_2: { flag: 'chef_service_2_signed', dateField: 'date_signature_chef_service_2', signerField: 'signataire_chef_service_2', affectationField: 'affectation_chef_service_2', order: 2 },
 };
 
 function forbid(ctx, message, status = 403) {
   ctx.status = status;
+  const noms = { 403: 'ForbiddenError', 404: 'NotFoundError', 409: 'ConflictError' };
   ctx.body = {
     error: {
       status,
-      name: status === 409 ? 'ConflictError' : 'ForbiddenError',
+      name: noms[status] || 'ForbiddenError',
       message,
     },
   };
@@ -60,6 +71,58 @@ function genererQrToken() {
  *  espaces superflus (décision 2). */
 function cleFournisseur(nom) {
   return String(nom || '').trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+/** La requête courante provient-elle d'un profil « demandeur » (et non
+ *  anonyme, ni d'un rôle habilité) ? */
+async function isDemandeurSession(strapi, ctx) {
+  const user = ctx.state && ctx.state.user;
+  if (!user || !user.id) return false;
+  return (await getRoleCode(strapi, user.id)) === DEMANDEUR_ROLE;
+}
+
+/** documentId des entrées créées par cet utilisateur.
+ *
+ *  La recherche passe par le DOCUMENT SERVICE et non par la relation peuplée
+ *  dans la réponse : le sanitizer de sortie Content-API retire une relation
+ *  dont la cible n'est pas lisible par le rôle (or le rôle Demandeur n'a pas
+ *  `plugin::users-permissions.user.find`), si bien qu'un simple peuplement de
+ *  `demandeur` ne renvoyait... rien de vérifiable. Le Document Service, lui,
+ *  n'applique pas ce sanitizer. */
+async function documentIdsPossedesPar(strapi, user) {
+  const lignes = await strapi.documents(ENTREE_UID).findMany({
+    filters: { demandeur: { documentId: user.documentId } },
+    fields: ['documentId'],
+    limit: -1,
+  });
+  return (lignes || []).map((l) => l.documentId);
+}
+
+/** Ajoute la contrainte d'appropriation à la requête, combinée (ET) au
+ *  `filters` éventuellement fourni par le client : un filtre client ne peut
+ *  qu'en réduire le résultat, jamais l'éluder. La liste vide est acceptée par
+ *  le moteur de requête (`$in: []` -> aucun résultat).
+ *
+ *  ⚠️ On MUTE `ctx.query` (et non `ctx.query = …`) : `query` est un getter
+ *  Koa en lecture seule — une affectation lèverait une TypeError en mode
+ *  strict. Le getter met en cache l'objet parsé, la mutation est donc vue par
+ *  le handler core (même mécanisme que `demande.find`). */
+function withAppropriationFilter(ctx, documentIds) {
+  const existant = ctx.query.filters;
+  ctx.query.filters = existant
+    ? { $and: [existant, { documentId: { $in: documentIds } }] }
+    : { documentId: { $in: documentIds } };
+}
+
+/** Handler CORE correspondant, appelé depuis une surcharge : le prototype du
+ *  contrôleur fusionné est le contrôleur core (cf. createCoreController). */
+function baseHandler(ctrl, nom, ctx) {
+  const base = Object.getPrototypeOf(ctrl);
+  const handler = base && base[nom];
+  if (typeof handler !== 'function') {
+    throw new Error(`Handler core « ${nom} » introuvable sur ${ENTREE_UID}.`);
+  }
+  return handler.call(ctrl, ctx);
 }
 
 /**
@@ -194,9 +257,45 @@ async function tracerMouvement(strapi, entree, action, statut, observations, uti
 
 module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
   /**
+   * GET /api/entrees
+   *
+   * Surcharge du handler core : le Demandeur est autorisé à lire les entrées
+   * (il en crée et doit suivre leur validation) mais UNIQUEMENT les siennes.
+   * La restriction est appliquée dans la requête, avant pagination : un
+   * `filters[...]` envoyé par le client ne peut ni l'éluder ni l'orienter
+   * vers une entrée étrangère — il ne peut qu'en réduire le résultat.
+   * Les rôles habilités ne sont pas filtrés (ils voient toutes les entrées).
+   */
+  async find(ctx) {
+    if (await isDemandeurSession(strapi, ctx)) {
+      const miens = await documentIdsPossedesPar(strapi, ctx.state.user);
+      withAppropriationFilter(ctx, miens);
+    }
+    return baseHandler(this, 'find', ctx);
+  },
+
+  /**
+   * GET /api/entrees/:id
+   * Même règle que `find`, appliquée à l'entrée visée. Le handler core
+   * `findOne` résout l'entrée par son documentId en IGNORANT les filtres de
+   * la requête : l'appropriation est donc contrôlée explicitement, sur la
+   * liste des entrées du Demandeur. Réponse 404 (et non 403) pour ne pas
+   * distinguer « entrée inexistante » de « entrée d'un autre ».
+   */
+  async findOne(ctx) {
+    if (await isDemandeurSession(strapi, ctx)) {
+      const documentId = ctx.params.id || ctx.params.documentId;
+      const miens = await documentIdsPossedesPar(strapi, ctx.state.user);
+      if (!documentId || !miens.includes(documentId)) {
+        return forbid(ctx, 'Entrée introuvable.', 404);
+      }
+    }
+    return baseHandler(this, 'findOne', ctx);
+  },
+
+  /**
    * POST /api/entrees/create-complete
    * Création complète : entête administrative + lignes matériels.
-   * Accessible aux responsables (le Demandeur est bloqué par le roleGuard).
    */
   async createComplete(ctx) {
     const app = strapi;
@@ -284,6 +383,12 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
           direction: body.direction_id || null,
           service: body.service_id || null,
           responsable: body.responsable || null,
+          // Possession de l'entrée : déduite de la session, jamais du corps de
+          // requête (même règle que `demande.create`). C'est ce champ que
+          // `find` / `findOne` utilisent pour nister les lectures du
+          // Demandeur sur SES entrées.
+          demandeur:
+            (ctx.state && ctx.state.user && ctx.state.user.documentId) || null,
           statut: estBrouillon ? 'brouillon' : 'en_attente',
         // Décision 1 : affectations nullables jusqu'à signature. Le
         // dépositaire est dérivé de la session quand il n'est pas fourni ;
@@ -430,6 +535,59 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
       }
     }
 
+    // --- Étape 2 : contrôle par article groupé avec la signature -------------
+    // Le flux « Arrivée matériel » envoie la signature chef_service_1 ET le
+    // détail du contrôle (etat/conforme/observations par ligne) en UN SEUL
+    // appel : les lignes sont mises à jour AVANT de poser la signature
+    // (tout ou rien — jamais un état intermédiaire incohérent). Sans
+    // `controles` dans le corps, comportement historique inchangé
+    // (MovementDetailModal / circuit EntriesPage-NewEntryPage).
+    if (roleKey === 'chef_service_1' && Array.isArray(body.controles)) {
+      const ETATS_VALIDES = ['neuf', 'bon', 'moyen', 'defaillant'];
+      const lignes = entree.lignes || [];
+      const manquants = [];
+      const misesAJour = [];
+      for (const ligne of lignes) {
+        const controle = body.controles.find(
+          (c) => Number(c && c.numero_ordre) === Number(ligne.numero_ordre)
+        );
+        const etatValide = controle && ETATS_VALIDES.includes(controle.etat);
+        if (!etatValide || typeof controle.conforme !== 'boolean') {
+          manquants.push(ligne.designation || `Ligne ${ligne.numero_ordre}`);
+          continue;
+        }
+        misesAJour.push({
+          documentId: ligne.documentId,
+          etat: controle.etat,
+          conforme: controle.conforme,
+          observations:
+            typeof controle.observations === 'string' && controle.observations.trim()
+              ? controle.observations.trim()
+              : null,
+        });
+      }
+      // Pas de valeur par défaut silencieuse : toute ligne sans etat/conforme
+      // explicites refuse la signature entière.
+      if (manquants.length > 0) {
+        return badRequest(
+          ctx,
+          `Contrôle incomplet : il manque l'état de ${manquants.length} article(s) — ${manquants.join(', ')}.`
+        );
+      }
+      try {
+        for (const maj of misesAJour) {
+          const data = { etat: maj.etat, conforme: maj.conforme };
+          if (maj.observations) data.observations = maj.observations;
+          await app.documents(LIGNE_UID).update({ documentId: maj.documentId, data });
+        }
+      } catch (e) {
+        return badRequest(
+          ctx,
+          `Mise à jour du contrôle impossible : ${e.message}. Signature non posée.`
+        );
+      }
+    }
+
     // --- Pose de la signature -------------------------------------------------
     // Décision 1 : la première signature de chaque rôle fixe son affectation
     // (une signature ne pouvant jamais être reposée, premier = unique).
@@ -439,6 +597,7 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
       data: {
         [config.flag]: true,
         [config.signerField]: signataire,
+        [config.dateField]: new Date().toISOString(),
         [config.affectationField]: entree[config.affectationField] || signataire,
       },
     });
@@ -447,12 +606,19 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
     const apres = await loadEntree(app, documentId);
     const nbSignatures = Object.values(SIGNATURE_ROLES).filter((c) => apres[c.flag] === true).length;
 
-    let statutFinal = 'verifiee'; // partiellement signée (1/3 ou 2/3)
+    let statutFinal = 'en_attente';
     if (nbSignatures === 3) {
       // Validation finale UNIQUEMENT ici (3/3) puis impact stock unique
       await app.documents(ENTREE_UID).update({ documentId, data: { statut: 'validee' } });
       statutFinal = 'validee';
       await appliquerImpactStock(app, { ...apres, documentId }, signataire);
+    } else {
+      // Signatures partielles (1/3 ou 2/3) : le statut passe à « verifiee »
+      // dès la 1ʳᵉ signature (lacune préexistante : la valeur n'était calculée
+      // que pour la réponse, jamais persistée — les GET ultérieurs renvoyaient
+      // « en_attente »).
+      await app.documents(ENTREE_UID).update({ documentId, data: { statut: 'verifiee' } });
+      statutFinal = 'verifiee';
     }
 
     await tracerMouvement(
@@ -493,6 +659,11 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
     }
     if (entree.statut === 'validee') {
       return badRequest(ctx, 'Une entrée validée ne peut plus être rejetée.');
+    }
+    // Déjà rejetée : erreur explicite plutôt qu'un succès silencieux (le
+    // mouvement et l'horodatage ne doivent pas être réécrits).
+    if (entree.statut === 'rejetee') {
+      return badRequest(ctx, 'Cette entrée a déjà été rejetée.');
     }
 
     await app.documents(ENTREE_UID).update({ documentId, data: { statut: 'rejetee' } });

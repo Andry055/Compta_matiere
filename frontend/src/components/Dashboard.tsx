@@ -25,7 +25,7 @@ import {
   Hourglass,
   ClipboardCheck,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { User } from "../App";
 import { AllEquipmentModal } from "./AllEquipmentModal";
 import { mockRequests } from "../lib/requests";
@@ -44,7 +44,7 @@ import {
   getActiviteDemandeur,
   getRepartitionDemandes,
 } from "../lib/demandes";
-import { mockEquipment } from "./Equipment";
+import { fetchMaterialsOrThrow, MaterialOption } from "../lib/api";
 
 interface JournalMovement {
   id: number;
@@ -135,15 +135,45 @@ function DemandeurDashboard({ user }: { user?: User }) {
   const mesSorties = sortiesPerimetre(sortieRecords, user);
   const statsSorties = getStatistiquesSorties(mesSorties);
 
+  // Stock RÉEL (GET /api/materials, même source que l'écran Équipements) :
+  // chargement au montage ; en cas d'API injoignable l'indicateur passe à 0
+  // et le bandeau d'erreur informe l'utilisateur (jamais de mock silencieux).
+  const [materiels, setMateriels] = useState<MaterialOption[]>([]);
+  const [erreurStock, setErreurStock] = useState(false);
+  useEffect(() => {
+    let vivant = true;
+    const charger = () => {
+      fetchMaterialsOrThrow()
+        .then((rows) => {
+          if (vivant) {
+            setMateriels(rows);
+            setErreurStock(false);
+          }
+        })
+        .catch(() => {
+          if (vivant) setErreurStock(true);
+        });
+    };
+    charger();
+    const handleStockUpdate = () => charger();
+    window.addEventListener("stock-mis-a-jour", handleStockUpdate);
+    return () => {
+      vivant = false;
+      window.removeEventListener("stock-mis-a-jour", handleStockUpdate);
+    };
+  }, []);
+
   // Matériels reçus (sorties effectuées dans mon périmètre)
   const materielsRecus = mesSorties
     .filter((s) => s.statut === "Sortie effectuée")
     .reduce((sum, s) => sum + (s.quantite || 0), 0);
 
-  // Équipements disponibles dans le stock
-  const equipementsDisponibles = mockEquipment.filter(
-    (item) => item.status === "Disponible"
-  ).length;
+  // Équipements disponibles dans le stock : total des quantités des matériels
+  // réellement en stock (le comptage d'anciennes lignes mockées sous-estimait
+  // le stock — un matériel peut porter une quantité > 1).
+  const equipementsDisponibles = materiels
+    .filter((m) => (m.statut ?? "en_stock") === "en_stock")
+    .reduce((somme, m) => somme + (m.quantiteStock ?? 0), 0);
 
   // Entrées récentes consultables (signées / en cours de signature)
   const entreesRecentes = entreeRecords.filter((e) => {
@@ -229,6 +259,16 @@ function DemandeurDashboard({ user }: { user?: User }) {
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {erreurStock && (
+        <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 text-sm text-amber-700 dark:text-amber-300">
+          <AlertTriangle className="h-4 w-4 shrink-0" />
+          <span>
+            Stock momentanément indisponible (serveur injoignable) —
+            l'indicateur « Équipements disponibles » est incomplet.
+          </span>
+        </div>
+      )}
+
       {/* Header */}
       <div>
         <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">

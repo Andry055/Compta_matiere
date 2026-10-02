@@ -17,11 +17,14 @@ import { AppRole, ROLES_CONFIG } from "../types/roles";
 import { ReceptionData } from "../types/accounting";
 
 /** Rôle requis pour agir sur chaque étape du flux de réception.
- *  L'étape 4 (PV) est consultable par tous. */
+ *  L'étape 4 (PV) est consultable par tous.
+ *  Étape 3 : la signature serveur posée est chef_service_2 (logistique) —
+ *  l'ordre réel est magasinier → logistique → dépositaire (décision figée).
+ *  Le libellé affiché de l'étape reste inchangé (dette UX notée). */
 export const STEP_ROLE_REQUIREMENTS: Record<number, AppRole> = {
   1: "depositaire",
   2: "magasinier",
-  3: "depositaire",
+  3: "logistique",
 };
 
 /** Champs de ReceptionData dont l'écriture est réservée au rôle propriétaire de l'étape.
@@ -45,10 +48,10 @@ const PROTECTED_FIELDS: Partial<Record<keyof ReceptionData, number>> = {
 export const DENIED_ACTION_MESSAGE =
   "Seul le titulaire de ce rôle peut valider cette étape.";
 
-/** Clé de persistance de la réception en cours (localStorage). Permet au
- *  magasinier de retrouver, dans sa session, la liste enregistrée par le
- *  dépositaire — comme un transfert entre deux postes. */
-export const RECEPTION_STORAGE_KEY = "receptionEnCours";
+// [Supprimé — Étape 6] RECEPTION_STORAGE_KEY, loadPersistedReception et
+// persistReception : la réception vit désormais en BASE (circuit entree) et
+// l'état de l'écran est relu depuis fetchEntrees() — le localStorage n'est
+// plus une source de données du flux (aucun consommateur restant).
 
 export interface ReceptionUpdateGuard {
   allowed: boolean;
@@ -99,43 +102,6 @@ export function guardReceptionUpdate(
     }
   }
   return { allowed: true };
-}
-
-/**
- * Charge la réception en cours persistée par le dépositaire (localStorage).
- * Retourne null si absente, illisible ou dans une forme obsolète (ancien
- * schéma) — l'appelant repart alors d'un état vierge.
- */
-export function loadPersistedReception(): ReceptionData | null {
-  try {
-    const raw = localStorage.getItem(RECEPTION_STORAGE_KEY);
-    if (!raw) return null;
-    const data = JSON.parse(raw) as ReceptionData;
-    // Garde de forme : champs obligatoires du schéma actuel.
-    const validShape =
-      Array.isArray(data.articles) &&
-      Array.isArray(data.controles) &&
-      typeof data.journalEntryId === "string" &&
-      typeof data.magasinierCertifie === "boolean" &&
-      typeof data.depositaireCertifie === "boolean";
-    return validShape ? data : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Persiste la réception en cours. Appelé à chaque étape franchie (fin d'étape 1
- * côté dépositaire, confirmation / écart côté magasinier) pour simuler la
- * transmission entre les deux rôles.
- */
-export function persistReception(data: ReceptionData): void {
-  try {
-    localStorage.setItem(RECEPTION_STORAGE_KEY, JSON.stringify(data));
-  } catch {
-    // Quota indisponible ou navigation privée : le flux reste fonctionnel en
-    // mémoire pour la session en cours, on ignore silencieusement.
-  }
 }
 
 /** Nom affiché pour le titulaire du rôle : l'utilisateur réellement connecté si

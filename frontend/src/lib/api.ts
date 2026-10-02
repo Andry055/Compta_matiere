@@ -56,6 +56,41 @@ export function getStrapiJwt(): string | null {
   }
 }
 
+/**
+ * Rôle RÉEL de l'utilisateur connecté (GET /api/session/role).
+ *
+ * La réponse de `POST /api/auth/local` ne contient PAS la relation `role` :
+ * le contrôleur `auth` du plugin users-permissions assainit l'utilisateur via
+ * `strapi.contentAPI.sanitize.output`, qui retire toute relation vers
+ * `plugin::users-permissions.user` (non lisible en Content API). Même constat
+ * sur `GET /api/users/me`. Sans cette route, l'interface ne connaît pas le
+ * rôle du compte authentifié et risque d'afficher une identité codée en dur
+ * qui contredit le jeton (signature refusée en 403 par le serveur).
+ *
+ * Retourne `null` si l'API est injoignable ou le jeton refusé : l'appelant
+ * décide alors de son repli.
+ */
+export async function fetchSessionRole(): Promise<StrapiAuthUser | null> {
+  const jwt = getStrapiJwt();
+  if (!jwt) return null;
+  try {
+    const { data } = await api.get("/api/session/role", { timeout: 5000 });
+    const u = data?.data;
+    if (!u || !u.role) return null;
+    return {
+      id: u.id,
+      documentId: u.documentId,
+      username: u.username,
+      email: u.email,
+      department: u.department ?? null,
+      fonction: u.fonction ?? null,
+      role: { id: u.role.id, type: u.role.type, name: u.role.name },
+    };
+  } catch {
+    return null;
+  }
+}
+
 export function setStrapiSession(jwt: string, user: StrapiAuthUser) {
   try {
     localStorage.setItem(JWT_KEY, jwt);
@@ -278,6 +313,9 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
     nomenclature: l.nomenclature || "",
     pieceJustificative: l.piece_justificative || "",
     observation: l.observations || "",
+    // Étape 2 du flux « Arrivée matériel » : contrôle magasinier persisté.
+    etat: (l.etat as EntreeLigne["etat"]) ?? null,
+    conforme: l.conforme ?? null,
   }));
 
   return {
@@ -320,6 +358,8 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
     total: row.total ?? undefined,
     admin,
     lignes: lignesMappees,
+    statutServeur: row.statut || undefined,
+    rejetee: row.statut === "rejetee",
   };
 }
 
@@ -369,12 +409,37 @@ function mapSortie(row: StrapiEntity): SortieRecord {
   };
 }
 
+/** Nature de l'échec d'un appel authentifié. Distinguer les cas évite d'afficher
+ *  un « serveur injoignable » faux : sur /api/entrees, une absence de jeton
+ *  renvoie 403 (et non 401), exactement comme un rôle non habilité — seul un
+ *  diagnostic explicite permet de dire lequel des deux est en cause. */
+export type EchecApi =
+  /** Backend arrêté, injoignable ou délai dépassé. */
+  | "reseau"
+  /** Aucun jeton Strapi dans le navigateur (connexion de secours hors ligne :
+   *  le compte de démonstration local n'existe pas côté serveur). */
+  | "session_absente"
+  /** 401 : jeton invalide ou expiré → il faut se reconnecter. */
+  | "session_expiree"
+  /** 403 : jeton présent mais rôle sans la permission demandée. */
+  | "acces_refuse";
+
+/** Traduit une erreur axios en cause exploitable par l'appelant. */
+export function classerEchecApi(err: unknown): EchecApi {
+  if (axios.isAxiosError(err)) {
+    if (err.response?.status === 401) return "session_expiree";
+    if (err.response?.status === 403) return "acces_refuse";
+  }
+  return "reseau";
+}
+
 /**
- * Charge les entrées depuis Strapi (/api/entrees).
- * Retourne `null` si le backend est injoignable ou en erreur, et `[]` s'il
- * répond sans donnée : l'appelant retombe alors sur les données locales.
+ * Charge les entrées depuis Strapi (/api/entrees) en distinguant les causes
+ * d'échec. Les appelants qui ne discriminent pas utilisent `fetchEntrees`.
  */
-export async function fetchEntrees(): Promise<EntreeRecord[] | null> {
+export async function fetchEntreesDetail(): Promise<
+  { ok: true; entrees: EntreeRecord[] } | { ok: false; echec: EchecApi }
+> {
   try {
     const { data } = await api.get("/api/entrees", {
       timeout: 5000,
@@ -393,10 +458,26 @@ export async function fetchEntrees(): Promise<EntreeRecord[] | null> {
     });
 
     const rows: StrapiEntity[] = data?.data ?? [];
-    return rows.map(mapEntree);
-  } catch {
-    return null;
+    return { ok: true, entrees: rows.map(mapEntree) };
+  } catch (e) {
+    // 403 sans jeton : le serveur n'a reçu aucun credential — c'est la session
+    // qui manque, pas un droit manquant. Jeton présent + 403 = rôle non
+    // habilité (le demandeur, par exemple, ne lit pas les entrées).
+    if (!getStrapiJwt() && classerEchecApi(e) === "acces_refuse") {
+      return { ok: false, echec: "session_absente" };
+    }
+    return { ok: false, echec: classerEchecApi(e) };
   }
+}
+
+/**
+ * Charge les entrées depuis Strapi (/api/entrees).
+ * Retourne `null` si le backend est injoignable ou en erreur, et `[]` s'il
+ * répond sans donnée : l'appelant retombe alors sur les données locales.
+ */
+export async function fetchEntrees(): Promise<EntreeRecord[] | null> {
+  const resultat = await fetchEntreesDetail();
+  return resultat.ok ? resultat.entrees : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -414,6 +495,10 @@ export interface NouvelleEntreePayload {
   notes?: string;
   /** true = enregistrement partiel (statut « Brouillon ») */
   brouillon?: boolean;
+  /** false = le serveur dérive affectation_depositaire depuis l'utilisateur
+   *  connecté et ne réclame pas les 3 affectations (flux « Arrivée matériel »).
+   *  Absent/true = validation stricte des 3 affectations (flux historique). */
+  exigerAffectations?: boolean;
   affectation_depositaire?: string;
   affectation_chef_service_1?: string;
   affectation_chef_service_2?: string;
@@ -456,12 +541,31 @@ export async function creerEntree(payload: NouvelleEntreePayload): Promise<Entre
   return mapEntree(data.data);
 }
 
-/** Pose une signature (rôle contrôlé côté serveur). */
+/** Détail du contrôle physique d'une ligne, envoyé groupé avec la signature
+ *  chef_service_1 par le flux « Arrivée matériel » (MaterialEntry étape 2). */
+export interface ControleLignePayload {
+  /** Numéro d'ordre de la ligne dans l'entrée (1-based). */
+  numero_ordre: number;
+  etat: "neuf" | "bon" | "moyen" | "defaillant";
+  conforme: boolean;
+  /** Motif de réserve / remarque — repris dans observations de entree-ligne. */
+  observations?: string;
+}
+
+/**
+ * Pose une signature (rôle contrôlé côté serveur).
+ * `controles` : optionnel — groupé à la signature chef_service_1 par le flux
+ * « Arrivée matériel ». Sans ce paramètre, comportement historique inchangé
+ * (MovementDetailModal / circuit EntriesPage-NewEntryPage).
+ */
 export async function signerEntree(
   documentId: string,
-  role: "depositaire" | "chef_service_1" | "chef_service_2"
+  role: "depositaire" | "chef_service_1" | "chef_service_2",
+  controles?: ControleLignePayload[]
 ): Promise<EntreeRecord> {
-  const { data } = await api.post(`/api/entrees/${documentId}/sign`, { data: { role } });
+  const { data } = await api.post(`/api/entrees/${documentId}/sign`, {
+    data: { role, ...(controles ? { controles } : {}) },
+  });
   return mapEntree(data.data);
 }
 
@@ -491,6 +595,12 @@ export interface MaterialOption {
   categorie?: string;
   quantiteStock?: number;
   valeurUnitaire?: number;
+  /** Champs complémentaires (écran Équipements / tableau de bord). */
+  numeroSerie?: string;
+  nomenclature?: string;
+  /** Statut serveur : en_stock / distribue / maintenance / reforme / sortie. */
+  statut?: string;
+  dateCreation?: string;
 }
 
 /** Liste des fournisseurs (pour le formulaire « Nouvelle entrée »). */
@@ -576,36 +686,53 @@ export async function fetchServices(): Promise<RefOption[]> {
   }
 }
 
-/** Liste des matériaux existants (pour pré-remplir les lignes du formulaire). */
+/** Liste des matériaux existants (pré-remplissage du formulaire + écran
+ *  Équipements / indicateurs de stock du tableau de bord).
+ *  Important : un retour [] peut être une VRAIE liste vide — distinguer
+ *  l'échec réseau via fetchMaterialsOrThrow(). */
 export async function fetchMaterials(): Promise<MaterialOption[]> {
   try {
-    const { data } = await api.get("/api/materials", {
-      params: {
-        "pagination[pageSize]": 200,
-        sort: "designation:asc",
-        populate: ["categorie"],
-      },
-      timeout: 5000,
-    });
-    return (data?.data ?? []).map(
-      (row: {
-        documentId?: string;
-        id: number;
-        designation?: string;
-        quantite_stock?: number;
-        valeur_unitaire?: number;
-        categorie?: { nom?: string } | null;
-      }) => ({
-        documentId: row.documentId || String(row.id),
-        designation: row.designation || `Matériel #${row.id}`,
-        categorie: row.categorie?.nom || undefined,
-        quantiteStock: row.quantite_stock ?? undefined,
-        valeurUnitaire: row.valeur_unitaire ?? undefined,
-      })
-    );
+    return await fetchMaterialsOrThrow();
   } catch {
     return [];
   }
+}
+
+/** Comme fetchMaterials mais propage l'erreur : l'appelant peut afficher un
+ *  état d'erreur explicite au lieu d'une liste vide silencieuse. */
+export async function fetchMaterialsOrThrow(): Promise<MaterialOption[]> {
+  const { data } = await api.get("/api/materials", {
+    params: {
+      "pagination[pageSize]": 200,
+      sort: "designation:asc",
+      populate: ["categorie"],
+    },
+    timeout: 5000,
+  });
+  return (data?.data ?? []).map(
+    (row: {
+      documentId?: string;
+      id: number;
+      designation?: string;
+      numero_serie?: string | null;
+      nomenclature?: string | null;
+      statut?: string | null;
+      quantite_stock?: number | null;
+      valeur_unitaire?: number | null;
+      categorie?: { nom?: string } | null;
+      createdAt?: string;
+    }) => ({
+      documentId: row.documentId || String(row.id),
+      designation: row.designation || `Matériel #${row.id}`,
+      categorie: row.categorie?.nom || undefined,
+      quantiteStock: row.quantite_stock ?? undefined,
+      valeurUnitaire: row.valeur_unitaire ?? undefined,
+      numeroSerie: row.numero_serie || undefined,
+      nomenclature: row.nomenclature || undefined,
+      statut: row.statut || undefined,
+      dateCreation: row.createdAt || undefined,
+    })
+  );
 }
 
 /**

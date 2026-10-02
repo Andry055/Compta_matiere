@@ -1,6 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
+  AlertTriangle,
   Package,
+  RefreshCw,
   Search,
   Plus,
   Edit,
@@ -18,10 +20,11 @@ import { EquipmentActions } from "./EquipmentActions";
 import { User as UserType } from "../App";
 import { JournalEntry } from "../types/accounting";
 import { splitDepartement } from "../lib/movements";
+import { fetchMaterialsOrThrow, MaterialOption } from "../lib/api";
 import { toast } from "sonner";
 
 interface EquipmentItem {
-  id: number;
+  id: number | string;
   name: string;
   serialNumber: string;
   category: string;
@@ -198,8 +201,69 @@ export const mockEquipment: EquipmentItem[] = [
   },
 ];
 
+// ---------------------------------------------------------------------------
+// Mapping API réelle -> EquipmentItem (GET /api/materials, source commune avec
+// le tableau de bord). Champs serveur : designation, numero_serie, nomenclature,
+// categorie.nom, statut, quantite_stock, valeur_unitaire, createdAt.
+// ---------------------------------------------------------------------------
+
+/** Statut serveur -> statut affiché (même vocabulaire que les mocks). */
+function statutServeurVersAffiche(statut?: string): EquipmentItem["status"] {
+  switch (statut) {
+    case "distribue":
+      return "Attribué";
+    case "maintenance":
+      return "Maintenance";
+    case "reforme":
+    case "sortie":
+      return "Retiré";
+    case "en_stock":
+    default:
+      return "Disponible";
+  }
+}
+
+/** Date d'achat affichée : pas de champ dédié côté material — la date de
+ *  création de la fiche matériel sert de repli. */
+function dateAchatAffichee(m: MaterialOption): string {
+  return m.dateCreation ? m.dateCreation.slice(0, 10) : "";
+}
+
+function materielVersEquipmentItem(m: MaterialOption): EquipmentItem {
+  return {
+    id: m.documentId, // identifiant stable côté serveur (documentId)
+    name: m.designation,
+    serialNumber: m.numeroSerie || m.nomenclature || m.documentId,
+    category: m.categorie || "Non classé",
+    status: statutServeurVersAffiche(m.statut),
+    department: "Stock",
+    purchaseDate: dateAchatAffichee(m),
+    value: m.valeurUnitaire ?? 0,
+    image: `https://images.unsplash.com/photo-1541807084-5c52b6b3adef?w=80&h=80&fit=crop&crop=center&sig=${encodeURIComponent(
+      m.documentId
+    )}`, // visuel générique déterministe
+    supplier: "",
+    warranty: "",
+    specifications: "",
+    notes: "",
+    numeroNomenclature: m.nomenclature,
+    quantity: m.quantiteStock ?? 0, // le STOCK RÉEL piloté par appliquerImpactStock
+    location: "Magasin central",
+  };
+}
+
 export function Equipment({ user }: { user?: UserType }) {
-  const [equipment, setEquipment] = useState<EquipmentItem[]>(mockEquipment);
+  // Données RÉELLES : la liste démarre vide et est chargée depuis l'API
+  // (GET /api/materials via fetchMaterialsOrThrow — source partagée avec le
+  // tableau de bord). mockEquipment reste dans le fichier pour le développement
+  // local hors ligne, mais n'est plus jamais affiché par défaut.
+  const [equipment, setEquipment] = useState<EquipmentItem[]>([]);
+  // "chargement" | "pret" | "erreur" — l'échec réseau est explicite :
+  // jamais de repli silencieux sur les données de démonstration.
+  const [chargement, setChargement] = useState<
+    { etat: "chargement" } | { etat: "pret" } | { etat: "erreur" }
+  >({ etat: "chargement" });
+  const { etat: etatChargement } = chargement;
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [categoryFilter, setCategoryFilter] = useState("Toutes");
@@ -210,6 +274,27 @@ export function Equipment({ user }: { user?: UserType }) {
 
   // Fonctionnalité : le demandeur consulte le stock en lecture seule
   const isDemandeur = user?.role === "demandeur";
+
+  // Chargement du stock réel au montage (F5 = reconstruction depuis la base).
+  const chargerMateriels = () => {
+    setChargement({ etat: "chargement" });
+    fetchMaterialsOrThrow()
+      .then((materiels) => {
+        setEquipment(materiels.map(materielVersEquipmentItem));
+        setChargement({ etat: "pret" });
+      })
+      .catch(() => setChargement({ etat: "erreur" }));
+  };
+
+  useEffect(() => {
+    chargerMateriels();
+    const handleStockUpdate = () => chargerMateriels();
+    window.addEventListener("stock-mis-a-jour", handleStockUpdate);
+    return () => {
+      window.removeEventListener("stock-mis-a-jour", handleStockUpdate);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const filteredEquipment = equipment.filter((item) => {
     const matchesSearch =
@@ -278,7 +363,7 @@ export function Equipment({ user }: { user?: UserType }) {
   const handleAddEquipment = (journalEntry: Omit<JournalEntry, "id">) => {
     // Convertir l'entrée journal en format d'équipement pour l'affichage
     const newEquipment: EquipmentItem = {
-      id: equipment.length + 1,
+      id: `local-${Date.now()}`,
       name: journalEntry.designation,
       serialNumber: journalEntry.numeroOrdre || `SN-${Date.now()}`, // Utiliser numeroOrdre comme fallback
       category: journalEntry.espece,
@@ -337,7 +422,9 @@ export function Equipment({ user }: { user?: UserType }) {
   const handleDuplicateEquipment = (equipment: EquipmentItem) => {
     const newEquipment = {
       ...equipment,
-      id: Math.max(...mockEquipment.map((e) => e.id)) + 1, // ✅ Correction
+      // id = documentId côté API réelle ; le suffixe de nom évite la collision
+      // de clé React sans dépendre des ids numériques des mocks.
+      id: `${equipment.id}-copy`,
       name: `${equipment.name} (Copie)`,
       serialNumber: `${equipment.serialNumber}-COPY`,
       status: "Disponible" as const,
@@ -564,7 +651,37 @@ export function Equipment({ user }: { user?: UserType }) {
           </div>
         </div>
 
+        {/* Chargement du stock réel */}
+        {etatChargement === "chargement" && (
+          <div className="p-10 text-center">
+            <RefreshCw className="h-8 w-8 text-primary mx-auto mb-3 animate-spin" />
+            <p className="text-sm text-muted-foreground">
+              Chargement du stock réel depuis la base…
+            </p>
+          </div>
+        )}
+
+        {/* Erreur API : message clair + bouton Réessayer — jamais de repli
+            silencieux sur les données de démonstration. */}
+        {etatChargement === "erreur" && (
+          <div className="p-10 text-center">
+            <AlertTriangle className="h-8 w-8 text-destructive mx-auto mb-3" />
+            <h4 className="text-sm font-medium text-card-foreground mb-1">
+              Impossible de charger le stock
+            </h4>
+            <p className="text-xs text-muted-foreground mb-4">
+              Le serveur est injoignable ou a répondu par une erreur. Aucune
+              donnée fictive n'est affichée à la place du stock réel.
+            </p>
+            <Button onClick={chargerMateriels} className="gap-2">
+              <RefreshCw className="h-4 w-4" />
+              Réessayer
+            </Button>
+          </div>
+        )}
+
         {/* Mobile Card View */}
+        {etatChargement === "pret" && (
         <div className="block lg:hidden p-4 space-y-4">
           {filteredEquipment.map((item) => (
             <div
@@ -633,9 +750,10 @@ export function Equipment({ user }: { user?: UserType }) {
             </div>
           ))}
         </div>
+        )}
 
         {/* Desktop Table View — Demandeur : consultation seule */}
-        {isDemandeur && (
+        {isDemandeur && etatChargement === "pret" && (
           <div className="hidden lg:block p-6">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -734,7 +852,7 @@ export function Equipment({ user }: { user?: UserType }) {
         )}
 
         {/* Desktop Table View */}
-        {!isDemandeur && (
+        {!isDemandeur && etatChargement === "pret" && (
         <div className="hidden lg:block p-6">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -835,7 +953,7 @@ export function Equipment({ user }: { user?: UserType }) {
         </div>
         )}
 
-        {filteredEquipment.length === 0 && (
+        {etatChargement === "pret" && filteredEquipment.length === 0 && (
           <div className="p-8 text-center">
             <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
             <h4 className="text-sm text-muted-foreground mb-2">

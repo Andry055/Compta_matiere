@@ -1,0 +1,15 @@
+{
+  "kind": "collectionType",
+  "collectionName": "session_roles",
+  "info": {
+    "singularName": "session-role",
+    "pluralName": "session-roles",
+    "displayName": "session-role",
+    "description": "Support technique : ne stocke AUCUNE donnée (table vide par construction)."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {}
+}

@@ -766,6 +766,10 @@ export interface ApiEntreeEntree extends Struct.CollectionTypeSchema {
     declaration_fonction: Schema.Attribute.String;
     declaration_nom: Schema.Attribute.String;
     declaration_signature: Schema.Attribute.String;
+    demandeur: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
     depositaire_signed: Schema.Attribute.Boolean &
       Schema.Attribute.DefaultTo<false>;
     direction: Schema.Attribute.Relation<
@@ -1048,6 +1052,34 @@ export interface ApiServiceService extends Struct.CollectionTypeSchema {
     publishedAt: Schema.Attribute.DateTime;
     responsable: Schema.Attribute.String;
     responsable_email: Schema.Attribute.Email;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiSessionRoleSessionRole extends Struct.CollectionTypeSchema {
+  collectionName: 'session_roles';
+  info: {
+    description: 'Support technique : ne stocke AUCUNE donn\u00E9e (table vide par construction).';
+    displayName: 'session-role';
+    pluralName: 'session-roles';
+    singularName: 'session-role';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::session-role.session-role'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
@@ -1666,6 +1698,7 @@ declare module '@strapi/strapi' {
       'api::ouverture-exercice.ouverture-exercice': ApiOuvertureExerciceOuvertureExercice;
       'api::rapport.rapport': ApiRapportRapport;
       'api::service.service': ApiServiceService;
+      'api::session-role.session-role': ApiSessionRoleSessionRole;
       'api::sortie-ligne.sortie-ligne': ApiSortieLigneSortieLigne;
       'api::sortie.sortie': ApiSortieSortie;
       'plugin::content-releases.release': PluginContentReleasesRelease;

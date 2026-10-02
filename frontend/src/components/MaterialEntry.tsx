@@ -19,6 +19,7 @@ import {
   PackageCheck,
   Plus,
   Printer,
+  RefreshCw,
   Save,
   Trash2,
   UserCheck,
@@ -26,11 +27,19 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { User } from "../App";
-import type { EntreeRecord } from "../lib/movements";
+import { useCallback } from "react";
 import {
   creerEntree,
+  fetchEntreesDetail,
+  signerEntree,
+  EchecApi,
   NouvelleEntreePayload,
 } from "../lib/api";
+import {
+  formatDelaiSync,
+  marquerSync,
+  useDerniereSync,
+} from "../lib/lastSync";
 import {
   BonLivraisonArticle,
   ControleArticle,
@@ -40,27 +49,110 @@ import {
 import { AppRole, ROLES_CONFIG } from "../types/roles";
 import {
   DENIED_ACTION_MESSAGE,
+  STEP_ROLE_REQUIREMENTS,
   canPerformStepAction,
   getSessionUserName,
   guardReceptionUpdate,
-  loadPersistedReception,
-  persistReception,
   resolveActiveRole,
 } from "../lib/role-access";
+// Notifications « étapes » : indicateur DÉRIVÉ recalculé depuis fetchEntrees()
+// (aucun stockage). lib/notifications.ts et lib/journal-store.ts ne sont plus
+// référencés par ce fichier — ils restent en place pour leurs autres
+// consommateurs (Journal.tsx, hors périmètre de la fusion).
 import {
-  appendJournalEntryFromReception,
-  appendMovementsFromReception,
-  generateSequentialJournalId,
-  getMovementsByJournalId,
-  journalEntryExists,
-} from "../lib/journal-store";
-import {
-  AppNotification,
-  countUnread,
-  getNotificationsForRole,
-  markAllRead,
-  pushNotification,
-} from "../lib/notifications";
+  NotificationEtape,
+  notificationsPourRole,
+} from "../lib/notificationEtapes";
+import type { EntreeRecord } from "../lib/movements";
+
+// ──────────────────────────────────────────────
+// Helpers « ancrage écran ↔ entrée serveur »
+// ──────────────────────────────────────────────
+
+/** Statuts terminaux : une entrée dans cet état ne peut plus être « l'entrée
+ *  en cours » de personne. */
+function entreeEstTerminee(e: EntreeRecord): boolean {
+  return (
+    e.statutServeur === "validee" || e.statutServeur === "rejetee"
+  );
+}
+
+/** L'entrée appartient-elle au dépositaire connecté ? L'affectation est fixée
+ *  à la création (dérivée de la session) : username/email côté serveur, nom
+ *  affiché côté écran. */
+function entreeEstAuDepositaire(e: EntreeRecord, nomUtilisateur: string): boolean {
+  const aff = (e.affectations?.depositaire || "").trim().toLowerCase();
+  const moi = nomUtilisateur.trim().toLowerCase();
+  return !!aff && !!moi && aff === moi;
+}
+
+/** Entrées en attente du rôle donné (mêmes règles que notificationEtapes.ts,
+ *  hors brouillons du dépositaire qui sont traités à part). */
+function entreesEnAttentePourRole(
+  entrees: EntreeRecord[],
+  role: AppRole
+): EntreeRecord[] {
+  return entrees.filter((e) => {
+    if (entreeEstTerminee(e)) return false;
+    if (role === "magasinier") return !e.signatures?.chefService1;
+    if (role === "logistique")
+      return !!e.signatures?.chefService1 && !e.signatures?.chefService2;
+    if (role === "depositaire")
+      return (
+        !!e.signatures?.chefService1 &&
+        !!e.signatures?.chefService2 &&
+        !e.signatures?.depositaire
+      );
+    return false;
+  });
+}
+
+/** Clé de signature serveur correspondant au rôle métier. */
+const CLE_SIGNATURE: Partial<Record<AppRole, "chefService1" | "chefService2" | "depositaire">> = {
+  magasinier: "chefService1",
+  logistique: "chefService2",
+  depositaire: "depositaire",
+};
+
+/** L'entrée attend-elle encore une action du rôle connecté ?
+ *  Non dès que le rôle a apposé SA signature : la pièce quitte alors son onglet
+ *  de traitement (elle reste consultable en lecture seule). Non plus si elle est
+ *  terminée/rejetée, ou si elle est à une autre étape du circuit. */
+function entreeResteATraiter(e: EntreeRecord, role: AppRole): boolean {
+  if (entreeEstTerminee(e)) return false;
+  const s = e.signatures ?? {};
+  // Un brouillon n'existe que pour son dépositaire (saisie de l'étape 1).
+  if (e.statutServeur === "brouillon") return role === "depositaire";
+  switch (role) {
+    case "magasinier":
+      return !s.chefService1;
+    case "logistique":
+      return !!s.chefService1 && !s.chefService2;
+    case "depositaire":
+      return !!s.chefService1 && !!s.chefService2 && !s.depositaire;
+    default:
+      return false;
+  }
+}
+
+/** Le rôle connecté a-t-il DÉJÀ traité cette entrée (signature posée) ?
+ *  → elle alimente la page « Articles traités » (lecture seule), pas l'onglet
+ *  de traitement. */
+function entreeTraiteeParRole(e: EntreeRecord, role: AppRole): boolean {
+  const cle = CLE_SIGNATURE[role];
+  if (!cle) return false;
+  return !!e.signatures?.[cle];
+}
+
+/** Rôle qui doit encore intervenir pour terminer une entrée en circulation —
+ *  sert à expliquer POURQUOI une pièce en attente n'apparaît pas dans la file
+ *  du rôle connecté (« en attente du magasinier »). */
+function etapeEnAttenteDe(e: EntreeRecord): string {
+  if (e.statutServeur === "brouillon") return "transmission au magasin";
+  if (!e.signatures?.chefService1) return "contrôle magasinier";
+  if (!e.signatures?.chefService2) return "validation logistique";
+  return "validation finale du dépositaire";
+}
 
 // shadcn/ui components
 import { Button } from "./ui/button";
@@ -110,11 +202,24 @@ interface MaterialEntryProps {
   onNavigate?: (section: string) => void;
 }
 
+/** Badge du bandeau « plusieurs entrées attendent votre rôle » : couleur selon
+ *  le rôle actif (les autres rôles ne passent jamais par ce bandeau). */
+function bandeauRoleClasse(role: AppRole): string {
+  switch (role) {
+    case "magasinier":
+      return "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300";
+    case "logistique":
+      return "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300";
+    default:
+      return "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300";
+  }
+}
+
 const STEP_LABELS = [
   "Bon de livraison",
   "Contrôle magasinier",
-  "Enregistrement dépositaire",
-  "PV de réception",
+  "Validation logistique",
+  "PV de réception & mise en stock",
 ] as const;
 
 // Données pré-remplies pour test immédiat
@@ -145,6 +250,16 @@ const INITIAL_ARTICLES: BonLivraisonArticle[] = [
   },
 ];
 
+export interface ReceptionDataExtra {
+  /** Vrai quand l'entrée affichée est un brouillon du dépositaire connecté
+   *  (hydratation « continuez votre saisie »). */
+  estBrouillon: boolean;
+  /** Par ligne (clé = articleId) : l'état n'a PAS encore été constaté par le
+   *  magasinier. Distinct d'un vrai constat « Neuf » — les écrans Step2 et PV
+   *  affichent « Non contrôlé » au lieu du libellé par défaut. */
+  etatsNonControles: Record<string, boolean>;
+}
+
 function createInitialData(withDemoArticles: boolean): ReceptionData {
   const articles = withDemoArticles ? INITIAL_ARTICLES : [];
   return {
@@ -159,9 +274,13 @@ function createInitialData(withDemoArticles: boolean): ReceptionData {
       conforme: false,
       remarque: "",
     })),
+    // Drapeaux de l'ancien flux local : conservés pour la compatibilité des
+    // vues (les étapes réelles sont les signatures serveur), initialisés hors
+    // du chemin actif. journalEntryId porte la référence serveur quand une
+    // entrée est hydratée.
     magasinierCertifie: false,
     depositaireCertifie: false,
-    journalEntryId: generateJournalEntryId(),
+    journalEntryId: "",
   };
 }
 
@@ -171,10 +290,6 @@ function createInitialData(withDemoArticles: boolean): ReceptionData {
 
 function generateArticleId() {
   return `art-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-}
-
-function generateJournalEntryId() {
-  return generateSequentialJournalId();
 }
 
 function formatAriary(value: number) {
@@ -187,6 +302,44 @@ const ETAT_LABELS: Record<EtatConstate, string> = {
   moyen: "État moyen",
   defaillant: "Défaillant",
 };
+
+/** État non encore renseigné par le magasinier : visuellement distinct d'un
+ *  vrai constat « Neuf » (risque de faux enregistrement comptable). */
+const LIBELLE_NON_CONTROLE = "Non contrôlé";
+const CLASSE_NON_CONTROLE =
+  "bg-slate-100 text-slate-600 border border-dashed border-slate-300 dark:bg-slate-900/40 dark:text-slate-400 dark:border-slate-600";
+
+/** Messages de l'écran bloqué — un par CAUSE d'échec de lecture des entrées.
+ *  (L'API renvoie 403 aussi bien quand aucun jeton n'est envoyé que quand le
+ *  rôle connecté n'a pas la permission : confondre les deux en « réseau coupé »
+ *  envoie l'utilisateur vers la mauvaise action.) */
+const ECHECH_ENTREES_TITRE: Record<EchecApi, string> = {
+  reseau: "Serveur injoignable",
+  session_absente: "Session serveur absente",
+  session_expiree: "Session expirée",
+  acces_refuse: "Lecture des entrées refusée",
+};
+
+const ECHECH_ENTREES_DETAIL: Record<EchecApi, string> = {
+  reseau:
+    "Le serveur Strapi ne répond pas (réseau coupé ou service arrêté). Les données affichées ne peuvent pas être garanties à jour — réessayez.",
+  session_absente:
+    "Votre session n'est rattachée à aucun compte serveur : aucune demande n'atteint la base, et aucune entrée ne peut donc vous être attribuée.",
+  session_expiree:
+    "Votre jeton de session n'est plus valable. Reconnectez-vous pour reprendre le circuit de réception.",
+  acces_refuse:
+    "Votre rôle serveur n'a pas le droit de lire les entrées de réception. Utilisez un compte habilité (magasinier, chef logistique ou dépositaire).",
+};
+
+/** Libellé d'état pour la ligne donnée : « Non contrôlé » tant que le
+ *  magasinier n'a rien constaté (etatAbsent), sinon le libellé réel. */
+function libelleEtatLigne(
+  controle: ControleArticle | undefined,
+  etatAbsent: boolean
+): string {
+  if (etatAbsent || !controle) return LIBELLE_NON_CONTROLE;
+  return ETAT_LABELS[controle.etat];
+}
 
 const ETAT_COLORS: Record<EtatConstate, string> = {
   neuf: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400",
@@ -334,26 +487,28 @@ function getStepStatusRows(
     {
       step: 3,
       label: STEP_LABELS[2],
-      ownerRole: "depositaire",
+      ownerRole: "logistique",
       state: !s2
         ? "verrouillee"
         : data.depositaireCertifie
         ? "terminee"
-        : mine("depositaire")
+        : mine("logistique")
         ? "a_faire_vous"
         : "a_faire_autre",
       detail: !s2
-        ? "En attente de la certification magasinier"
-        : data.depositaireCertifie
-        ? `Écriture ${data.journalEntryId} générée`
-        : "Enregistrement au journal à valider",
+        ? "En attente du contrôle magasinier"
+        : "Validation du circuit et visa logistique",
     },
     {
       step: 4,
       label: STEP_LABELS[3],
-      ownerRole: null,
-      state: s3 ? "disponible" : "verrouillee",
-      detail: s3 ? "PV consultable et imprimable" : "Généré après l'étape 3",
+      ownerRole: "depositaire",
+      state: !s3
+        ? "verrouillee"
+        : mine("depositaire")
+        ? "a_faire_vous"
+        : "disponible",
+      detail: "Signature finale et mise en stock",
     },
   ];
 }
@@ -484,11 +639,12 @@ function getRoleHomeStep(role: AppRole, data: ReceptionData): number {
     case "depositaire":
       if (!s1) return 1;
       if (!data.magasinierCertifie) return 2; // attend le magasinier (lecture seule)
-      if (!data.depositaireCertifie) return 3;
-      return 4;
+      return 4; // validation finale
     case "magasinier":
       if (!s1) return 1; // en attente du dépositaire (lecture seule)
       return 2;
+    case "logistique":
+      return 3;
     default:
       return 1;
   }
@@ -513,23 +669,24 @@ function ReadOnlyNotice({ requiredRoleLabel }: { requiredRoleLabel: string }) {
 // Vue simplifiée MAGASINIER — il ne voit que SON onglet
 // ──────────────────────────────────────────────
 
-/** Cloche de notifications du magasinier (version compacte du panneau). */
+/** Cloche de notifications (version compacte du panneau). Étape 5 : la liste
+ *  est DÉRIVÉE des entrées serveur (actions en attente pour le rôle), plus
+ *  aucune lecture d'un stock « lu/non lu ». « Tout marquer lu » disparaît —
+ *  un indicateur d'état se solde en AGISSANT, pas en cochant. */
 function NotificationsBell({
   role,
-  open,
-  onOpenChange,
-  onRefresh,
+  entrees,
+  onSelectEntree,
 }: {
   role: AppRole;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  onRefresh: () => void;
+  entrees: EntreeRecord[] | null;
+  onSelectEntree?: (entree: EntreeRecord) => void;
 }) {
-  const notifications = getNotificationsForRole(role);
-  const unread = notifications.filter((n) => !n.read).length;
+  const notifications = notificationsPourRole(role, entrees ?? []);
+  const unread = notifications.length;
 
   return (
-    <Popover open={open} onOpenChange={onOpenChange}>
+    <Popover>
       <PopoverTrigger asChild>
         <Button
           variant="outline"
@@ -548,54 +705,48 @@ function NotificationsBell({
       <PopoverContent align="end" className="w-80 p-0">
         <div className="flex items-center justify-between px-3 py-2 border-b border-border">
           <span className="text-sm font-semibold">
-            Notifications — {ROLES_CONFIG[role].label}
+            En attente — {ROLES_CONFIG[role].label}
           </span>
-          {notifications.length > 0 && (
-            <button
-              type="button"
-              className="text-xs text-primary hover:underline"
-              onClick={() => {
-                markAllRead(role);
-                onRefresh();
-              }}
-            >
-              Tout marquer lu
-            </button>
-          )}
         </div>
         <div className="max-h-72 overflow-auto">
           {notifications.length === 0 ? (
             <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              Aucune notification pour le moment.
+              Aucune action en attente pour le moment.
             </div>
           ) : (
-            notifications.map((n) => (
-              <div
-                key={n.id}
-                className={`px-3 py-2.5 border-b border-border/60 last:border-0 ${
-                  !n.read ? "bg-primary/5" : ""
-                }`}
-              >
-                <div className="flex items-start gap-2">
-                  {n.type === "ecart" ? (
-                    <Lock className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                  ) : n.type === "reception_confirmee" ? (
-                    <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
-                  ) : (
-                    <ClipboardCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                  )}
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium leading-snug">{n.title}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">
-                      {n.body}
-                    </p>
-                    <p className="text-[10px] text-muted-foreground mt-1">
-                      {new Date(n.date).toLocaleString("fr-FR")}
-                    </p>
+            notifications.map((n: NotificationEtape) => {
+              const e = entrees?.find((ent) => ent.id === n.entreeId);
+              return (
+                <div
+                  key={n.id}
+                  onClick={() => {
+                    if (e && onSelectEntree) onSelectEntree(e);
+                  }}
+                  className={`px-3 py-2.5 border-b border-border/60 last:border-0 ${
+                    onSelectEntree && e ? "hover:bg-muted/60 cursor-pointer transition-colors" : ""
+                  }`}
+                >
+                  <div className="flex items-start gap-2">
+                    {n.type === "ecart" ? (
+                      <Lock className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                    ) : n.type === "reception_confirmee" ? (
+                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                    ) : (
+                      <ClipboardCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <p className="text-sm font-medium leading-snug">{n.title}</p>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {n.body}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground mt-1">
+                        {new Date(n.date).toLocaleString("fr-FR")}
+                      </p>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </PopoverContent>
@@ -1236,16 +1387,24 @@ function PhotoCapture({
 
 function Step2ControleMagasinier({
   data,
+  extra,
   onChange,
   canEdit,
   requiredRoleLabel,
   depositaireName,
+  articlesIncomplets,
+  certifying,
 }: {
   data: ReceptionData;
+  extra: ReceptionDataExtra;
   onChange: (d: Partial<ReceptionData>) => void;
   canEdit: boolean;
   requiredRoleLabel: string;
   depositaireName: string;
+  /** Articles dont l'état n'a pas été renseigné — mis en évidence. */
+  articlesIncomplets?: Set<string>;
+  /** Signature serveur en cours (le bouton est déjà désactivé côté appelant). */
+  certifying?: boolean;
 }) {
   // Seuls les contrôles (état/conformité) sont éditables ici — le bon de
   // livraison et les articles restent en lecture seule (saisis par le
@@ -1295,10 +1454,17 @@ function Step2ControleMagasinier({
             if (!controle) return null;
             const hasIssue = !controle.conforme || controle.etat === "defaillant";
 
+            const isControleManquant = articlesIncomplets?.has(article.id) ?? false;
             return (
               <div key={article.id}>
                 {index > 0 && <Separator className="mb-4" />}
-                <div className="space-y-3">
+                <div
+                  className={`space-y-3 rounded-lg p-2 -m-2 transition-colors ${
+                    isControleManquant
+                      ? "ring-2 ring-destructive/60 bg-destructive/5"
+                      : ""
+                  }`}
+                >
                   <div className="flex items-start justify-between gap-2">
                     <div>
                       <h4 className="text-sm font-semibold text-foreground">
@@ -1322,6 +1488,12 @@ function Step2ControleMagasinier({
                       </p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
+                      {isControleManquant && (
+                        <Badge variant="destructive" className="gap-1 text-xs">
+                          <AlertTriangle className="h-3 w-3" />
+                          État requis
+                        </Badge>
+                      )}
                       {hasIssue && (
                         <Badge variant="destructive" className="gap-1 text-xs">
                           <AlertTriangle className="h-3 w-3" />
@@ -1344,7 +1516,11 @@ function Step2ControleMagasinier({
                     <div className="space-y-2">
                       <Label>État constaté</Label>
                       <Select
-                        value={controle.etat}
+                        value={
+                          extra.etatsNonControles[article.id]
+                            ? ""
+                            : controle.etat
+                        }
                         onValueChange={(val) =>
                           updateControle(
                             article.id,
@@ -1355,7 +1531,9 @@ function Step2ControleMagasinier({
                         disabled={!canEdit}
                       >
                         <SelectTrigger className="h-9">
-                          <SelectValue />
+                          {/* Vide tant que rien n'a été constaté : distinct
+                              d'un vrai choix « Neuf ». */}
+                          <SelectValue placeholder={LIBELLE_NON_CONTROLE} />
                         </SelectTrigger>
                         <SelectContent>
                           <SelectItem value="neuf">Neuf</SelectItem>
@@ -1858,11 +2036,15 @@ function Step3EnregistrementDepositaire({
 
 function Step4PVReception({
   data,
+  extra,
+  entreeServeur,
   magasinierName,
   depositaireName,
   onOpenJournal,
 }: {
   data: ReceptionData;
+  extra: ReceptionDataExtra;
+  entreeServeur: EntreeRecord | null;
   magasinierName: string;
   depositaireName: string;
   onOpenJournal: () => void;
@@ -1871,7 +2053,9 @@ function Step4PVReception({
     (sum, a) => sum + a.quantiteLivree * a.prixUnitaire,
     0
   );
-  const stockMovements = getMovementsByJournalId(data.journalEntryId);
+  // L'entrée serveur liée (passée par le parent) remplace les recherches dans
+  // les stores locaux (journal/mouvements) — supprimés à l'Étape 6.
+  const entreeLiee = entreeServeur;
   const now = new Date().toLocaleDateString("fr-FR", {
     year: "numeric",
     month: "long",
@@ -1986,14 +2170,22 @@ function Step4PVReception({
                         )}
                       </TableCell>
                       <TableCell>
-                        {controle && (
-                          <Badge
-                            variant="secondary"
-                            className={ETAT_COLORS[controle.etat]}
-                          >
-                            {ETAT_LABELS[controle.etat]}
-                          </Badge>
-                        )}
+                        {controle &&
+                          (extra.etatsNonControles[article.id] ? (
+                            <Badge
+                              variant="secondary"
+                              className={CLASSE_NON_CONTROLE}
+                            >
+                              {LIBELLE_NON_CONTROLE}
+                            </Badge>
+                          ) : (
+                            <Badge
+                              variant="secondary"
+                              className={ETAT_COLORS[controle.etat]}
+                            >
+                              {ETAT_LABELS[controle.etat]}
+                            </Badge>
+                          ))}
                       </TableCell>
                     </TableRow>
                   );
@@ -2108,18 +2300,21 @@ function Step4PVReception({
         </Card>
       </div>
 
-      {/* Lien vers l'écriture réelle enregistrée au journal (étape 3) */}
-      {journalEntryExists(data.journalEntryId) && (
+      {/* Lien vers l'entrée en base (l'écriture locale au journal et les
+          mouvements locaux ne sont plus générés par ce flux — la vérité est
+          l'entrée serveur, cf. bandeau en haut d'écran). */}
+      {entreeLiee && (
         <Card className="print-hidden border-primary/30 bg-primary/5">
           <CardContent className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm">
-              <BookOpen className="h-4 w-4 text-primary shrink-0" />                <span>
-                  Écriture{" "}
-                  <span className="font-mono font-semibold">
-                    {data.journalEntryId}
-                  </span>{" "}
-                  enregistrée au journal de comptabilité matière.
-                </span>
+              <BookOpen className="h-4 w-4 text-primary shrink-0" />
+              <span>
+                Entrée{" "}
+                <span className="font-mono font-semibold">
+                  {entreeLiee.reference}
+                </span>{" "}
+                suivie dans le circuit serveur (3 signatures).
+              </span>
             </div>
             <Button variant="outline" size="sm" onClick={onOpenJournal}>
               Voir dans le journal
@@ -2129,15 +2324,17 @@ function Step4PVReception({
         </Card>
       )}
 
-      {/* Mouvements de stock générés */}
-      {stockMovements.length > 0 && (
+      {/* Stock impacté (Étape 4) : vérité serveur — l'entrée validée a
+          déclenché l'incrémentation côté backend, sans recalcul écran. */}
+      {entreeLiee?.statutServeur === "validee" && (
         <Card className="print-hidden border-emerald-500/30 bg-emerald-500/5">
           <CardContent className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2 text-sm text-emerald-900 dark:text-emerald-300">
               <PackageCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <span>
-                <strong>{stockMovements.length} mouvement(s) de stock d'entrée</strong> créé(s) avec la pièce justificative{" "}
-                <span className="font-mono font-semibold">{data.numeroBL}</span>.
+                <strong>Stock mis à jour</strong> par le serveur à la validation
+                de l'entrée{" "}
+                <span className="font-mono font-semibold">{entreeLiee.reference}</span>.
               </span>
             </div>
             <Badge variant="outline" className="border-emerald-500/40 text-emerald-700 dark:text-emerald-300 self-start sm:self-auto">
@@ -2251,6 +2448,591 @@ function DepositaireWaitingCard({
   );
 }
 
+/** Étape 3 — carte d'attente pour les rôles non logistique (ex. dépositaire) :
+ *  aucun bouton actif, simple état « en attente de la logistique ». La
+ *  signature serveur posée à cette étape est chef_service_2 ; le libellé
+ *  affiché de l'étape reste inchangé (dette UX notée, hors périmètre). */
+function Step3WaitingLogistique({
+  numeroBL,
+  logistiqueName,
+}: {
+  numeroBL: string;
+  logistiqueName: string;
+}) {
+  return (
+    <Card className="print-hidden border-dashed">
+      <CardContent className="py-10 text-center space-y-3">
+        <div className="mx-auto w-12 h-12 rounded-full bg-amber-100 dark:bg-amber-900/30 flex items-center justify-center">
+          <Lock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <p className="font-medium text-foreground">
+            BL {numeroBL} — en attente de la logistique
+          </p>
+          <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+            {logistiqueName} doit apposer la 2ᵉ signature (chef de service 2) avant la validation finale. Aucune action ne vous est réservée sur cette étape.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Étape 3 — Vue dédiée du logistique (chef de service 2).
+ *  Affiche la synthèse du contrôle magasinier et une case de validation
+ *  propre au logistique. NE PAS confondre avec Step3EnregistrementDepositaire
+ *  qui contient la case "Le dépositaire certifie l'enregistrement" — cette
+ *  case ne doit jamais être accessible au logistique. */
+function Step3SignatureLogistique({
+  data,
+  logistiqueCertifie,
+  onCertifier,
+  certifying,
+}: {
+  data: ReceptionData;
+  logistiqueCertifie: boolean;
+  onCertifier: (v: boolean) => void;
+  certifying?: boolean;
+}) {
+  // Le badge reflète l'ÉTAT RÉEL de la signature magasinier : il était écrit en
+  // dur (« Certifié par le magasinier ») et s'affichait même sans certification.
+  const magasinierCertifie = data.magasinierCertifie;
+  const conformesCount = data.controles.filter(
+    (c) => c.conforme && c.etat !== "defaillant"
+  ).length;
+  const articlesAvecReserves = data.controles.filter(
+    (c) => !c.conforme || c.etat === "defaillant"
+  );
+  const ecartsQte = data.articles.filter(
+    (a) => a.quantiteCommandee > 0 && a.quantiteLivree !== a.quantiteCommandee
+  );
+  const totalValeur = data.articles.reduce(
+    (sum, a) => sum + a.quantiteLivree * a.prixUnitaire,
+    0
+  );
+
+  return (
+    <div className="space-y-6">
+      {/* En-tête logistique */}
+      <div className="flex items-center gap-2 p-3 rounded-lg border border-cyan-200 bg-cyan-50 dark:border-cyan-800 dark:bg-cyan-900/20">
+        <ClipboardCheck className="h-4 w-4 text-cyan-600 dark:text-cyan-400 shrink-0" />
+        <span className="text-sm text-cyan-700 dark:text-cyan-300">
+          <strong>Étape logistique</strong> — Vérifiez que le circuit a été respecté et apposez votre signature (2ᵉ sur 3).
+        </span>
+      </div>
+
+      {/* Synthèse du contrôle magasinier */}
+      <Card className="border-l-4 border-l-blue-500">
+        <CardHeader className="py-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <CardTitle className="text-base">
+                Synthèse du contrôle physique (Magasinier)
+              </CardTitle>
+            </div>
+            <Badge
+              className={
+                magasinierCertifie
+                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+              }
+            >
+              {magasinierCertifie
+                ? "Certifié par le magasinier"
+                : "En attente du magasinier"}
+            </Badge>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-3 text-sm">
+            <div className="p-2.5 rounded bg-muted/60">
+              <span className="text-xs text-muted-foreground block">Articles conformes</span>
+              <span className="text-base font-semibold text-green-600 dark:text-green-400">
+                {conformesCount} / {data.articles.length}
+              </span>
+            </div>
+            <div className="p-2.5 rounded bg-muted/60">
+              <span className="text-xs text-muted-foreground block">Articles avec réserve(s)</span>
+              <span className={`text-base font-semibold ${articlesAvecReserves.length > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                {articlesAvecReserves.length}
+              </span>
+            </div>
+            <div className="p-2.5 rounded bg-muted/60">
+              <span className="text-xs text-muted-foreground block">Écarts de quantité</span>
+              <span className={`text-base font-semibold ${ecartsQte.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                {ecartsQte.length}
+              </span>
+            </div>
+          </div>
+
+          {articlesAvecReserves.length > 0 && (
+            <div className="space-y-1.5 pt-1">
+              <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+                <AlertTriangle className="h-3.5 w-3.5" />
+                Réserves émises par le magasinier ({articlesAvecReserves.length}) :
+              </p>
+              <div className="space-y-1.5">
+                {articlesAvecReserves.map((c) => {
+                  const art = data.articles.find((a) => a.id === c.articleId);
+                  return (
+                    <div
+                      key={c.articleId}
+                      className="text-xs p-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                    >
+                      <div>
+                        <span className="font-semibold text-destructive">{art?.designation || "Article"} :</span>{" "}
+                        <span>{c.remarque || "(Aucun motif saisi)"}</span>
+                      </div>
+                      <Badge variant="destructive" className="text-[10px] shrink-0 self-start sm:self-auto">
+                        État : {ETAT_LABELS[c.etat]} — Non conforme
+                      </Badge>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 text-sm">
+            <span className="text-muted-foreground">Valeur totale de l'entrée :</span>
+            <span className="font-semibold text-primary">{formatAriary(totalValeur)}</span>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Case de certification logistique — propre à ce rôle */}
+      <Card className={`transition-all duration-300 ${
+        logistiqueCertifie
+          ? "border-green-500 bg-green-50/50 dark:bg-green-950/20"
+          : "border-cyan-300 dark:border-cyan-700"
+      }`}>
+        <CardContent className="pt-6">
+          <div className="flex items-start gap-3">
+            <Checkbox
+              id="certification-logistique"
+              checked={logistiqueCertifie}
+              onCheckedChange={(checked) => onCertifier(checked === true)}
+              disabled={certifying}
+              className="mt-0.5"
+            />
+            <div>
+              <Label
+                htmlFor="certification-logistique"
+                className="text-sm font-semibold cursor-pointer"
+              >
+                Le chef logistique certifie la conformité du circuit
+              </Label>
+              <p className="text-xs text-muted-foreground mt-1">
+                En cochant cette case, je certifie que le circuit de réception a
+                été respecté (contrôle magasinier effectué, bon de livraison
+                conforme) et j'appose ma signature obligatoire (2ᵉ sur 3) avant
+                la validation finale du dépositaire.
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+/** Reconstruit l'état de l'écran (ReceptionData) depuis une entrée serveur.
+ *  Source unique de vérité : la base — le localStorage n'est plus lu.
+ *  Limitation documentée : le serveur ne stocke pas la quantité COMMANDÉE
+ *  (uniquement la quantité livrée par ligne) — la valeur est reprise telle
+ *  quelle, les écarts de saisie ne se reproduisent donc pas après rechargement. */
+function receptionDepuisEntree(entree: EntreeRecord): {
+  data: ReceptionData;
+  extra: ReceptionDataExtra;
+} {
+  const articles: BonLivraisonArticle[] = (entree.lignes ?? []).map((l) => ({
+    id: `ligne-${l.numeroOrdre}`,
+    designation: l.designation,
+    referenceNomenclature: l.nomenclature || l.reference || "",
+    quantiteCommandee: l.quantite,
+    quantiteLivree: l.quantite,
+    prixUnitaire: l.prixUnitaire,
+  }));
+  // État non renseigné = on le note dans etatsNonControles ; la valeur locale
+  // du champ reste neutre ("neuf") mais n'est JAMAIS affichée comme un vrai
+  // constat tant que le magasinier n'a rien validé.
+  const etatsNonControles: Record<string, boolean> = {};
+  const controles: ControleArticle[] = (entree.lignes ?? []).map((l) => {
+    const nonControle = l.etat == null;
+    if (nonControle) etatsNonControles[`ligne-${l.numeroOrdre}`] = true;
+    return {
+      articleId: `ligne-${l.numeroOrdre}`,
+      etat: (l.etat ?? "neuf") as EtatConstate,
+      conforme: l.conforme ?? false,
+      remarque: l.observation ?? "",
+    };
+  });
+  return {
+    data: {
+      fournisseur: entree.fournisseur === "—" ? "" : entree.fournisseur,
+      numeroBL: entree.admin?.bonLivraison ?? "",
+      dateBL: entree.admin?.dateBonLivraison || entree.dateEntree,
+      articles,
+      observationsBL: entree.admin?.observations ?? "",
+      controles,
+      // L'étape 2 de l'écran correspond à la signature serveur chef_service_1,
+      // l'étape 3 à chef_service_2 (le nom du champ local est historique).
+      magasinierCertifie: !!entree.signatures?.chefService1,
+      depositaireCertifie: !!entree.signatures?.chefService2,
+      journalEntryId: entree.reference,
+      dateEnregistrement:
+        entree.signatures?.chefService2 ?? entree.signatures?.chefService1,
+    },
+    extra: {
+      estBrouillon: entree.statutServeur === "brouillon",
+      etatsNonControles,
+    },
+  };
+}
+
+/** Déduit l'étape courante de l'écran depuis les flags serveur :
+ *  étape 2 = contrôle magasinier, 3 = signature logistique (chef_service_2),
+ *  4 = PV + signature finale du dépositaire (validee/rejetee inclus). */
+function stepDepuisEntree(entree: EntreeRecord): number {
+  if (
+    entree.signatures?.chefService2 ||
+    entree.statutServeur === "validee" ||
+    entree.statutServeur === "rejetee"
+  ) {
+    return 4;
+  }
+  if (entree.signatures?.chefService1) return 3;
+  return 2;
+}
+
+// ─────────────────────────────────────────────
+// Bandeau récapitulatif des 3 signatures (étape 7)
+// ─────────────────────────────────────────────
+
+/** Puce « rôle : signé par X / en attente » — les données viennent du serveur
+ *  (fetchEntrees) : flag de signature + nom (signataire posé à la signature,
+ *  sinon affectation fixée à la création, sinon libellé du rôle). */
+function SignataireChip({
+  label,
+  signe,
+  date,
+  nom,
+}: {
+  label: string;
+  signe: boolean;
+  date?: string;
+  nom?: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
+      {signe ? (
+        <CheckCircle2 className="h-3.5 w-3.5 text-green-600 shrink-0" />
+      ) : (
+        <Lock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+      )}
+      <span className="font-medium">{label} :</span>
+      {signe ? (
+        <span className="text-green-700 dark:text-green-400">
+          signé par {nom || "—"}
+          {date && (
+            <span className="text-muted-foreground">
+              {" "}· {new Date(date).toLocaleDateString("fr-FR")}
+            </span>
+          )}
+        </span>
+      ) : (
+        <span className="text-muted-foreground">en attente</span>
+      )}
+    </span>
+  );
+}
+
+// ──────────────────────────────────────────────────────────────────
+// Séparation traitement / consultation : « À traiter » vs « Articles traités »
+//
+// Un rôle ne voit dans SON onglet que les pièces qui attendent encore SA
+// signature. Dès qu'il l'a apposée, la pièce sort de l'écran de traitement et
+// reste consultable en LECTURE SEULE — plus aucune action possible.
+// ──────────────────────────────────────────────────────────────────
+
+/** Bascule entre l'écran de traitement et la consultation des pièces traitées. */
+function OngletsTraitement({
+  vue,
+  onChange,
+  nbATraiter,
+  nbTraitees,
+}: {
+  vue: "traitement" | "traites";
+  onChange: (v: "traitement" | "traites") => void;
+  nbATraiter: number;
+  nbTraitees: number;
+}) {
+  const onglet = (actif: boolean) =>
+    `px-3 py-1.5 rounded-md text-sm font-medium transition-colors flex items-center gap-1.5 ${
+      actif
+        ? "bg-background text-foreground shadow-sm"
+        : "text-muted-foreground hover:text-foreground"
+    }`;
+  return (
+    <div className="print-hidden inline-flex gap-1 p-1 rounded-lg bg-muted/60 w-fit">
+      <button
+        type="button"
+        onClick={() => onChange("traitement")}
+        className={onglet(vue === "traitement")}
+      >
+        À traiter
+        {nbATraiter > 0 && (
+          <Badge className="bg-primary text-primary-foreground px-1.5 min-w-5 h-5">
+            {nbATraiter}
+          </Badge>
+        )}
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("traites")}
+        className={onglet(vue === "traites")}
+      >
+        Articles traités
+        {nbTraitees > 0 && (
+          <Badge variant="secondary" className="px-1.5 min-w-5 h-5">
+            {nbTraitees}
+          </Badge>
+        )}
+      </button>
+    </div>
+  );
+}
+
+/** Liste en lecture seule des entrées dont le rôle connecté a posé la signature. */
+function ListeEntreesTraitees({
+  entrees,
+  role,
+  onOuvrir,
+}: {
+  entrees: EntreeRecord[];
+  role: AppRole;
+  onOuvrir: (e: EntreeRecord) => void;
+}) {
+  if (entrees.length === 0) {
+    return (
+      <Card className="print-hidden">
+        <CardContent className="py-12 text-center space-y-2">
+          <ClipboardCheck className="h-8 w-8 mx-auto text-muted-foreground" />
+          <p className="font-medium">Aucun article traité par votre rôle</p>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Les entrées dont vous aurez apposé la signature apparaîtront ici en
+            consultation seule. Tant que ce n'est pas le cas, utilisez l'onglet
+            « À traiter ».
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="print-hidden">
+      <CardHeader className="py-4">
+        <CardTitle className="text-base flex items-center gap-2">
+          <ClipboardCheck className="h-4 w-4" />
+          Articles traités — {ROLES_CONFIG[role].label}
+        </CardTitle>
+        <CardDescription>
+          Consultation seule : aucune action n'est possible sur ces entrées.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Référence</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Fournisseur</TableHead>
+              <TableHead>Bon de livraison</TableHead>
+              <TableHead className="text-right">Lignes</TableHead>
+              <TableHead className="text-right">Réserves</TableHead>
+              <TableHead>Statut</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {entrees.map((e) => {
+              const lignes = e.lignes ?? [];
+              const reserves = lignes.filter(
+                (l) => l.conforme === false || l.etat === "defaillant"
+              ).length;
+              return (
+                <TableRow key={e.id}>
+                  <TableCell className="font-mono text-xs">{e.reference}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {new Date(e.dateEntree).toLocaleDateString("fr-FR")}
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate">
+                    {e.fournisseur || "—"}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {e.admin?.bonLivraison || "—"}
+                  </TableCell>
+                  <TableCell className="text-right">{lignes.length}</TableCell>
+                  <TableCell className="text-right">
+                    {reserves > 0 ? (
+                      <span className="text-destructive font-semibold">
+                        {reserves}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge
+                      variant="outline"
+                      className={
+                        e.statut === "Validée"
+                          ? "border-green-600 text-green-700 dark:text-green-400"
+                          : e.statut === "Rejetée"
+                          ? "border-destructive text-destructive"
+                          : ""
+                      }
+                    >
+                      {e.statut}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-8"
+                      onClick={() => onOuvrir(e)}
+                    >
+                      Consulter
+                      <ArrowRight className="h-3 w-3" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
+  );
+}
+
+/** Détail d'une entrée déjà traitée : lignes constatées + chaîne de
+ *  signatures. Strictement informatif (aucun bouton d'action). */
+function DetailEntreeTraitee({
+  entree,
+  onRetour,
+}: {
+  entree: EntreeRecord;
+  onRetour: () => void;
+}) {
+  const lignes = entree.lignes ?? [];
+  const total = lignes.reduce((s, l) => s + l.quantite, 0);
+  return (
+    <div className="space-y-4">
+      <Button variant="outline" size="sm" onClick={onRetour} className="gap-1.5">
+        <ArrowLeft className="h-3.5 w-3.5" />
+        Retour à la liste
+      </Button>
+
+      <Card>
+        <CardHeader className="py-4">
+          <CardTitle className="text-base flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            {entree.reference}
+          </CardTitle>
+          <CardDescription>
+            Bon de livraison {entree.admin?.bonLivraison || "—"} —{" "}
+            {entree.fournisseur || "fournisseur non précisé"} —{" "}
+            {new Date(entree.dateEntree).toLocaleDateString("fr-FR")} —{" "}
+            {lignes.length} ligne(s), {total} unité(s)
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="p-0">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Désignation</TableHead>
+                <TableHead className="text-right">Quantité</TableHead>
+                <TableHead>État constaté</TableHead>
+                <TableHead>Conformité</TableHead>
+                <TableHead>Observation</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {lignes.map((l) => (
+                <TableRow key={l.numeroOrdre}>
+                  <TableCell className="font-medium">
+                    {l.designation}
+                  </TableCell>
+                  <TableCell className="text-right">{l.quantite}</TableCell>
+                  <TableCell>
+                    {l.etat ? (
+                      <Badge
+                        variant="secondary"
+                        className={ETAT_COLORS[l.etat]}
+                      >
+                        {ETAT_LABELS[l.etat]}
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">
+                        Non renseigné
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    {l.conforme === false ? (
+                      <Badge variant="destructive" className="text-xs">
+                        Réserve
+                      </Badge>
+                    ) : l.conforme === true ? (
+                      <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-xs">
+                        Conforme
+                      </Badge>
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm text-muted-foreground">
+                    {l.observation || "—"}
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="py-4">
+          <CardTitle className="text-base">Circuit de signatures</CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-4">
+          <SignataireChip
+            label="Magasinier"
+            signe={!!entree.signatures?.chefService1}
+            date={entree.signatures?.chefService1}
+            nom={entree.signataires?.chefService1}
+          />
+          <SignataireChip
+            label="Chef logistique"
+            signe={!!entree.signatures?.chefService2}
+            date={entree.signatures?.chefService2}
+            nom={entree.signataires?.chefService2}
+          />
+          <SignataireChip
+            label="Dépositaire"
+            signe={!!entree.signatures?.depositaire}
+            date={entree.signatures?.depositaire}
+            nom={entree.signataires?.depositaire}
+          />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // Session simulée : sélecteur « Connecté en tant que ».
   // Initialisé sur le rôle de l'utilisateur réellement connecté (session App).
@@ -2258,101 +3040,351 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // il ne voit que SON onglet (contrôle à l'arrivée).
   const isFixedMagasinier = user?.role === "magasinier";
   const isFixedDepositaire = user?.role === "depositaire";
+  const isFixedLogistique = user?.role === "logistique";
   const [activeRole, setActiveRole] = useState<AppRole>(() =>
     resolveActiveRole(user?.role)
   );
   const isMagasinierSession = isFixedMagasinier && activeRole === "magasinier";
+  const [logistiqueCertifie, setLogistiqueCertifie] = useState(false);
 
-  // Réception en cours : reprend celle persistée si elle existe
-  // (transmission simulée entre les deux postes), sinon état pré-rempli.
-  const [receptionData, setReceptionData] = useState<ReceptionData>(() => {
-    const persisted = loadPersistedReception();
-    return persisted ?? createInitialData(true);
-  });
+  // Réception en cours : état initial vide en attendant l'hydratation depuis
+  // l'API (fetchEntrees dans chargerEtatServeur, Étape 4) — plus AUCUNE
+  // lecture du localStorage (nettoyage Étape 6).
+  const [receptionData, setReceptionData] = useState<ReceptionData>(() =>
+    // Démarrage propre : aucun article de démo pré-rempli.
+    // Si le serveur renvoie une entrée active au montage, elle sera hydratée
+    // dans chargerEtatServeur. Les données de démo ne s'affichent JAMAIS dans
+    // une vraie session de saisie.
+    createInitialData(false)
+  );
 
   // Étape 1 branchée sur l'API réelle : l'entrée créée côté serveur (avec sa
   // référence ENT-AAAA-NNN) et l'état de soumission (anti double-clic). Les
   // étapes 2 à 4 restent pour l'instant sur la persistance locale.
   const [entreeServeur, setEntreeServeur] = useState<EntreeRecord | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-// Chacun atterrit directement sur SON étape : le dépositaire sur la saisie du
-  // BL (ou l'enregistrement si le magasinier a déjà certifié), le magasinier
-  // sur le contrôle de l'état (ou l'étape 1 en lecture seule si le BL n'est
-  // pas encore saisi).
-  const [currentStep, setCurrentStep] = useState<number>(() => {
-    if (isFixedMagasinier) return 2; // le magasinier atterrit sur SON onglet : le contrôle
-    if (isFixedDepositaire) {
-      // Le dépositaire atterrit sur SA première action : la saisie du BL.
-      // Si un BL a déjà été transmis (persisté), il est repositionné sur
-      // l'état correspondant : attente magasinier, enregistrement ou PV.
-      const persisted = loadPersistedReception();
-      return getRoleHomeStep("depositaire", persisted ?? createInitialData(false));
-    }
-    return getRoleHomeStep(resolveActiveRole(user?.role), loadPersistedReception() ?? createInitialData(true));
+  // Articles dont le contrôle est incomplet (état non renseigné) — mis en
+  // évidence à l'étape 2 (bordure destructive) jusqu'à correction.
+  const [articlesIncomplets, setArticlesIncomplets] = useState<Set<string>>(new Set());
+  // Informations complémentaires de l'entrée hydratée (brouillon ? états non
+  // contrôlés par ligne ?) — recalculées à chaque hydratation uniquement.
+  const [extra, setExtra] = useState<ReceptionDataExtra>({
+    estBrouillon: false,
+    etatsNonControles: {},
   });
+  // Miroir REF de entreeServeur : lu par chargerEtatServeur (callback à
+  // dépendances stables) pour ré-ancrer l'écran sur la MÊME entrée après un
+  // rafraîchissement, au lieu d'en substituer une autre.
+  const entreeServeurRef = useRef<EntreeRecord | null>(null);
+  // Vrai dès qu'une SAISIE LOCALE non enregistrée existe (champs du bon de
+  // livraison, constats du magasinier, case logistique). Une relecture de fond
+  // s'abstient alors : elle ne doit jamais écraser la saisie en cours. Remis à
+  // false après chaque application de l'état serveur (y compris explicite).
+  const modifieLocalementRef = useRef(false);
+  // Verrou anti-concurrence : une seule relecture serveur à la fois.
+  const chargementEnCoursRef = useRef(false);
+  // Dernière relecture RÉUSSIE du serveur (pilote le libellé « dernière sync »).
+  const derniereSync = useDerniereSync();
+
+  // ─── Hydratation depuis l'API (Étape 4) ───
+  // L'état de l'écran est reconstruit depuis fetchEntrees() : statut, flags
+  // de signature, lignes (etat/conforme). Aucun repli silencieux sur le
+  // localStorage : en cas d'indisponibilité, l'écran affiche une erreur et
+  // un bouton Réessayer. Choix de routage (documenté) : l'écran cible la
+  // DERNIÈRE entrée active du serveur — c'est le flux mono-réception en
+  // cours depuis l'Étape 1 ; la navigation multi-réceptions n'existe pas
+  // encore à l'écran.
+  const [hydratation, setHydratation] = useState<
+    | { etat: "chargement" }
+    | { etat: "pret" }
+    | { etat: "erreur"; echec: EchecApi }
+  >({ etat: "chargement" });
+
+  const chargerEtatServeur = useCallback(
+    async (options?: { silencieux?: boolean }) => {
+      const silencieux = options?.silencieux === true;
+      // Un seul appel à la fois : deux rafraîchissements concurrents
+      // (focus + clic) se marcheraient dessus — le 2ᵉ est ignoré.
+      if (chargementEnCoursRef.current) return;
+      chargementEnCoursRef.current = true;
+      if (!silencieux) setHydratation({ etat: "chargement" });
+      try {
+        const resultat = await fetchEntreesDetail();
+        // Échec = ERREUR explicite (jamais de repli silencieux sur d'anciennes
+        // données locales), mais la CAUSE est conservée : sans jeton Strapi
+        // l'API renvoie 403 au même titre qu'un rôle non habilité, et le
+        // message doit dire quoi faire (reconnexion) plutôt que « réseau coupé ».
+        // Une relecture silencieuse (retour sur l'onglet) ne masque jamais l'écran
+        // déjà affiché : elle se contente de recharger les listes.
+        if (!resultat.ok) {
+          if (!silencieux) setHydratation({ etat: "erreur", echec: resultat.echec });
+          return;
+        }
+        const entrees = resultat.entrees;
+        setEntreesChargees(entrees);
+        marquerSync();          // ─── Garde-fou saisie en cours ───
+          // Une relecture de fond ne doit JAMAIS écraser un bon de livraison en
+          // cours de frappe ni les constats du magasinier : on met à jour les
+          // listes (cloche, compteurs) et on s'arrête. Le rechargement complet
+          // reste accessible via le bouton « Rafraîchir », lui explicite.
+          if (silencieux && modifieLocalementRef.current) {
+            return;
+          }
+          modifieLocalementRef.current = false;
+
+        // ─── 1) Ré-ancrage : une entrée est déjà affichée à l'écran ───
+        // Elle n'y reste que tant qu'elle attend une action du rôle connecté.
+        // Dès que le rôle a apposé SA signature, la pièce est DÉTACHÉE : elle
+        // ne doit plus figurer dans son onglet de traitement (constaté : après
+        // sa signature, le magasinier restait affiché à l'étape 2 sur la pièce
+        // qu'il venait de traiter) ; elle bascule dans la page « Articles
+        // traités », en lecture seule.
+        const enCours = entreeServeurRef.current;
+        if (enCours && entreeResteATraiter(enCours, activeRole)) {
+          const rechargee = entrees.find((e) => e.id === enCours.id);
+          if (rechargee) {
+            setEntreeServeur(rechargee);
+            entreeServeurRef.current = rechargee;
+            const h = receptionDepuisEntree(rechargee);
+            setReceptionData(h.data);
+            setExtra(h.extra);
+            setLogistiqueCertifie(!!rechargee.signatures?.chefService2);
+            setMultiAttente(null);
+            setPiecesEnAttente([]);
+            setHydratation({ etat: "pret" });
+          return;
+        }
+        // Absente de la réponse : on repart d'une sélection propre (infra).
+      }  
+        // ─── 2) Sélection au premier chargement ───
+        // Dépositaire : uniquement SES pièces (affectation fixée à la création).
+        const estDepositaire = isFixedDepositaire || activeRole === "depositaire";
+        if (estDepositaire) {
+          const nomMoi = user?.name || "";
+          const lesMiennes = entrees.filter(
+            (e) =>
+              !entreeEstTerminee(e) && entreeEstAuDepositaire(e, nomMoi)
+          );
+          const enCoursDeSaisie = lesMiennes.find(
+            (e) => e.statutServeur === "brouillon"
+          );
+          const attenteFinale = lesMiennes.find(
+            (e) =>
+              !!e.signatures?.chefService1 &&
+              !!e.signatures?.chefService2 &&
+              !e.signatures?.depositaire
+          );
+          const cible = enCoursDeSaisie || attenteFinale;
+          if (cible) {
+            setEntreeServeur(cible);
+            entreeServeurRef.current = cible;
+            const h = receptionDepuisEntree(cible);
+            setReceptionData(h.data);
+            setExtra(h.extra);
+            setLogistiqueCertifie(!!cible.signatures?.chefService2);
+            setMultiAttente(null);
+            setPiecesEnAttente([]);
+            setHydratation({ etat: "pret" });
+            return;
+          }
+          setEntreeServeur(null);
+          entreeServeurRef.current = null;
+          setReceptionData(createInitialData(false));
+          setLogistiqueCertifie(false);
+          setMultiAttente(null);
+          setPiecesEnAttente([]);
+          setHydratation({ etat: "pret" });
+          return;
+        }
+  
+        // Magasinier / logistique : les pièces en attente de LEUR rôle.
+        const attente = entreesEnAttentePourRole(entrees, activeRole);
+        if (attente.length === 1) {
+          // Une seule : on peut l'ouvrir sans ambiguïté (comportement historique,
+          // inchangé quand un seul BL est en circulation).
+          setEntreeServeur(attente[0]);
+          entreeServeurRef.current = attente[0];
+          const h = receptionDepuisEntree(attente[0]);
+          setReceptionData(h.data);
+          setExtra(h.extra);
+          setLogistiqueCertifie(!!attente[0].signatures?.chefService2);
+          setMultiAttente(null);
+          setPiecesEnAttente([]);
+          setHydratation({ etat: "pret" });
+          return;
+        }
+        if (attente.length > 1) {
+          // Plusieurs : PAS de choix automatique — l'utilisateur choisit dans la
+          // cloche « Mes notifications » (liste dérivée, déjà à jour).
+          setEntreeServeur(null);
+          entreeServeurRef.current = null;
+          setReceptionData(createInitialData(false));
+          setLogistiqueCertifie(false);
+          setMultiAttente({ references: attente.map((e) => e.reference) });
+          setPiecesEnAttente([]);
+          setHydratation({ etat: "pret" });
+          return;
+        }
+  
+        // ─── 3) Rien d'actionnable pour ce rôle ───
+        // Écran vierge + information : les pièces EN CIRCULATION sont listées
+        // avec l'étape qui les bloque. Sans cela le chef logistique atterrissait
+        // sur une étape 3 « 0 / 0 » sans comprendre pourquoi (constaté) — il ne
+        // peut rien poser tant que le magasinier n'a pas signé.
+        const enCirculation = entrees.filter((e) => !entreeEstTerminee(e));
+        setEntreeServeur(null);
+        entreeServeurRef.current = null;
+        setReceptionData(createInitialData(false));
+        setLogistiqueCertifie(false);
+        setMultiAttente(null);
+        setPiecesEnAttente(
+          enCirculation.map((e) => ({
+            id: e.id,
+            reference: e.reference,
+            bloqueePar: etapeEnAttenteDe(e),
+          }))
+        );
+        setHydratation({ etat: "pret" });
+      } catch {
+        if (!silencieux) setHydratation({ etat: "erreur", echec: "reseau" });
+      } finally {
+        chargementEnCoursRef.current = false;
+      }
+    },
+    [activeRole, isFixedDepositaire, isFixedLogistique, user?.name]
+  );
+
+  // Recharge l'état au montage (les actions mettent ensuite à jour
+  // entreeServeur localement avec la réponse du serveur).
+  useEffect(() => {
+    chargerEtatServeur();
+  }, [chargerEtatServeur]);
+
+  // ─── Synchronisation entre postes ───
+  // Sans ça, le magasinier qui signe sur SON poste laisse l'écran du chef
+  // logistique figé jusqu'au rechargement manuel de la page. Deux mécanismes :
+  //   1) relecture au retour sur l'onglet / à la reprise de focus ;
+  //   2) périodiquement (toutes les 20 s) — indispensable entre deux MACHINES
+  //      différentes, où aucun événement de fenêtre ne se déclenche.
+  // Les deux passent en mode SILENCIEUX : l'écran affiché n'est jamais masqué
+  // et la saisie en cours n'est jamais écrasée (garde-fou dans
+  // chargerEtatServeur).
+  useEffect(() => {
+    const relire = () => {
+      if (document.visibilityState !== "visible") return;
+      void chargerEtatServeur({ silencieux: true });
+    };
+    const minuteur = setInterval(relire, 20000);
+    window.addEventListener("focus", relire);
+    document.addEventListener("visibilitychange", relire);
+    return () => {
+      clearInterval(minuteur);
+      window.removeEventListener("focus", relire);
+      document.removeEventListener("visibilitychange", relire);
+    };
+  }, [chargerEtatServeur]);
+
+  // ─── Notifications dérivées (Étape 5) ───
+  // La liste des entrées chargées sert aux DEUX usages : hydratation de
+  // l'entrée active et calcul des notifications (actions en attente par
+  // rôle). Un refreshNotifications() après chaque signature recharge tout.
+  const [entreesChargees, setEntreesChargees] = useState<EntreeRecord[] | null>(null);
+  // Plusieurs entrées attendent le rôle en même temps : on ne choisit PAS à
+  // la place de l'utilisateur (risque d'action sur la mauvaise pièce).
+  const [multiAttente, setMultiAttente] = useState<{
+    references: string[];
+  } | null>(null);
+  // Pièces en circulation qui n'attendent PAS le rôle connecté : sans cette
+  // information, un rôle sans pièce à traiter atterrissait sur son étape (vide,
+  // « 0 / 0 ») sans comprendre que le circuit était bloqué plus tôt.
+  const [piecesEnAttente, setPiecesEnAttente] = useState<
+    { id: string; reference: string; bloqueePar: string }[]
+  >([]);
+  // ─── Séparation traitement / lecture seule ───
+  // Onglet « À traiter » : les seules pièces qui attendent la signature du rôle
+  // connecté. Onglet « Articles traités » : celles dont CE rôle a déjà posé la
+  // signature (consultation seule). Dérivés de la dernière lecture serveur —
+  // aucune liste séparée à resynchroniser.
+  const [vue, setVue] = useState<"traitement" | "traites">("traitement");
+  const [entreeTraiteeOuverte, setEntreeTraiteeOuverte] = useState<EntreeRecord | null>(null);
+  const entreesATraiter = useMemo(
+    () => (entreesChargees ?? []).filter((e) => entreeResteATraiter(e, activeRole)),
+    [entreesChargees, activeRole]
+  );
+  const entreesTraitees = useMemo(
+    () =>
+      (entreesChargees ?? []).filter(
+        (e) => entreeTraiteeParRole(e, activeRole) && !entreeResteATraiter(e, activeRole)
+      ),
+    [entreesChargees, activeRole]
+  );
+
+  // ─── currentStep dérivé du serveur (Étape 4) ───
+  // L'étape d'accueil de chaque rôle est reconstruite depuis les FLAGS
+  // SERVEUR (signatures/statut), pas depuis l'état local. Tant que
+  // l'hydratation est en cours, l'étape 1 s'affiche par défaut (écran de
+  // chargement masquant le reste) — l'état réel est appliqué dès réception.
+  const [currentStep, setCurrentStep] = useState<number>(1);
+
+  // Recalcul de l'étape d'accueil une fois l'état serveur reçu (et à chaque
+  // changement de rôle pour l'admin, comme avant).
+  const roleHomeStepMemo = useMemo(() => {
+    return getRoleHomeStep(activeRole, receptionData);
+  }, [activeRole, receptionData]);
+
+  useEffect(() => {
+    if (hydratation.etat !== "pret") return;
+    if (entreeServeur) {
+      // Une entrée active existe : tout le monde atterrit sur l'étape que
+      // déduit le serveur (contrôle magasinier / logistique / PV).
+      setCurrentStep(stepDepuisEntree(entreeServeur));
+    } else if (multiAttente) {
+      // Plusieurs pièces attendent ce rôle : pas de sélection automatique.
+      setCurrentStep(2);
+    } else if (isFixedMagasinier) {
+      setCurrentStep(2);
+    } else {
+      setCurrentStep(getRoleHomeStep(activeRole, receptionData));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hydratation.etat, entreeServeur?.id, activeRole, multiAttente]);
 
   const sessionName = getSessionUserName(activeRole, user ?? null);
   const magasinierName = getSessionUserName("magasinier", user ?? null);
   const depositaireName = getSessionUserName("depositaire", user ?? null);
+  const logistiqueName = getSessionUserName("logistique", user ?? null);
 
-  // ─── Notifications du rôle actif ───
-  // Un rôle ne voit que ses propres notifications (magasinier ≠ dépositaire).
-  const [notifications, setNotifications] = useState<AppNotification[]>([]);
-  const [notifOpen, setNotifOpen] = useState(false);
+  // Étape 3 : la signature serveur posée est chef_service_2 (logistique).
+  // isFixedLogistique : l'utilisateur connecté EST un logisticien — il voit
+  // une vue simplifiée (SON étape uniquement), comme le magasinier et le
+  // dépositaire. isFixedDepositaire reste propriétaire des étapes 1 et 4.
 
-  const refreshNotifications = (role: AppRole = activeRole) => {
-    setNotifications(getNotificationsForRole(role));
-  };
+  // ─── Notifications dérivées du rôle actif (Étape 5) ───
+  // Pur calcul depuis les entrées serveur chargées : pas de stockage, pas de
+  // « lu/non lu ». Le badge est le nombre d'actions en attente du rôle.
+  const notifications = useMemo(
+    () => notificationsPourRole(activeRole, entreesChargees ?? []),
+    [activeRole, entreesChargees]
+  );
+  const unreadCount = notifications.length;
+  // Rafraîchissement = recharger les entrées depuis le serveur.
+  const refreshNotifications = () => chargerEtatServeur();
 
   useEffect(() => {
-    refreshNotifications(activeRole);
-    setNotifOpen(false);
     // Chacun joue son rôle : au changement de rôle (autres que magasinier), on
     // repositionne sur son étape d'accueil. Le magasinier reste sur son
     // onglet unique (étape 2).
-    if (!isFixedMagasinier && !isFixedDepositaire) {
-      setCurrentStep(getRoleHomeStep(activeRole, receptionData));
+    if (!isFixedMagasinier && !isFixedDepositaire && entreeServeur) {
+      setCurrentStep(stepDepuisEntree(entreeServeur));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeRole]);
 
-  // Vue simplifiée magasinier : dès qu'il certifie la réception physique, on
-  // persiste et on notifie le dépositaire — l'équivalent de l'ancien bouton
-  // « Suivant » de l'étape 2, qui n'est plus affiché dans sa vue.
-  const certifiedRef = useRef(receptionData.magasinierCertifie);
-  useEffect(() => {
-    if (!isMagasinierSession) return;
-    if (receptionData.magasinierCertifie && !certifiedRef.current) {
-      certifiedRef.current = true;
-      persistReception(receptionData);
-      // Aligné sur le chemin admin (goNext) : le dépositaire est informé du
-      // nombre de réserves émises par le magasinier, s'il y en a.
-      const anomaliesCount = receptionData.controles.filter(
-        (c) => !c.conforme || c.etat === "defaillant"
-      ).length;
-      pushNotification(
-        "depositaire",
-        "reception_confirmee",
-        anomaliesCount > 0
-          ? `Réception certifiée (${anomaliesCount} réserve(s))`
-          : "Réception physique certifiée",
-        `${magasinierName} a contrôlé et certifié le BL ${receptionData.numeroBL}${
-          anomaliesCount > 0
-            ? ` avec ${anomaliesCount} article(s) sous réserve`
-            : ""
-        }. L'enregistrement au journal est en attente.`,
-        receptionData.numeroBL
-      );
-      refreshNotifications();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isMagasinierSession, receptionData.magasinierCertifie]);
-
-  const unreadCount = countUnread(activeRole);
-
   // When articles change, sync the controles list
   const handleDataChange = (partial: Partial<ReceptionData>) => {
+    // Toute écriture locale « sale » l'écran : la relecture de fond doit
+    // s'abstenir tant que l'utilisateur n'a pas enregistré sa pièce.
+    modifieLocalementRef.current = true;
     // Verrou logique : refuse toute écriture sur un champ appartenant à une
     // étape réservée à un autre rôle (bloque aussi les tentatives via DevTools).
     const guard = guardReceptionUpdate(partial, activeRole);
@@ -2366,6 +3398,21 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     }
     setReceptionData((prev) => {
       const next = { ...prev, ...partial };
+
+      // Le magasinier vient de constater un état : la ligne quitte la liste
+      // des états « non contrôlés » (l'affichage reflète désormais un vrai
+      // constat, plus un état par défaut non saisi).
+      if (partial.controles) {
+        const nettoyes = { ...extra.etatsNonControles };
+        let modifie = false;
+        for (const c of partial.controles) {
+          if (c.etat && nettoyes[c.articleId]) {
+            delete nettoyes[c.articleId];
+            modifie = true;
+          }
+        }
+        if (modifie) setExtra((x) => ({ ...x, etatsNonControles: nettoyes }));
+      }
 
       // Sync controles when articles change
       if (partial.articles) {
@@ -2389,6 +3436,27 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     });
   };
 
+  const handleSelectionnerEntree = (e: EntreeRecord) => {
+    modifieLocalementRef.current = false;
+    setEntreeServeur(e);
+    entreeServeurRef.current = e;
+    const h = receptionDepuisEntree(e);
+    setReceptionData(h.data);
+    setExtra(h.extra);
+    setMultiAttente(null);
+    setPiecesEnAttente([]);
+    setLogistiqueCertifie(!!e.signatures?.chefService2);
+    setCurrentStep(stepDepuisEntree(e));
+  };
+
+  // Case de certification logistique : la cocher est une saisie locale (la
+  // signature n'est posée qu'au clic « Certifier ») — elle protège donc aussi
+  // l'écran d'une relecture de fond.
+  const handleCertifierLogistique = (v: boolean) => {
+    modifieLocalementRef.current = true;
+    setLogistiqueCertifie(v);
+  };
+
   // Validation per step
   const canProceed = useMemo(() => {
     switch (currentStep) {
@@ -2409,16 +3477,26 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         const hasUnjustifiedAnomalies = receptionData.controles.some(
           (c) => (!c.conforme || c.etat === "defaillant") && !c.remarque.trim()
         );
-        return receptionData.magasinierCertifie && !hasUnjustifiedAnomalies;
+        // Chaque article doit avoir son état renseigné (le serveur refuse
+        // sinon la signature : « contrôle incomplet »).
+        const etatsComplets = receptionData.controles.every((c) => !!c.etat);
+        return receptionData.magasinierCertifie && etatsComplets && !hasUnjustifiedAnomalies;
       }
       case 3:
-        return receptionData.depositaireCertifie;
+        return activeRole === "logistique"
+          ? logistiqueCertifie
+          : (receptionData.depositaireCertifie || logistiqueCertifie);
       case 4:
-        return true;
+        // Signature finale du dépositaire : requiert OBLIGATOIREMENT la case de
+        // certification (depositaireCertifie) cochée par le dépositaire.
+        // Le court-circuit précédent (|| chefService2 !== undefined) ignorait la
+        // case — le dépositaire pouvait signer sans avoir confirmé l'écriture.
+        // Corrigé : seule la case cochée autorise la signature finale.
+        return receptionData.depositaireCertifie === true;
       default:
         return false;
     }
-  }, [currentStep, receptionData, isSubmitting]);
+  }, [currentStep, receptionData, isSubmitting, activeRole, logistiqueCertifie]);
 
   const goNext = async () => {
     if (currentStep >= 4) return;
@@ -2426,10 +3504,14 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     // Verrou logique sur la navigation aussi : un rôle ne peut pas valider
     // une étape qui n'est pas la sienne, même si les données le permettraient.
     if (!canPerformStepAction(activeRole, currentStep)) {
-      const required =
-        currentStep === 1 || currentStep === 3 ? "depositaire" : "magasinier";
+      // Rôle requis lu depuis STEP_ROLE_REQUIREMENTS (lib/role-access.ts) :
+      // source unique de vérité alignée sur le contrôle d'accès réel
+      // (étape 2 = magasinier, étape 3 = logistique, étape 4 = dépositaire).
+      const required = STEP_ROLE_REQUIREMENTS[currentStep];
       toast.error(DENIED_ACTION_MESSAGE, {
-        description: `Étape réservée à : ${ROLES_CONFIG[required]?.label ?? "—"}.`,
+        description: `Étape réservée à : ${
+          (required && ROLES_CONFIG[required]?.label) || "—"
+        }.`,
       });
       return;
     }
@@ -2451,6 +3533,11 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           fournisseur: receptionData.fournisseur.trim(),
           responsable: depositaireName,
           notes: receptionData.observationsBL || undefined,
+          // Flux « Arrivée matériel » : aucune affectation saisie à cet écran.
+          // On lève l'exigence serveur des 3 affectations ; le contrôleur
+          // dérive alors affectation_depositaire depuis l'utilisateur connecté
+          // et laisse chef_service_1/2 à null jusqu'aux signatures.
+          exigerAffectations: false,
           lignes: receptionData.articles.map((article, index) => ({
             numero_ordre: index + 1,
             designation: article.designation,
@@ -2462,16 +3549,14 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         };
         const entree = await creerEntree(payload);
         setEntreeServeur(entree);
+        // Ré-ancrage : ce documentId devient LA pièce affichée — le
+        // rafraîchissement qui suit ne remplacera jamais cette entrée par une
+        // autre trouvée dans la base (risque de faux enregistrement).
+        entreeServeurRef.current = entree;
         // Transmission au magasinier : la référence affichée à partir d'ici
-        // est celle générée par le serveur (ENT-AAAA-NNN).
-        persistReception(receptionData);
-        pushNotification(
-          "magasinier",
-          "enregistrement",
-          "Nouveau bon de livraison à contrôler",
-          `${depositaireName} a saisi le BL ${receptionData.numeroBL} (${receptionData.articles.length} article(s)). Vérifiez l'état du matériel en magasin.`,
-          receptionData.numeroBL
-        );
+        // est celle générée par le serveur (ENT-AAAA-NNN). La notification
+        // « à contrôler » est désormais DÉRIVÉE (visible dans la cloche du
+        // magasinier, calculée depuis les entrées serveur).
         refreshNotifications();
         toast.success(`Entrée ${entree.reference} créée`, {
           description: `${entree.lignes.length} ligne(s) enregistrée(s) en base.`,
@@ -2494,62 +3579,220 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     }
 
     if (currentStep === 2) {
-      persistReception(receptionData);
-      const anomaliesCount = receptionData.controles.filter(
-        (c) => !c.conforme || c.etat === "defaillant"
-      ).length;
-      pushNotification(
-        "depositaire",
-        "reception_confirmee",
-        anomaliesCount > 0
-          ? `Réception certifiée (${anomaliesCount} réserve(s))`
-          : "Réception physique certifiée",
-        `${magasinierName} a contrôlé et certifié le BL ${receptionData.numeroBL}${
-          anomaliesCount > 0
-            ? ` avec ${anomaliesCount} article(s) sous réserve`
-            : ""
-        }. L'enregistrement au journal est en attente.`,
-        receptionData.numeroBL
+      // Étape 2 branchée sur l'API réelle : signature chef_service_1 groupée
+      // avec le détail du contrôle par article (etat/conforme/observations)
+      // en UN SEUL appel (POST /api/entrees/:documentId/sign). En cas de
+      // contrôle incomplet le serveur refuse AVANT de poser la signature :
+      // on reste à l'étape 2 avec les articles concernés mis en évidence.
+      if (!entreeServeur?.id) {
+        toast.error("Entrée introuvable", {
+          description:
+            "Aucune entrée serveur liée à cette réception. Reprenez depuis l'étape 1.",
+        });
+        return;
+      }
+      // Garde-fou intégrité : toute ligne doit avoir un état VRAIMENT
+      // constaté — y compris celles encore marquées « Non contrôlé » après
+      // hydratation (sans cela, la valeur par défaut silencieuse serait
+      // soumise comme « neuf » sans constat réel).
+      const controleIncomplet = receptionData.controles.find(
+        (c) =>
+          !c.etat || extra.etatsNonControles[c.articleId]
       );
-      refreshNotifications();
+      if (controleIncomplet) {
+        const art = receptionData.articles.find(
+          (a) => a.id === controleIncomplet.articleId
+        );
+        toast.error("Contrôle incomplet", {
+          description: `Renseignez l'état de « ${art?.designation ?? "article"} » avant de certifier.`,
+        });
+        setArticlesIncomplets(new Set([controleIncomplet.articleId]));
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const controles = receptionData.controles.map((c) => {
+          const art = receptionData.articles.find((a) => a.id === c.articleId);
+          return {
+            numero_ordre: receptionData.articles.indexOf(art!) + 1,
+            etat: c.etat,
+            conforme: c.conforme,
+            observations: c.remarque.trim() || undefined,
+          };
+        });
+        const updated = await signerEntree(entreeServeur.id, "chef_service_1", controles);
+        setEntreeServeur(updated);
+        setArticlesIncomplets(new Set());
+        // La notification « réception certifiée » du dépositaire est désormais
+        // DÉRIVÉE (l'entrée apparaît dans la cloche logistique puis
+        // dépositaire selon l'avancement).
+        refreshNotifications();
+        toast.success(`Signature chef_service_1 posée — entrée ${updated.reference}`, {
+          description: `Statut serveur : ${updated.statut}.`,
+        });
+      } catch (err) {
+        const axiosErr = err as {
+          response?: { status?: number; data?: { error?: { message?: string } } };
+        };
+        const serverMessage =
+          axiosErr?.response?.data?.error?.message ||
+          (err instanceof Error ? err.message : "Erreur inconnue");
+        if (axiosErr?.response?.status === 409) {
+          // Double signature : déjà certifiée par un autre magasinier.
+          toast.error("Entrée déjà certifiée", {
+            description:
+              "Cette entrée a déjà été certifiée par un autre magasinier. Votre contrôle n'a pas été enregistré.",
+          });
+        } else if (
+          axiosErr?.response?.status === 400 &&
+          serverMessage.toLowerCase().includes("contrôle incomplet")
+        ) {
+          // Contrôle incomplet : on reste à l'étape 2, articles ciblés surlignés.
+          const manquants = receptionData.controles.filter((c) => !c.etat);
+          const ids = new Set(manquants.map((c) => c.articleId));
+          setArticlesIncomplets(ids);
+          toast.error("Contrôle incomplet", {
+            description: serverMessage,
+          });
+        } else {
+          toast.error("Certification impossible", {
+            description: serverMessage,
+          });
+        }
+        setIsSubmitting(false);
+        return; // on reste à l'étape 2, saisie du contrôle intacte
+      }
+      setIsSubmitting(false);
     }
 
     if (currentStep === 3) {
-      // Enregistrement : horodatage + écriture au journal + persistance +
-      // mouvements de stock + notification au magasinier.
-      const withDate: ReceptionData = {
-        ...receptionData,
-        dateEnregistrement: new Date().toISOString(),
-      };
-      setReceptionData(withDate);
-      persistReception(withDate);
-
-      // Écriture RÉELLE au journal comptable (une ligne par article) —
-      // visible dans Journal.tsx pour tous les rôles. Idempotent.
-      const journalLines = appendJournalEntryFromReception(withDate, {
-        createdBy: depositaireName,
-        controlePar: magasinierName,
-      });
-
-      // Mouvements RÉELS de stock générés
-      const stockMovements = appendMovementsFromReception(withDate, {
-        operateur: depositaireName,
-      });
-
-      pushNotification(
-        "magasinier",
-        "enregistrement",
-        "Écriture générée au journal",
-        `L'écriture ${withDate.journalEntryId} (BL ${withDate.numeroBL}) a été enregistrée par ${depositaireName}. Le PV de réception est disponible.`,
-        withDate.numeroBL
-      );
-      refreshNotifications();
-      toast.success("Enregistrement validé", {
-        description: `Écriture ${withDate.journalEntryId} enregistrée (${journalLines?.length ?? withDate.articles.length} ligne(s) journal + ${stockMovements?.length ?? withDate.articles.length} mouvement(s) de stock).`,
-      });
+      // Étape 3 branchée sur l'API réelle : signature chef_service_2
+      // (logistique), 2ᵉ sur 3 — conformément à l'ordre serveur magasinier →
+      // logistique → dépositaire.
+      if (!entreeServeur?.id) {
+        toast.error("Entrée introuvable", {
+          description:
+            "Aucune entrée serveur liée à cette réception. Reprenez depuis l'étape 1.",
+        });
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const updated = await signerEntree(entreeServeur.id, "chef_service_2");
+        setEntreeServeur(updated);
+        // Horodatage local aligné sur le serveur (date de signature
+        // chef_service_2).
+        const withDate: ReceptionData = {
+          ...receptionData,
+          dateEnregistrement:
+            updated.signatures.chefService2 ?? new Date().toISOString(),
+        };
+        setReceptionData(withDate);
+        refreshNotifications();
+        toast.success(`Signature logistique posée — entrée ${updated.reference}`, {
+          description: `Statut serveur : ${updated.statut} (2/3 signatures).`,
+        });
+        setLogistiqueCertifie(true);
+        setCurrentStep(4);
+      } catch (err) {
+        const axiosErr = err as {
+          response?: { status?: number; data?: { error?: { message?: string } } };
+        };
+        const serverMessage =
+          axiosErr?.response?.data?.error?.message ||
+          (err instanceof Error ? err.message : "Erreur inconnue");
+        if (axiosErr?.response?.status === 409) {
+          // Double signature : déjà posée par un autre logisticien.
+          toast.error("Signature déjà posée", {
+            description:
+              "La signature logistique a déjà été enregistrée par un autre utilisateur pour cette entrée.",
+          });
+        } else if (
+          axiosErr?.response?.status === 400 &&
+          /workflow/i.test(serverMessage)
+        ) {
+          // Ordre non respecté (accès direct étape 3 sans signature magasinier,
+          // rechargement dans un état inattendu) : message serveur affiché.
+          toast.error("Étape précédente non complétée", {
+            description: serverMessage,
+          });
+        } else {
+          toast.error("Validation impossible", {
+            description: serverMessage,
+          });
+        }
+        setIsSubmitting(false);
+        return; // on reste à l'étape 3
+      }
+      setIsSubmitting(false);
     }
 
-    setCurrentStep((s) => s + 1);
+    if (currentStep === 4) {
+      // Étape 4 branchée sur l'API réelle : signature FINALE du dépositaire
+      // (chef_service_1 → chef_service_2 déjà posées). C'est le serveur qui
+      // déclenche la validation (statut validee), l'impact stock unique
+      // (appliquerImpactStock) et la trace (tracerMouvement) — l'écran ne
+      // recalcule rien. Seul le dépositaire peut cliquer (affectation fixée
+      // à la création, Étape 1).
+      if (!entreeServeur?.id) {
+        toast.error("Entrée introuvable", {
+          description:
+            "Aucune entrée serveur liée à cette réception. Reprenez depuis l'étape 1.",
+        });
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const updated = await signerEntree(entreeServeur.id, "depositaire");
+        setEntreeServeur(updated);
+        entreeServeurRef.current = updated;
+        const withDate: ReceptionData = {
+          ...receptionData,
+          dateEnregistrement: updated.signatures.depositaire ?? new Date().toISOString(),
+        };
+        setReceptionData(withDate);
+        refreshNotifications();
+        // Notifier Equipment.tsx et Dashboard.tsx que le stock a été mis à jour
+        // (custom event DOM : évite le couplage direct entre composants).
+        // Ces composants rechargent fetchMaterialsOrThrow() à la réception.
+        window.dispatchEvent(new CustomEvent("stock-mis-a-jour"));
+        toast.success(`Entrée ${updated.reference} validée`, {
+          description:
+            "Les 3 signatures sont réunies. Le stock a été mis à jour par le serveur.",
+        });
+      } catch (err) {
+        const axiosErr = err as {
+          response?: { status?: number; data?: { error?: { message?: string } } };
+        };
+        const serverMessage =
+          axiosErr?.response?.data?.error?.message ||
+          (err instanceof Error ? err.message : "Erreur inconnue");
+        if (axiosErr?.response?.status === 409) {
+          // Déjà signée : l'entrée est déjà validée (pas de double impact stock).
+          toast.error("Entrée déjà validée", {
+            description:
+              "La signature finale a déjà été enregistrée pour cette entrée. Le stock n'est impacté qu'une seule fois.",
+          });
+        } else if (
+          axiosErr?.response?.status === 400 &&
+          /workflow/i.test(serverMessage)
+        ) {
+          // Signatures précédentes absentes (accès direct, état inattendu).
+          toast.error("Signatures précédentes manquantes", {
+            description: serverMessage,
+          });
+        } else {
+          toast.error("Validation finale impossible", {
+            description: serverMessage,
+          });
+        }
+        setIsSubmitting(false);
+        return; // on reste à l'étape 4
+      }
+      setIsSubmitting(false);
+    }
+
+    setCurrentStep((s) => Math.min(s + 1, 4));
   };
 
   const goBack = () => {
@@ -2561,8 +3804,155 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   const handleNewReception = () => {
     const fresh = createInitialData(false);
     setReceptionData(fresh);
-    setCurrentStep(isFixedMagasinier ? 2 : getRoleHomeStep(activeRole, fresh));
+    modifieLocalementRef.current = false;
+    setEntreeServeur(null); // détache l'écran de l'entrée serveur précédente
+    entreeServeurRef.current = null; // idem pour le garde-fou de rechargement
+    setExtra({ estBrouillon: false, etatsNonControles: {} });
+    setArticlesIncomplets(new Set());
+    setMultiAttente(null);
+    setCurrentStep(1);
   };
+
+  // ─── Écran bloqué pendant l'hydratation depuis l'API ───
+  // Pas de repli silencieux sur d'anciennes données locales : tant que
+  // l'API n'a pas répondu, on affiche un chargement ; en cas d'échec, un
+  // message FIEL à la cause réelle (le serveur ne répond pas ≠ la session
+  // n'est pas reliée au serveur ≠ le rôle n'a pas le droit de lire).
+  if (hydratation.etat !== "pret") {
+    const echec: EchecApi | null =
+      hydratation.etat === "erreur" ? hydratation.echec : null;
+    return (
+      <div className="p-3 sm:p-6 space-y-6 max-w-6xl mx-auto">
+        <Card className="print-hidden">
+          <CardContent className="py-14 text-center space-y-4">
+            {hydratation.etat === "chargement" ? (
+              <>
+                <Loader2 className="h-8 w-8 animate-spin mx-auto text-primary" />
+                <div>
+                  <p className="font-medium">Chargement de l'état de la réception…</p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    L'état est relu depuis le serveur pour garantir la vérité partagée entre les postes.
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <AlertTriangle className="h-8 w-8 mx-auto text-destructive" />
+                <div>
+                  <p className="font-medium">{ECHECH_ENTREES_TITRE[echec ?? "reseau"]}</p>
+                  <p className="text-sm text-muted-foreground mt-1 max-w-md mx-auto">
+                    {ECHECH_ENTREES_DETAIL[echec ?? "reseau"]}
+                  </p>
+                </div>
+                {echec === "session_absente" || echec === "session_expiree" ? (
+                  <>
+                    <p className="text-xs text-muted-foreground max-w-md mx-auto">
+                      Déconnectez-vous, puis reconnectez-vous avec un compte
+                      serveur habilité (par exemple{" "}
+                      <span className="font-mono">
+                        fara.andriam@mtefop.gov.mg / magasinier123
+                      </span>
+                      ). Les comptes de démonstration affichés à la connexion
+                      (« admin@comptamatiere.com »…) n'existent que dans
+                      l'application : ils n'ouvrent aucune session serveur.
+                    </p>
+                    <Button
+                      variant="outline"
+                      onClick={() => void chargerEtatServeur()}
+                      className="gap-2"
+                    >
+                      Vérifier à nouveau
+                    </Button>
+                  </>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => void chargerEtatServeur()}
+                    className="gap-2"
+                  >
+                    Réessayer
+                  </Button>
+                )}
+              </>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
+  // File de traitement VIDE pour ce rôle (magasinier / logistique) : on
+  // n'affiche plus une étape de travail sans pièce — les entrées déjà traitées
+  // sont dans l'onglet dédié. Le dépositaire garde toujours son étape 1 : c'est
+  // là qu'il saisit la nouvelle entrée.
+  const fileDeTraitementVide =
+    (isFixedMagasinier || isFixedLogistique) &&
+    !entreeServeur &&
+    !multiAttente &&
+    entreesATraiter.length === 0 &&
+    !receptionData.magasinierCertifie;
+
+  // Onglet « Articles traités » : consultation seule, écran distinct. Aucune
+  // étape de traitement n'est atteignable depuis cette vue.
+  if (vue === "traites") {
+    return (
+      <div className="p-3 sm:p-6 space-y-6 max-w-6xl mx-auto">
+        <div className="print-hidden flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground flex items-center gap-2">
+              <ClipboardCheck className="h-6 w-6 sm:h-8 sm:w-8 text-green-600" />
+              Articles traités
+            </h1>
+            <p className="text-muted-foreground text-sm sm:text-base">
+              {ROLES_CONFIG[activeRole].label} — entrées dont votre signature est
+              déjà apposée (consultation seule).
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              {derniereSync
+                ? `Synchronisé ${formatDelaiSync(derniereSync)}`
+                : "Non synchronisé"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void chargerEtatServeur()}
+              disabled={hydratation.etat === "chargement"}
+              className="gap-1.5"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${
+                  hydratation.etat === "chargement" ? "animate-spin" : ""
+                }`}
+              />
+              Rafraîchir
+            </Button>
+          </div>
+        </div>
+
+        <OngletsTraitement
+          vue={vue}
+          onChange={setVue}
+          nbATraiter={entreesATraiter.length}
+          nbTraitees={entreesTraitees.length}
+        />
+
+        {entreeTraiteeOuverte ? (
+          <DetailEntreeTraitee
+            entree={entreeTraiteeOuverte}
+            onRetour={() => setEntreeTraiteeOuverte(null)}
+          />
+        ) : (
+          <ListeEntreesTraitees
+            entrees={entreesTraitees}
+            role={activeRole}
+            onOuvrir={setEntreeTraiteeOuverte}
+          />
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="p-3 sm:p-6 space-y-6 max-w-6xl mx-auto">
@@ -2581,11 +3971,34 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
               : `Enregistrement d'une arrivée de matériel en ${STEP_LABELS.length} étapes`}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {isMagasinierSession && (
             <Step2Badge certified={receptionData.magasinierCertifie} />
           )}
           {isFixedDepositaire && <DepositaireBadge currentStep={currentStep} />}
+          {/* Synchronisation multi-postes : relecture explicite du serveur,
+              horodatée (le pied de page affiche le même repère). */}
+          <div className="flex items-center gap-2">
+            <span className="text-xs text-muted-foreground hidden sm:inline">
+              {derniereSync
+                ? `Synchronisé ${formatDelaiSync(derniereSync)}`
+                : "Non synchronisé"}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => void chargerEtatServeur()}
+              disabled={hydratation.etat === "chargement"}
+              className="gap-1.5"
+            >
+              <RefreshCw
+                className={`h-3.5 w-3.5 ${
+                  hydratation.etat === "chargement" ? "animate-spin" : ""
+                }`}
+              />
+              Rafraîchir
+            </Button>
+          </div>
           {currentStep === 4 && (
             <Button variant="outline" onClick={handleNewReception} className="print-hidden">
               Nouvelle réception
@@ -2594,22 +4007,103 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         </div>
       </div>
 
+      {/* Aucune pièce n'attend la signature de ce rôle : on explique où le
+          circuit est bloqué au lieu d'afficher une étape vide « 0 / 0 ». */}
+      {piecesEnAttente.length > 0 && (
+        <div className="print-hidden p-3 rounded-lg border border-border bg-muted/40 space-y-2">
+          <div className="flex items-start gap-2">
+            <Info className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium">
+                Aucune entrée n'attend votre signature
+              </p>
+              <ul className="text-sm text-muted-foreground space-y-0.5">
+                {piecesEnAttente.slice(0, 5).map((p) => (
+                  <li key={p.id} className="flex items-center gap-2">
+                    <span className="font-mono text-xs">{p.reference}</span>
+                    <span>— en attente : {p.bloqueePar}</span>
+                  </li>
+                ))}
+                {piecesEnAttente.length > 5 && (
+                  <li className="text-xs">
+                    … et {piecesEnAttente.length - 5} autre(s) entrée(s).
+                  </li>
+                )}
+              </ul>
+              <p className="text-xs text-muted-foreground">
+                L'écran se remettra à jour automatiquement dès qu'une signature
+                sera apposée sur un autre poste (au retour sur cet onglet).
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Séparation « à traiter » / « articles traités » : une pièce traitée
+          par ce rôle quitte son écran de traitement et passe en lecture seule. */}
+      <OngletsTraitement
+        vue={vue}
+        onChange={setVue}
+        nbATraiter={entreesATraiter.length}
+        nbTraitees={entreesTraitees.length}
+      />
+
       {/* Notifications du rôle connecté (vue simplifiée : SON onglet uniquement) */}
-      {(isMagasinierSession || isFixedDepositaire) && (
+      {(isMagasinierSession || isFixedDepositaire || isFixedLogistique) && (
         <NotificationsBell
           role={activeRole}
-          open={notifOpen}
-          onOpenChange={setNotifOpen}
-          onRefresh={refreshNotifications}
+          entrees={entreesChargees}
+          onSelectEntree={handleSelectionnerEntree}
         />
+      )}
+
+      {/* Plusieurs pièces attendent ce rôle : aucune n'est ouverte
+          automatiquement — l'utilisateur choisit dans la cloche ci-dessus
+          ou via les boutons d'accès rapide ci-dessous. */}
+      {multiAttente && multiAttente.references.length > 1 && (
+        <div
+          className={`print-hidden flex flex-col gap-2 p-3 rounded-lg border border-border ${bandeauRoleClasse(
+            activeRole
+          )}`}
+        >
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span className="text-sm">
+              <strong>{multiAttente.references.length} entrées</strong> attendent
+              votre intervention. Choisissez celle à traiter :
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2 pt-1">
+            {multiAttente.references.map((ref) => {
+              const e = entreesChargees?.find((ent) => ent.reference === ref);
+              return (
+                <Button
+                  key={ref}
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (e) handleSelectionnerEntree(e);
+                  }}
+                  className="gap-1.5 h-8 bg-background/80 hover:bg-background"
+                >
+                  <span>Ouvrir {ref}</span>
+                  <ArrowRight className="h-3 w-3" />
+                </Button>
+              );
+            })}
+          </div>
+        </div>
       )}
 
       {/* Étape 1 branchée sur l'API : la référence ENT-AAAA-NNN retournée par
           le serveur est affichée à la place de l'identifiant local — c'est la
-          seule valeur à considérer comme « vraie » pour cette étape. */}
+          seule valeur à considérer comme « vraie » pour cette étape.
+          Bandeau récapitulatif : état des 3 signatures (magasinier →
+          logistique → dépositaire), reconstructible après F5 comme après une
+          action (données 100 % serveur). */}
       {entreeServeur && (
         <Card className="print-hidden border-primary/30 bg-primary/5">
-          <CardContent className="px-4 py-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <CardContent className="px-4 py-3 flex flex-col gap-2">
             <div className="flex items-center gap-2 text-sm">
               <BookOpen className="h-4 w-4 text-primary shrink-0" />
               <span>
@@ -2619,20 +4113,48 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
                 </span>{" "}
                 — statut serveur :{" "}
                 <span className="font-semibold">{entreeServeur.statut}</span>
-                {entreeServeur.signatures.chefService1 && (
-                  <span className="text-muted-foreground">
-                    {" "}· signée par {entreeServeur.signataires.chefService1}
-                  </span>
-                )}
               </span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+              <SignataireChip
+                label="Magasinier"
+                signe={!!entreeServeur.signatures?.chefService1}
+                date={entreeServeur.signatures?.chefService1}
+                nom={
+                  entreeServeur.signataires?.chefService1 ||
+                  entreeServeur.affectations?.chefService1 ||
+                  ROLES_CONFIG.magasinier.label
+                }
+              />
+              <SignataireChip
+                label="Logistique"
+                signe={!!entreeServeur.signatures?.chefService2}
+                date={entreeServeur.signatures?.chefService2}
+                nom={
+                  entreeServeur.signataires?.chefService2 ||
+                  entreeServeur.affectations?.chefService2 ||
+                  ROLES_CONFIG.logistique.label
+                }
+              />
+              <SignataireChip
+                label="Dépositaire"
+                signe={!!entreeServeur.signatures?.depositaire}
+                date={entreeServeur.signatures?.depositaire}
+                nom={
+                  entreeServeur.signataires?.depositaire ||
+                  entreeServeur.affectations?.depositaire ||
+                  ROLES_CONFIG.depositaire.label
+                }
+              />
             </div>
           </CardContent>
         </Card>
       )}
 
       {/* Simulateur de session — masqué pour les rôles métier connectés
-          (magasinier, dépositaire) : chacun voit uniquement SES actions. */}
-      {!isMagasinierSession && !isFixedDepositaire && (
+          (magasinier, dépositaire, logistique) : chacun voit uniquement SES
+          actions. */}
+      {!isMagasinierSession && !isFixedDepositaire && !isFixedLogistique && (
       <Card className="print-hidden border-primary/30">
         <CardContent className="px-4 py-3">
           <div className="flex flex-col lg:flex-row lg:items-center gap-3">
@@ -2661,8 +4183,9 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
               Session : {sessionName}
             </Badge>
 
-            {/* Notifications du rôle actif */}
-            <Popover open={notifOpen} onOpenChange={setNotifOpen}>
+            {/* Notifications dérivées du rôle actif (Étape 5) : indicateur
+                d'état recalculé, sans « lu/non lu » stocké */}
+            <Popover>
               <PopoverTrigger asChild>
                 <button
                   type="button"
@@ -2680,56 +4203,48 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
               <PopoverContent align="end" className="w-80 p-0">
                 <div className="flex items-center justify-between px-3 py-2 border-b border-border">
                   <span className="text-sm font-semibold">
-                    Notifications — {ROLES_CONFIG[activeRole].label}
+                    En attente — {ROLES_CONFIG[activeRole].label}
                   </span>
-                  {notifications.length > 0 && (
-                    <button
-                      type="button"
-                      className="text-xs text-primary hover:underline"
-                      onClick={() => {
-                        markAllRead(activeRole);
-                        refreshNotifications();
-                      }}
-                    >
-                      Tout marquer lu
-                    </button>
-                  )}
                 </div>
                 <div className="max-h-72 overflow-auto">
                   {notifications.length === 0 ? (
                     <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-                      Aucune notification pour ce rôle.
+                      Aucune action en attente pour ce rôle.
                     </div>
                   ) : (
-                    notifications.map((n) => (
-                      <div
-                        key={n.id}
-                        className={`px-3 py-2.5 border-b border-border/60 last:border-0 ${
-                          !n.read ? "bg-primary/5" : ""
-                        }`}
-                      >
-                        <div className="flex items-start gap-2">
-                          {n.type === "ecart" ? (
-                            <Lock className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                          ) : n.type === "reception_confirmee" ? (
-                            <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
-                          ) : (
-                            <ClipboardCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                          )}
-                          <div className="min-w-0">
-                            <p className="text-sm font-medium leading-snug">
-                              {n.title}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {n.body}
-                            </p>
-                            <p className="text-[10px] text-muted-foreground mt-1">
-                              {new Date(n.date).toLocaleString("fr-FR")}
-                            </p>
+                    notifications.map((n: NotificationEtape) => {
+                      const e = entreesChargees?.find((ent) => ent.id === n.entreeId);
+                      return (
+                        <div
+                          key={n.id}
+                          onClick={() => {
+                            if (e) handleSelectionnerEntree(e);
+                          }}
+                          className="px-3 py-2.5 border-b border-border/60 last:border-0 hover:bg-muted/60 cursor-pointer transition-colors"
+                        >
+                          <div className="flex items-start gap-2">
+                            {n.type === "ecart" ? (
+                              <Lock className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+                            ) : n.type === "reception_confirmee" ? (
+                              <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
+                            ) : (
+                              <ClipboardCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <p className="text-sm font-medium leading-snug">
+                                {n.title}
+                              </p>
+                              <p className="text-xs text-muted-foreground mt-0.5">
+                                {n.body}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground mt-1">
+                                {new Date(n.date).toLocaleString("fr-FR")}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      );
+                    })
                   )}
                 </div>
               </PopoverContent>
@@ -2745,7 +4260,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
 
       {/* Circuit complet et indicateur 4 étapes : réservés à l'admin — les
           rôles métier connectés ne voient que LEURS onglets. */}
-      {!isMagasinierSession && !isFixedDepositaire && (
+      {!isMagasinierSession && !isFixedDepositaire && !isFixedLogistique && (
         <>
           {/* Suivi de la répartition des rôles */}
           <RoleWorkflowStatus
@@ -2760,6 +4275,29 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         </>
       )}
 
+      {/* File de traitement vide : pas d'étape de travail sans pièce à traiter. */}
+      {fileDeTraitementVide ? (
+        <Card className="print-hidden">
+          <CardContent className="py-12 text-center space-y-3">
+            <PackageCheck className="h-8 w-8 mx-auto text-muted-foreground" />
+            <p className="font-medium">Aucune entrée à traiter</p>
+            <p className="text-sm text-muted-foreground max-w-md mx-auto">
+              {piecesEnAttente.length > 0
+                ? "Toutes les entrées en circulation sont à une autre étape du circuit. Vous serez prévenu dès qu'une pièce arrivera à votre tour."
+                : "Toutes les entrées dont vous avez la charge sont traitées. L'écran se mettra à jour automatiquement dès qu'une nouvelle pièce vous sera confiée."}
+            </p>
+            <Button
+              variant="outline"
+              onClick={() => setVue("traites")}
+              className="gap-1.5"
+            >
+              <ClipboardCheck className="h-4 w-4" />
+              Consulter mes articles traités
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+      <>
       {/* Vue simplifiée du magasinier : SON onglet uniquement */}
       {isMagasinierSession && !step1Complete(receptionData) && (
         <MagasinierLockedNotice depositaireName={depositaireName} />
@@ -2769,10 +4307,13 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         !receptionData.magasinierCertifie && (
           <Step2ControleMagasinier
             data={receptionData}
+            extra={extra}
             onChange={handleDataChange}
             canEdit={canPerformStepAction(activeRole, 2)}
             requiredRoleLabel={ROLES_CONFIG.magasinier.label}
             depositaireName={depositaireName}
+            articlesIncomplets={articlesIncomplets}
+            certifying={isSubmitting}
           />
         )}
       {isMagasinierSession &&
@@ -2804,23 +4345,35 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
       {!isMagasinierSession && !isFixedDepositaire && currentStep === 2 && (
         <Step2ControleMagasinier
           data={receptionData}
+          extra={extra}
           onChange={handleDataChange}
           canEdit={canPerformStepAction(activeRole, 2)}
           requiredRoleLabel={ROLES_CONFIG.magasinier.label}
           depositaireName={depositaireName}
+          articlesIncomplets={articlesIncomplets}
+          certifying={isSubmitting}
         />
       )}
       {!isMagasinierSession && currentStep === 3 && (
-        <Step3EnregistrementDepositaire
-          data={receptionData}
-          onChange={handleDataChange}
-          canEdit={canPerformStepAction(activeRole, 3)}
-          requiredRoleLabel={ROLES_CONFIG.depositaire.label}
-        />
+        canPerformStepAction(activeRole, 3) ? (
+          <Step3SignatureLogistique
+            data={receptionData}
+            logistiqueCertifie={logistiqueCertifie}
+            onCertifier={handleCertifierLogistique}
+            certifying={isSubmitting}
+          />
+        ) : (
+          <Step3WaitingLogistique
+            numeroBL={receptionData.numeroBL}
+            logistiqueName={logistiqueName}
+          />
+        )
       )}
       {!isMagasinierSession && currentStep === 4 && (
         <Step4PVReception
           data={receptionData}
+          extra={extra}
+          entreeServeur={entreeServeur}
           magasinierName={magasinierName}
           depositaireName={depositaireName}
           onOpenJournal={() => onNavigate?.("journal")}
@@ -2828,8 +4381,10 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
       )}
 
       {/* Dépositaire connecté : une seule action contextuelle à la fois
-          (transmission du BL, puis validation de l'enregistrement). */}
-      {isFixedDepositaire && (currentStep === 1 || currentStep === 3) && (
+          (transmission du BL à l'étape 1 ; signature FINALE à l'étape 4 si les
+          2 précédentes sont posées — le serveur valide à 3/3 et impacte le
+          stock une seule fois). */}
+      {isFixedDepositaire && (currentStep === 1 || currentStep === 4) && (
         <div className="print-hidden flex justify-end pt-4 border-t border-border">
           <Button
             onClick={goNext}
@@ -2840,7 +4395,9 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
               ? isSubmitting
                 ? "Création de l'entrée..."
                 : "Transmettre au magasin"
-              : "Valider l'enregistrement"}
+              : isSubmitting
+              ? "Validation finale..."
+              : "Signer la validation finale"}
             {isSubmitting ? (
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
@@ -2850,9 +4407,64 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         </div>
       )}
 
+      {/* Magasinier connecté : la case « Le magasinier certifie la réception
+          physique » ne pose qu'un état LOCAL (onChange). Sans ce bouton,
+          goNext() restait INATTEIGNABLE en session magasinier — les trois
+          autres boutons sont réservés au dépositaire, à la logistique et à
+          l'admin — donc la signature chef_service_1 n'était jamais envoyée :
+          le serveur gardait chef_service_1_signed = false et le chef
+          logistique voyait la pièce « bloquée par : contrôle magasinier ».
+          Le bouton n'apparaît qu'une fois la case cochée. */}
+      {isMagasinierSession && currentStep === 2 && receptionData.magasinierCertifie && (
+        <div className="print-hidden flex justify-end pt-4 border-t border-border">
+          <Button
+            onClick={goNext}
+            disabled={!canProceed || isSubmitting}
+            className="gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <span>Certification en cours...</span>
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </>
+            ) : (
+              <>
+                <span>Certifier la réception physique (1/3)</span>
+                <ArrowRight className="h-4 w-4" />
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+
+      {/* Chef logistique connecté : action contextuelle de validation à l'étape 3 */}
+      {isFixedLogistique && currentStep === 3 && (
+        <div className="print-hidden flex justify-end pt-4 border-t border-border">
+          <Button
+            onClick={goNext}
+            disabled={!canProceed || isSubmitting}
+            className="gap-2"
+          >
+            {isSubmitting ? (
+              <>
+                <span>Validation logistique...</span>
+                <Loader2 className="h-4 w-4 animate-spin" />
+              </>
+            ) : (
+              <>
+                <span>Certifier le circuit et signer (2/3)</span>
+                <ArrowRight className="h-4 w-4" />
+              </>
+            )}
+          </Button>
+        </div>
+      )}
+      </>
+      )}
+
       {/* Navigation complète — réservée à l'admin (les rôles métier n'ont pas
           de Précédent/Suivant entre les étapes des autres) */}
-      {!isMagasinierSession && !isFixedDepositaire && (
+      {!isMagasinierSession && !isFixedDepositaire && !isFixedLogistique && (
       <div className="print-hidden flex items-center justify-between pt-4 border-t border-border">
         <Button
           variant="outline"

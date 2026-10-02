@@ -195,12 +195,27 @@ const APP_ROLES = [
   },
 ];
 
+// Rôle réel de l'utilisateur connecté (GET /api/session/role). Accordé à TOUS
+// les rôles métiers + au rôle `authenticated` : c'est la seule donnée dont
+// l'interface a besoin pour ne plus afficher une identité codée en dur qui
+// contredirait le jeton. Sans elle, la route répond 403 et le frontend retombe
+// sur son repli de démonstration.
+//
+// ⚠️ Le périmètre d'une route Content API est construit par Strapi à partir
+// du NOM DU DOSSIER de l'API, pas de l'uid du content type
+// (`createRouteScopeGenerator('api::' + apiName)`) : le dossier doit donc
+// s'appeler `session-role` pour que l'action soit bien
+// `api::session-role.session-role.role`. Un dossier `session` produirait
+// `api::session.session-role.role` — et un 403 pour tout le monde.
+const SESSION_ROLE_ACTION = 'api::session-role.session-role.role';
+
 const DEMAND_ACTIONS = [
   'api::demande.demande.find',
   'api::demande.demande.findOne',
   'api::demande.demande.create',
   'api::demande.demande.update',
   'plugin::users-permissions.user.me',
+  SESSION_ROLE_ACTION,
 ];
 
 // ---------------------------------------------------------------------------
@@ -275,9 +290,25 @@ const ROLES_RAPPORTS = ['depositaire', 'comptable', 'logistique'];
 // Demandeur : il peut ENREGISTRER une entrée (elle démarre « En attente »,
 // 0/3 signatures) et consulter les données de référence du formulaire,
 // mais JAMAIS signer ni rejeter (contrôlé aussi dans le contrôleur).
+//
+// La lecture des entrées (`find` / `findOne`) lui est accordée pour qu'il
+// puisse suivre la validation de SES entrées — sans quoi l'écran « Arrivée
+// matériel » (qui recharge l'état au montage) répond 403. Ces routes étant
+// volontairement authentifiées (le sanitizer Content-API ne peuplerait
+// `lignes` / `fournisseur` que si l'utilisateur est résolu), l'absence de
+// permission se traduisait par un 403 pour tout profil Demandeur.
+// L'ISOLEMENT EST ASSURÉ CÔTÉ CONTRÔLEUR : `entree.find` / `entree.findOne`
+// sont surchargés pour ne renvoyer que les entrées créées par l'utilisateur
+// connecté (voir api/entree/controllers/entree.js).
 // ---------------------------------------------------------------------------
 const DEMANDEUR_ENTREE_ACTIONS = [
   'api::entree.entree.createComplete',
+  'api::entree.entree.find',
+  'api::entree.entree.findOne',
+  // Lecture des lignes : sans ces permissions le sanitizer ne peuplerait pas
+  // la relation `lignes` (les entrées seraient affichées sans articles).
+  'api::entree-ligne.entree-ligne.find',
+  'api::entree-ligne.entree-ligne.findOne',
   'api::fournisseur.fournisseur.find',
   'api::fournisseur.fournisseur.findOne',
   'api::material.material.find',
@@ -532,6 +563,16 @@ module.exports = {
    * run jobs, or perform some special logic.
    */
   async bootstrap({ strapi }) {
+    // [Supprimé] Une tentative de réinjecter la relation « role » dans la
+    // réponse de POST /api/auth/local en enveloppant
+    // `userService.sanitizeUser` : SANS EFFET. Le contrôleur `auth` du plugin
+    // users-permissions utilise un `sanitizeUser` LOCAL (closure) qui appelle
+    // directement `strapi.contentAPI.sanitize.output` — la méthode du service
+    // n'est jamais appelée sur ce chemin (vérifié : la réponse de connexion
+    // ne contenait toujours pas `role`, ni sur GET /api/users/me).
+    // Le rôle réel est désormais servi par GET /api/session/role, calculé en
+    // base : voir api/session-role/controllers/session-role.js et
+    // SESSION_ROLE_ACTION (déclaré plus haut dans ce fichier).
     try {
       await ensureAuthSetup(strapi);
     } catch (err) {

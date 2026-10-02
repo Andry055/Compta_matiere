@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react"
-import { clearStrapiSession } from "./lib/api"
+import { clearStrapiSession, fetchSessionRole } from "./lib/api"
+import { mapStrapiUser } from "./lib/session"
 import { DashboardLayout } from "./components/DashboardLayout"
 import { StaffDashboardLayout } from "./components/StaffDashboardLayout"
 import { LoginScreen } from "./components/LoginScreen"
@@ -40,6 +41,20 @@ export default function App() {
 
           // Check if login is still valid (within 24 hours)
           if (now - loginTimestamp < twentyFourHours) {
+            // Revalidation : l'identité affichée doit être celle du JETON.
+            // `currentUser` peut provenir du repli de démonstration de
+            // LoginScreen (API momentanément injoignable) alors que le jeton
+            // appartient à un autre compte — l'écran affichait alors un rôle
+            // que le serveur refuse (403 à la signature). On interroge donc
+            // /api/session/role et on réaligne l'identité ; en cas d'échec
+            // (API hors ligne) on conserve la session telle quelle.
+            const session = await fetchSessionRole()
+            const reel = mapStrapiUser(session)
+            if (reel && reel.role !== user.role) {
+              localStorage.setItem('currentUser', JSON.stringify(reel))
+              setCurrentUser(reel)
+              return
+            }
             setCurrentUser(user)
           } else {
             // Clear expired session

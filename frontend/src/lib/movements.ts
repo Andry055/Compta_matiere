@@ -72,6 +72,12 @@ export interface EntreeLigne {
   nomenclature: string;
   pieceJustificative: string;
   observation: string;
+  /** Étape 2 du flux « Arrivée matériel » : état constaté par le magasinier
+   *  (null = pas encore contrôlé). Persisté sur entree-ligne depuis l'Étape 1
+   *  et rempli par la signature chef_service_1 groupée (Étape 2). */
+  etat?: "neuf" | "bon" | "moyen" | "defaillant" | null;
+  /** Conformité constatée (null = pas encore contrôlé). */
+  conforme?: boolean | null;
 }
 
 /**
@@ -172,6 +178,12 @@ export interface EntreeRecord {
   admin?: EntreeAdmin;
   /** Lignes matérielles détaillées (vides pour les entrées de démonstration) */
   lignes?: EntreeLigne[];
+  /** Statut brut du serveur (brouillon/en_attente/verifiee/validee/rejetee) —
+   *  pour reconstruire l'étape courante du flux « Arrivée matériel » sans
+   *  dépendre de l'état local. */
+  statutServeur?: string;
+  /** Vrai si l'entrée a été rejetée (statut serveur rejetee). */
+  rejetee?: boolean;
 }
 
 export interface SortieRecord {

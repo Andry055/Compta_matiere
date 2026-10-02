@@ -1,6 +1,7 @@
 import { SimpleSidebar } from "./SimpleSidebar"
 import { Dashboard } from "./Dashboard"
 import { MaterialEntry } from "./MaterialEntry"
+import { formatDelaiSync, useDerniereSync } from "../lib/lastSync"
 import { Equipment } from "./Equipment"
 import { Journal } from "./Journal"
 import { Distribution } from "./Distribution"
@@ -28,6 +29,10 @@ interface DashboardLayoutProps {
 
 export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
+  // Horodatage RÉEL de la dernière relecture serveur réussie (alimenté par
+  // l'écran Réception de Matériel) — le pied de page n'affichait qu'un « il y a
+  // 2 min » écrit en dur, quel que soit l'état réel.
+  const derniereSync = useDerniereSync()
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
   const [activeSection, setActiveSection] = useState("dashboard")
   const [isMobile, setIsMobile] = useState(false)
@@ -239,7 +244,9 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
                 <Wifi className="h-3 w-3 text-green-600" />
                 <span>Connecté</span>
               </div>
-              <div className="hidden md:block">Dernière sync: Il y a 2 min</div>
+              <div className="hidden md:block">
+                Dernière sync : {formatDelaiSync(derniereSync)}
+              </div>
             </div>
             <div className="flex items-center gap-4">
               <div className="hidden lg:block">Version 1.0.0</div>

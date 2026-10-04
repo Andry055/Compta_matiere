@@ -4,8 +4,9 @@
 //   Étape 1 — Dépositaire comptable : bon de livraison + articles.
 //   Étape 2 — Magasinier : BL/articles en lecture seule, il vérifie lui-même
 //             l'état et la conformité puis certifie la réception physique.
-//   Étape 3 — Dépositaire comptable : enregistrement au journal.
-//   Étape 4 — PV de réception (document final, aucun rôle éditeur).
+//   Étape 3 — Logistique : 2ᵉ signature du circuit (chef_service_2).
+//   Étape 4 — PV de réception + certification et signature FINALE du
+//             dépositaire comptable (seul rôle éditeur de cette étape).
 //
 // Mécanisme aligné sur celui des signatures de sortie (DistributionRequests :
 // égalité stricte entre le rôle du titulaire de session et le rôle requis),
@@ -17,7 +18,8 @@ import { AppRole, ROLES_CONFIG } from "../types/roles";
 import { ReceptionData } from "../types/accounting";
 
 /** Rôle requis pour agir sur chaque étape du flux de réception.
- *  L'étape 4 (PV) est consultable par tous.
+ *  L'étape 4 est CONSULTABLE par tous, mais la case de certification qui
+ *  autorise la signature finale n'est éditable que par le dépositaire.
  *  Étape 3 : la signature serveur posée est chef_service_2 (logistique) —
  *  l'ordre réel est magasinier → logistique → dépositaire (décision figée).
  *  Le libellé affiché de l'étape reste inchangé (dette UX notée). */
@@ -25,12 +27,18 @@ export const STEP_ROLE_REQUIREMENTS: Record<number, AppRole> = {
   1: "depositaire",
   2: "magasinier",
   3: "logistique",
+  4: "depositaire",
 };
 
 /** Champs de ReceptionData dont l'écriture est réservée au rôle propriétaire de l'étape.
  *  Le magasinier édite UNIQUEMENT les contrôles (état/conformité) et sa
  *  certification à l'étape 2 ; BL et articles restent la propriété du
- *  dépositaire (étapes 1 et 3). */
+ *  dépositaire (étape 1).
+ *  `depositaireCertifie` appartient à l'ÉTAPE 4 : c'est là que le dépositaire
+ *  coche la case qui autorise sa signature finale (canProceed, étape 4). Tant
+ *  qu'elle était rattachée à l'étape 3 (réservée à la logistique), le guard
+ *  refusait la coche au dépositaire — même depuis l'étape 4 — et le bouton
+ *  « Signer la validation finale » restait bloqué. */
 const PROTECTED_FIELDS: Partial<Record<keyof ReceptionData, number>> = {
   fournisseur: 1,
   numeroBL: 1,
@@ -39,7 +47,7 @@ const PROTECTED_FIELDS: Partial<Record<keyof ReceptionData, number>> = {
   observationsBL: 1,
   controles: 2,
   magasinierCertifie: 2,
-  depositaireCertifie: 3,
+  depositaireCertifie: 4,
   journalEntryId: 3,
   dateEnregistrement: 3,
 };

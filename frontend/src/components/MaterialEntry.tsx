@@ -11,6 +11,7 @@ import {
   Check,
   CheckCircle2,
   ClipboardCheck,
+  Clock,
   FileText,
   Info,
   Loader2,
@@ -1709,8 +1710,78 @@ function Step2ControleMagasinier({
   );
 }
 
+/** Case de certification du dépositaire (« Le dépositaire certifie
+ *  l'enregistrement »).
+ *
+ *  Extraite de Step3EnregistrementDepositaire — composant qui n'est plus rendu
+ *  nulle part depuis que l'étape 3 est devenue la signature logistique — pour
+ *  être affichée à l'étape 4, SEUL endroit où elle est atteignable : c'est la
+ *  case que `canProceed` (étape 4) exige avant d'autoriser le bouton
+ *  « Signer la validation finale ». Sans elle, `depositaireCertifie` ne pouvait
+ *  jamais passer à true et la signature finale restait bloquée à jamais.
+ *  L'écriture de l'état passe toujours par `onChange({ depositaireCertifie })`
+ *  (guardé par role-access : champ protégé à l'étape 4, donc dépositaire seul). */
+function CertificationDepositaireCard({
+  certifie,
+  onCertifie,
+  canEdit,
+  requiredRoleLabel,
+  className = "",
+}: {
+  certifie: boolean;
+  onCertifie: (v: boolean) => void;
+  canEdit: boolean;
+  requiredRoleLabel: string;
+  className?: string;
+}) {
+  return (
+    <Card
+      className={`transition-all duration-300 ${className} ${
+        certifie
+          ? "border-green-500 bg-green-50/50 dark:bg-green-950/20"
+          : "border-orange-300 dark:border-orange-700"
+      }`}
+    >
+      <CardContent className="pt-6">
+        <div className="flex items-start gap-3">
+          <Checkbox
+            id="certification-depositaire"
+            checked={certifie}
+            onCheckedChange={(checked) => onCertifie(checked === true)}
+            disabled={!canEdit}
+            className="mt-0.5"
+          />
+          <div>
+            <Label
+              htmlFor="certification-depositaire"
+              className="text-sm font-semibold cursor-pointer"
+            >
+              Le dépositaire certifie l&apos;enregistrement
+            </Label>
+            <p className="text-xs text-muted-foreground mt-1">
+              En cochant cette case, je certifie que l&apos;écriture du PV
+              ci-dessus est conforme au bon de livraison et peut être
+              enregistrée au journal de comptabilité matière.
+            </p>
+            {!canEdit && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
+                <Lock className="h-3 w-3" />
+                Étape réservée au {requiredRoleLabel}.
+              </p>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ──────────────────────────────────────────────
-// ÉTAPE 3 — Enregistrement dépositaire
+// ÉTAPE 3 — Enregistrement dépositaire (composant
+// non rendu — conservé pour la trace de l'ancien
+// circuit ; la case de certification vit désormais
+// dans CertificationDepositaireCard, affichée à
+// l'étape 4).
 // ──────────────────────────────────────────────
 
 function Step3EnregistrementDepositaire({
@@ -1986,46 +2057,12 @@ function Step3EnregistrementDepositaire({
       </Card>
 
       {/* Certification du dépositaire */}
-      <Card
-        className={`transition-all duration-300 ${
-          data.depositaireCertifie
-            ? "border-green-500 bg-green-50/50 dark:bg-green-950/20"
-            : "border-orange-300 dark:border-orange-700"
-        }`}
-      >
-        <CardContent className="pt-6">
-          <div className="flex items-start gap-3">
-            <Checkbox
-              id="certification-depositaire"
-              checked={data.depositaireCertifie}
-              onCheckedChange={(checked) =>
-                onChange({ depositaireCertifie: checked === true })
-              }
-              disabled={!canEdit}
-              className="mt-0.5"
-            />
-            <div>
-              <Label
-                htmlFor="certification-depositaire"
-                className="text-sm font-semibold cursor-pointer"
-              >
-                Le dépositaire certifie l'enregistrement
-              </Label>
-              <p className="text-xs text-muted-foreground mt-1">
-                En cochant cette case, je certifie que l'écriture ci-dessus est
-                conforme au bon de livraison et peut être enregistrée au journal
-                de comptabilité matière.
-              </p>
-              {!canEdit && (
-                <p className="text-xs text-amber-600 dark:text-amber-400 mt-2 flex items-center gap-1">
-                  <Lock className="h-3 w-3" />
-                  Étape réservée au {requiredRoleLabel}.
-                </p>
-              )}
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      <CertificationDepositaireCard
+        certifie={data.depositaireCertifie}
+        onCertifie={(v) => onChange({ depositaireCertifie: v })}
+        canEdit={canEdit}
+        requiredRoleLabel={requiredRoleLabel}
+      />
     </div>
   );
 }
@@ -2040,19 +2077,78 @@ function Step4PVReception({
   entreeServeur,
   magasinierName,
   depositaireName,
+  logistiqueName,
   onOpenJournal,
+  onChange,
+  canEditCertification,
+  requiredRoleLabel,
 }: {
   data: ReceptionData;
   extra: ReceptionDataExtra;
   entreeServeur: EntreeRecord | null;
   magasinierName: string;
   depositaireName: string;
+  logistiqueName: string;
   onOpenJournal: () => void;
+  onChange: (d: Partial<ReceptionData>) => void;
+  canEditCertification: boolean;
+  requiredRoleLabel: string;
 }) {
   const totalValeur = data.articles.reduce(
     (sum, a) => sum + a.quantiteLivree * a.prixUnitaire,
     0
   );
+
+  // État RÉEL de la signature finale du dépositaire (source : l'entrée serveur,
+  // pas l'horloge d'affichage). Tant qu'elle n'est pas posée, le PV affiche un
+  // statut « en attente » — il annonçait « Enregistrement certifié » en vert
+  // AVANT toute signature, incohérent avec le bouton de signature qui restait
+  // juste en dessous.
+  const signatureDepositaire = entreeServeur?.signatures?.depositaire;
+
+  /** Carte de signature du PV : statut ET date issus de la seule source de
+   *  vérité (l'entrée serveur). Aucune carte n'affiche plus « certifié » ni une
+   *  date inventée tant que la signature n'est pas réellement posée. */
+  const CarteSignature = ({
+    titre,
+    signataire,
+    date,
+    libelleSigne,
+  }: {
+    titre: string;
+    signataire: string;
+    date?: string;
+    libelleSigne: string;
+  }) => {
+    const signe = Boolean(date);
+    return (
+      <div className="border rounded-lg p-4 space-y-3">
+        <h4 className="text-sm font-semibold text-center">{titre}</h4>
+        <div
+          className={`flex items-center justify-center gap-2 ${
+            signe
+              ? "text-green-600 dark:text-green-400"
+              : "text-amber-600 dark:text-amber-400"
+          }`}
+        >
+          {signe ? (
+            <CheckCircle2 className="h-5 w-5" />
+          ) : (
+            <Clock className="h-5 w-5" />
+          )}
+          <span className="text-sm font-medium">
+            {signe ? libelleSigne : "En attente de signature"}
+          </span>
+        </div>
+        <div className="text-center text-sm text-muted-foreground">
+          {signataire}
+        </div>
+        <div className="text-center text-xs text-muted-foreground">
+          {signe && date ? formatDateTime(date) : "—"}
+        </div>
+      </div>
+    );
+  };
   // L'entrée serveur liée (passée par le parent) remplace les recherches dans
   // les stores locaux (journal/mouvements) — supprimés à l'Étape 6.
   const entreeLiee = entreeServeur;
@@ -2252,44 +2348,35 @@ function Step4PVReception({
 
             <Separator />
 
-            {/* Signatures */}
-            <div className="grid sm:grid-cols-2 gap-6 pt-2">
-              <div className="border rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-semibold text-center">
-                  Le Magasinier
-                </h4>
-                <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="text-sm font-medium">
-                    Réception certifiée
-                  </span>
-                </div>
-                <div className="text-center text-sm text-muted-foreground">
-                  {magasinierName}
-                </div>
-                <div className="text-center text-xs text-muted-foreground">
-                  {now}
-                </div>
-              </div>
-              <div className="border rounded-lg p-4 space-y-3">
-                <h4 className="text-sm font-semibold text-center">
-                  Le Dépositaire Comptable
-                </h4>
-                <div className="flex items-center justify-center gap-2 text-green-600 dark:text-green-400">
-                  <CheckCircle2 className="h-5 w-5" />
-                  <span className="text-sm font-medium">
-                    Enregistrement certifié
-                  </span>
-                </div>
-                <div className="text-center text-sm text-muted-foreground">
-                  {depositaireName}
-                </div>
-                <div className="text-center text-xs text-muted-foreground">
-                  {data.dateEnregistrement
-                    ? formatDateTime(data.dateEnregistrement)
-                    : now}
-                </div>
-              </div>
+            {/* Signatures — les 3 signatures du circuit serveur, dans l'ordre
+                réel (magasinier → logistique → dépositaire). La carte
+                « Logistique » manquait : la 2ᵉ signature obligatoire n'était
+                visible nulle part dans le PV. */}
+            <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6 pt-2">
+              <CarteSignature
+                titre="Le Magasinier"
+                signataire={
+                  entreeServeur?.signataires?.chefService1 || magasinierName
+                }
+                date={entreeServeur?.signatures?.chefService1}
+                libelleSigne="Réception certifiée"
+              />
+              <CarteSignature
+                titre="La Logistique"
+                signataire={
+                  entreeServeur?.signataires?.chefService2 || logistiqueName
+                }
+                date={entreeServeur?.signatures?.chefService2}
+                libelleSigne="Circuit validé"
+              />
+              <CarteSignature
+                titre="Le Dépositaire Comptable"
+                signataire={
+                  entreeServeur?.signataires?.depositaire || depositaireName
+                }
+                date={signatureDepositaire}
+                libelleSigne="Enregistrement certifié"
+              />
             </div>
           </CardContent>
           <CardFooter className="text-center text-xs text-muted-foreground print:text-gray-500">
@@ -2343,6 +2430,18 @@ function Step4PVReception({
           </CardContent>
         </Card>
       )}
+
+      {/* Certification du dépositaire — ACTION de l'étape 4, hors du document
+          imprimé : c'est la case que l'écran exige avant d'activer le bouton
+          « Signer la validation finale » (canProceed, étape 4). Placée après le
+          PV et juste avant ce bouton. */}
+      <CertificationDepositaireCard
+        className="print-hidden"
+        certifie={data.depositaireCertifie}
+        onCertifie={(v) => onChange({ depositaireCertifie: v })}
+        canEdit={canEditCertification}
+        requiredRoleLabel={requiredRoleLabel}
+      />
 
       {/* Print-specific CSS */}
       <style>{`
@@ -2678,8 +2777,14 @@ function receptionDepuisEntree(entree: EntreeRecord): {
       controles,
       // L'étape 2 de l'écran correspond à la signature serveur chef_service_1,
       // l'étape 3 à chef_service_2 (le nom du champ local est historique).
+      // `depositaireCertifie` est la CONFIRMATION du dépositaire à l'étape 4 :
+      // elle ne vaut VRAI que si la signature serveur « depositaire » est déjà
+      // posée. Elle était dérivée de chef_service_2 (mapping de l'ancienne étape
+      // 3, aujourd'hui la logistique) : la case réapparaissait donc cochée au
+      // chargement et la confirmation finale pouvait être contournée sans aucun
+      // clic du dépositaire.
       magasinierCertifie: !!entree.signatures?.chefService1,
-      depositaireCertifie: !!entree.signatures?.chefService2,
+      depositaireCertifie: !!entree.signatures?.depositaire,
       journalEntryId: entree.reference,
       dateEnregistrement:
         entree.signatures?.chefService2 ?? entree.signatures?.chefService1,
@@ -3499,7 +3604,13 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   }, [currentStep, receptionData, isSubmitting, activeRole, logistiqueCertifie]);
 
   const goNext = async () => {
-    if (currentStep >= 4) return;
+    // L'étape 4 est TERMINALE mais PORTE UNE ACTION : la signature finale du
+    // dépositaire (branche `currentStep === 4` plus bas). Le retour précédent
+    // (`>= 4`) rendait cette branche INATTEIGNABLE : le bouton « Signer la
+    // validation finale » partait sans appel, sans toast et sans erreur — le
+    // depositaire ne pouvait donc jamais valider, quelle que soit la case de
+    // certification. On borne donc au-delà de la DERNIÈRE étape.
+    if (currentStep > STEP_LABELS.length) return;
 
     // Verrou logique sur la navigation aussi : un rôle ne peut pas valider
     // une étape qui n'est pas la sienne, même si les données le permettraient.
@@ -4376,7 +4487,11 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           entreeServeur={entreeServeur}
           magasinierName={magasinierName}
           depositaireName={depositaireName}
+          logistiqueName={logistiqueName}
           onOpenJournal={() => onNavigate?.("journal")}
+          onChange={handleDataChange}
+          canEditCertification={canPerformStepAction(activeRole, 4)}
+          requiredRoleLabel={ROLES_CONFIG.depositaire.label}
         />
       )}
 

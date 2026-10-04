@@ -65,6 +65,7 @@ import {
   notificationsPourRole,
 } from "../lib/notificationEtapes";
 import type { EntreeRecord } from "../lib/movements";
+import { getOrdreEntreeDocument } from "../lib/movements";
 
 // ──────────────────────────────────────────────
 // Helpers « ancrage écran ↔ entrée serveur »
@@ -2582,7 +2583,7 @@ function Step3WaitingLogistique({
  *  propre au logistique. NE PAS confondre avec Step3EnregistrementDepositaire
  *  qui contient la case "Le dépositaire certifie l'enregistrement" — cette
  *  case ne doit jamais être accessible au logistique. */
-function Step3SignatureLogistique({
+export function Step3SignatureLogistique({
   data,
   logistiqueCertifie,
   onCertifier,
@@ -2619,6 +2620,38 @@ function Step3SignatureLogistique({
           <strong>Étape logistique</strong> — Vérifiez que le circuit a été respecté et apposez votre signature (2ᵉ sur 3).
         </span>
       </div>
+
+      {/* En-tête du bon de livraison — même source que Step1/Step4 : la
+          synthèse ci-dessous ne donnait QUE des agrégats, le chef logistique
+          ne pouvait donc vérifier ni le circuit ni le contenu livré. */}
+      <Card>
+        <CardHeader className="py-4">
+          <div className="flex items-center gap-2">
+            <FileText className="h-5 w-5 text-muted-foreground" />
+            <CardTitle className="text-base">Bon de livraison</CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0">
+          <div className="grid gap-4 sm:grid-cols-3 text-sm">
+            <div>
+              <span className="text-muted-foreground block">Fournisseur :</span>
+              <div className="font-semibold">{data.fournisseur || "—"}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground block">N° Bon de livraison :</span>
+              <div className="font-semibold font-mono">{data.numeroBL || "—"}</div>
+            </div>
+            <div>
+              <span className="text-muted-foreground block">Date du BL :</span>
+              <div className="font-semibold">{data.dateBL || "—"}</div>
+            </div>
+          </div>
+          <div className="mt-3 text-sm">
+            <span className="text-muted-foreground">Référence de l'entrée :</span>{" "}
+            <span className="font-semibold font-mono">{data.journalEntryId || "—"}</span>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Synthèse du contrôle magasinier */}
       <Card className="border-l-4 border-l-blue-500">
@@ -2697,6 +2730,144 @@ function Step3SignatureLogistique({
             <span className="text-muted-foreground">Valeur totale de l'entrée :</span>
             <span className="font-semibold text-primary">{formatAriary(totalValeur)}</span>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Détail ligne par ligne — LECTURE SEULE. Le chef logistique
+          consulte, il ne modifie rien : aucun contrôle éditable ici. Les
+          colonnes état/conformité proviennent de data.controles, donc
+          exactement de ce que le magasinier a saisi à l'étape 2 (aucun
+          recalcul différent de la synthèse). */}
+      <Card>
+        <CardHeader className="py-4">
+          <div className="flex items-center gap-2">
+            <Package className="h-5 w-5 text-muted-foreground" />
+            <CardTitle id="step3-tableau-articles-titre" className="text-base">
+              Détails des articles
+            </CardTitle>
+          </div>
+        </CardHeader>
+        <CardContent className="pt-0 space-y-4">
+          <Table aria-labelledby="step3-tableau-articles-titre">
+            <TableHeader>
+              <TableRow>
+                <TableHead>Désignation</TableHead>
+                <TableHead>Réf. Nomenclature</TableHead>
+                <TableHead className="text-right">Quantité</TableHead>
+                <TableHead className="text-right">Prix unit.</TableHead>
+                <TableHead className="text-right">Valeur</TableHead>
+                <TableHead>État constaté</TableHead>
+                <TableHead>Conformité</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {data.articles.map((article) => {
+                const controle = data.controles.find(
+                  (c) => c.articleId === article.id
+                );
+                return (
+                  <TableRow key={article.id}>
+                    <TableCell className="font-medium">
+                      {article.designation}
+                    </TableCell>
+                    <TableCell className="font-mono text-sm text-muted-foreground">
+                      {article.referenceNomenclature || "—"}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {article.quantiteLivree}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      {formatAriary(article.prixUnitaire)}
+                    </TableCell>
+                    <TableCell className="text-right font-semibold">
+                      {formatAriary(article.quantiteLivree * article.prixUnitaire)}
+                    </TableCell>
+                    <TableCell>
+                      {controle ? (
+                        <Badge
+                          variant="secondary"
+                          className={ETAT_COLORS[controle.etat]}
+                        >
+                          {ETAT_LABELS[controle.etat]}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {controle?.conforme === false ? (
+                        <Badge variant="destructive" className="text-xs">
+                          Réserve
+                        </Badge>
+                      ) : controle?.conforme === true ? (
+                        <Badge className="bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400 text-xs">
+                          Conforme
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+            <TableFooter>
+              <TableRow>
+                <TableCell colSpan={4} className="text-right font-semibold">
+                  TOTAL GÉNÉRAL
+                </TableCell>
+                <TableCell className="text-right font-bold text-primary text-base">
+                  {formatAriary(totalValeur)}
+                </TableCell>
+                <TableCell colSpan={2} />
+              </TableRow>
+            </TableFooter>
+          </Table>
+
+          {data.observationsBL && (
+            <div className="text-sm p-3 bg-muted/50 rounded-lg">
+              <strong>Observations :</strong> {data.observationsBL}
+            </div>
+          )}
+
+          {/* Preuves photographiques jointes par le magasinier — déjà
+              portées par data.controles[].photos, donc accessibles à cette
+              étape sans modifier le circuit de données. */}
+          {(() => {
+            const articlesWithPhotos = data.articles
+              .map((a) => ({
+                article: a,
+                photos: data.controles.find((c) => c.articleId === a.id)?.photos ?? [],
+              }))
+              .filter((x) => x.photos.length > 0);
+            if (articlesWithPhotos.length === 0) return null;
+            return (
+              <div className="space-y-2">
+                <Separator />
+                <h4 className="text-sm font-semibold flex items-center gap-2">
+                  <Camera className="h-4 w-4 text-muted-foreground" />
+                  Photos jointes par le magasinier
+                </h4>
+                {articlesWithPhotos.map(({ article, photos }) => (
+                  <div key={article.id} className="space-y-1">
+                    <p className="text-xs font-medium text-muted-foreground">
+                      {article.designation} ({photos.length} photo(s))
+                    </p>
+                    <div className="flex flex-wrap gap-2">
+                      {photos.map((p, i) => (
+                        <img
+                          key={i}
+                          src={p}
+                          alt={`${article.designation} — photo ${i + 1}`}
+                          className="h-20 w-20 object-cover rounded border"
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            );
+          })()}
         </CardContent>
       </Card>
 
@@ -2910,7 +3081,7 @@ function OngletsTraitement({
 }
 
 /** Liste en lecture seule des entrées dont le rôle connecté a posé la signature. */
-function ListeEntreesTraitees({
+export function ListeEntreesTraitees({
   entrees,
   role,
   onOuvrir,
@@ -3025,7 +3196,7 @@ function ListeEntreesTraitees({
 
 /** Détail d'une entrée déjà traitée : lignes constatées + chaîne de
  *  signatures. Strictement informatif (aucun bouton d'action). */
-function DetailEntreeTraitee({
+export function DetailEntreeTraitee({
   entree,
   onRetour,
 }: {
@@ -3134,6 +3305,123 @@ function DetailEntreeTraitee({
           />
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** Entrée en circulation qui n'attend PAS le rôle connecté : seule la
+ *  référence et l'étape bloquante sont stockées, l'entrée complète est
+ *  retrouvée à l'affichage dans la dernière lecture serveur. */
+export type PieceEnAttente = {
+  id: string;
+  reference: string;
+  bloqueePar: string;
+};
+
+/** Bloc « Aucune entrée n'attend votre signature ».
+ *
+ *  La liste est ENRICHIE (fournisseur, n° de BL, nombre de lignes, valeur) et
+ *  chaque ligne ouvre le détail complet de l'entrée via DetailEntreeTraitee,
+ *  le composant déjà utilisé par l'onglet « Articles traités » — aucune
+ *  logique d'affichage n'est dupliquée. La vue reste STRICTEMENT en lecture
+ *  seule : DetailEntreeTraitee n'expose aucun bouton d'action (le seul bouton,
+ *  « Retour à la liste », ne fait que refermer la fiche) et cette liste ne
+ *  déclenche ni signature ni modification.
+ *
+ *  L'entrée affichée est celle de `entrees` (dernière lecture serveur) : on ne
+ *  stocke pas de copie dans l'état `piecesEnAttente`, seul `id` est conservé. */
+export function PiecesEnAttente({
+  pieces,
+  entrees,
+}: {
+  pieces: PieceEnAttente[];
+  entrees: EntreeRecord[] | null;
+}) {
+  const [ouverte, setOuverte] = useState<EntreeRecord | null>(null);
+  // Rechargement serveur : si la pièce ouverte a quitté la liste (signature
+  // apposée ailleurs), on referme la fiche au lieu d'afficher un détail
+  // devenu sans objet.
+  useEffect(() => {
+    if (ouverte && !pieces.some((p) => p.id === ouverte.id)) setOuverte(null);
+  }, [pieces, ouverte]);
+
+  return (
+    <div className="print-hidden p-3 rounded-lg border border-border bg-muted/40 space-y-2">
+      <div className="flex items-start gap-2">
+        <Info className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
+        <div className="space-y-1 flex-1 min-w-0">
+          <p className="text-sm font-medium">
+            Aucune entrée n'attend votre signature
+          </p>
+
+          {ouverte ? (
+            <div className="pt-1">
+              <DetailEntreeTraitee
+                entree={ouverte}
+                onRetour={() => setOuverte(null)}
+              />
+            </div>
+          ) : (
+            // `list-none` est sans effet ici : la feuille de style commitée
+            // déclare `ul { list-style-type: disc }` HORS de tout @layer, donc
+            // elle l'emporte sur la classe (qui est un utilitaire en @layer).
+            // D'où le style en ligne : plus de puce à côté de la ligne cliquable.
+            <ul
+              style={{ listStyleType: "none" }}
+              className="text-sm text-muted-foreground space-y-1"
+            >
+              {pieces.slice(0, 5).map((p) => {
+                const entree = (entrees ?? []).find((e) => e.id === p.id);
+                if (!entree) {
+                  // Entrée disparue de la dernière lecture : on garde la ligne
+                  // informative d'avant plutôt que de la rendre cliquable.
+                  return (
+                    <li key={p.id} className="flex items-center gap-2">
+                      <span className="font-mono text-xs">{p.reference}</span>
+                      <span>— en attente : {p.bloqueePar}</span>
+                    </li>
+                  );
+                }
+                const nbLignes = (entree.lignes ?? []).length;
+                return (
+                  <li key={p.id}>
+                    <button
+                      type="button"
+                      onClick={() => setOuverte(entree)}
+                      className="w-full text-left text-sm rounded border border-border bg-background px-2 py-2 flex flex-wrap items-center gap-2 cursor-pointer"
+                    >
+                      <span className="font-mono text-xs">{p.reference}</span>
+                      <span className="min-w-0 truncate">
+                        {entree.fournisseur || "fournisseur non précisé"}
+                      </span>
+                      <span className="text-xs whitespace-nowrap">
+                        BL {entree.admin?.bonLivraison || "—"}
+                      </span>
+                      <span className="text-xs whitespace-nowrap">
+                        {nbLignes} ligne(s)
+                      </span>
+                      <span className="text-xs whitespace-nowrap font-medium">
+                        {formatAriary(getOrdreEntreeDocument(entree).total)}
+                      </span>
+                      <span className="text-xs">— en attente : {p.bloqueePar}</span>
+                    </button>
+                  </li>
+                );
+              })}
+              {pieces.length > 5 && (
+                <li className="text-xs">
+                  … et {pieces.length - 5} autre(s) entrée(s).
+                </li>
+              )}
+            </ul>
+          )}
+
+          <p className="text-xs text-muted-foreground">
+            L'écran se remettra à jour automatiquement dès qu'une signature sera
+            apposée sur un autre poste (au retour sur cet onglet).
+          </p>
+        </div>
+      </div>
     </div>
   );
 }
@@ -3402,9 +3690,9 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // Pièces en circulation qui n'attendent PAS le rôle connecté : sans cette
   // information, un rôle sans pièce à traiter atterrissait sur son étape (vide,
   // « 0 / 0 ») sans comprendre que le circuit était bloqué plus tôt.
-  const [piecesEnAttente, setPiecesEnAttente] = useState<
-    { id: string; reference: string; bloqueePar: string }[]
-  >([]);
+  const [piecesEnAttente, setPiecesEnAttente] = useState<PieceEnAttente[]>(
+    []
+  );
   // ─── Séparation traitement / lecture seule ───
   // Onglet « À traiter » : les seules pièces qui attendent la signature du rôle
   // connecté. Onglet « Articles traités » : celles dont CE rôle a déjà posé la
@@ -4119,35 +4407,13 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
       </div>
 
       {/* Aucune pièce n'attend la signature de ce rôle : on explique où le
-          circuit est bloqué au lieu d'afficher une étape vide « 0 / 0 ». */}
+          circuit est bloqué au lieu d'afficher une étape vide « 0 / 0 », et
+          chaque pièce est consultable en détail (lecture seule). */}
       {piecesEnAttente.length > 0 && (
-        <div className="print-hidden p-3 rounded-lg border border-border bg-muted/40 space-y-2">
-          <div className="flex items-start gap-2">
-            <Info className="h-4 w-4 shrink-0 mt-0.5 text-muted-foreground" />
-            <div className="space-y-1">
-              <p className="text-sm font-medium">
-                Aucune entrée n'attend votre signature
-              </p>
-              <ul className="text-sm text-muted-foreground space-y-0.5">
-                {piecesEnAttente.slice(0, 5).map((p) => (
-                  <li key={p.id} className="flex items-center gap-2">
-                    <span className="font-mono text-xs">{p.reference}</span>
-                    <span>— en attente : {p.bloqueePar}</span>
-                  </li>
-                ))}
-                {piecesEnAttente.length > 5 && (
-                  <li className="text-xs">
-                    … et {piecesEnAttente.length - 5} autre(s) entrée(s).
-                  </li>
-                )}
-              </ul>
-              <p className="text-xs text-muted-foreground">
-                L'écran se remettra à jour automatiquement dès qu'une signature
-                sera apposée sur un autre poste (au retour sur cet onglet).
-              </p>
-            </div>
-          </div>
-        </div>
+        <PiecesEnAttente
+          pieces={piecesEnAttente}
+          entrees={entreesChargees}
+        />
       )}
 
       {/* Séparation « à traiter » / « articles traités » : une pièce traitée

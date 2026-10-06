@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
 import {
-  X,
   ChevronRight,
   Check,
   CheckCircle2,
@@ -14,6 +13,7 @@ import {
   Send,
 } from "lucide-react";
 import { User } from "../App";
+import { Message } from "./ui/message";
 import {
   MOTIFS_TRANSFERT,
   creerTransfert,
@@ -34,7 +34,6 @@ import {
   filtrerServicesParDirection,
   responsablesDuService,
 } from "../lib/organigramme";
-
 // NOUVEAU TRANSFERT ENTRE DIRECTIONS — assistant en 4 étapes
 //   1. Origine (Direction / Service / matériel / quantité)
 //   2. Destination (Direction ≠ origine, responsables automatiques)
@@ -46,14 +45,12 @@ const ETAPES = [
   { numero: 3, label: "Motif du transfert", icon: ClipboardCheck },
   { numero: 4, label: "Vérification et création", icon: Check },
 ];
-
 interface NewTransfertPageProps {
   user?: User;
   entrees: EntreeRecord[];
   onClose: () => void;
   onCreated: (reference: string) => void;
 }
-
 export function NewTransfertPage({
   user,
   entrees,
@@ -64,12 +61,10 @@ export function NewTransfertPage({
   const [erreur, setErreur] = useState("");
   const [saving, setSaving] = useState(false);
   const [loadingReferences, setLoadingReferences] = useState(true);
-
   // Données de référence
   const [directions, setDirections] = useState<RefOption[]>([]);
   const [services, setServices] = useState<RefOption[]>([]);
   const [materials, setMaterials] = useState<MaterialOption[]>([]);
-
   useEffect(() => {
     let cancelled = false;
     const charger = async () => {
@@ -98,21 +93,17 @@ export function NewTransfertPage({
       cancelled = true;
     };
   }, []);
-
   // Étape 1 — origine
   const [directionOrigineId, setDirectionOrigineId] = useState("");
   const [serviceOrigineId, setServiceOrigineId] = useState("");
   const [materielChoisi, setMaterielChoisi] = useState("");
   const [quantite, setQuantite] = useState(1);
-
   // Étape 2 — destination
   const [directionDestId, setDirectionDestId] = useState("");
   const [serviceDestId, setServiceDestId] = useState("");
-
   // Étape 3 — motif
   const [motif, setMotif] = useState(MOTIFS_TRANSFERT[0]);
   const [observation, setObservation] = useState("");
-
   const servicesOrigineVisibles = filtrerServicesParDirection(
     services,
     directionOrigineId
@@ -121,19 +112,16 @@ export function NewTransfertPage({
     services,
     directionDestId
   );
-
   const directionOrigine = directions.find(
     (d) => d.documentId === directionOrigineId
   );
   const serviceOrigine = services.find((s) => s.documentId === serviceOrigineId);
   const directionDest = directions.find((d) => d.documentId === directionDestId);
   const serviceDest = services.find((s) => s.documentId === serviceDestId);
-
   const nomDirectionOrigine = directionOrigine?.nom || "—";
   const nomServiceOrigine = serviceOrigine?.nom || "—";
   const nomDirectionDest = directionDest?.nom || "—";
   const nomServiceDest = serviceDest?.nom || "—";
-
   // Responsables automatiques de chaque côté (jamais de « Dépositaire général »)
   const responsablesOrigine = useMemo(
     () => responsablesDuService(serviceOrigine, directionOrigine),
@@ -143,7 +131,6 @@ export function NewTransfertPage({
     () => responsablesDuService(serviceDest, directionDest),
     [serviceDest, directionDest]
   );
-
   // Matériels disponibles dans le stock du service d'origine (entrées validées)
   const materielsDisponibles = useMemo(() => {
     const map = new Map<string, number>();
@@ -165,16 +152,13 @@ export function NewTransfertPage({
     }
     return map;
   }, [entrees, nomDirectionOrigine, nomServiceOrigine]);
-
   const stockDisponible = materielsDisponibles.get(materielChoisi) || 0;
-
   const changerDirectionOrigine = (id: string) => {
     setDirectionOrigineId(id);
     setServiceOrigineId("");
     setMaterielChoisi("");
     setQuantite(1);
   };
-
   const validerEtape = (n: number): string => {
     if (n === 1) {
       if (!directionOrigineId) return "Veuillez sélectionner la Direction d'origine.";
@@ -210,13 +194,11 @@ export function NewTransfertPage({
     }
     return "";
   };
-
   const suivant = () => {
     const err = validerEtape(etape);
     setErreur(err);
     if (!err) setEtape((e) => Math.min(4, e + 1));
   };
-
   const creer = () => {
     for (let n = 1; n <= 3; n += 1) {
       const err = validerEtape(n);
@@ -258,11 +240,9 @@ export function NewTransfertPage({
       setSaving(false);
     }
   };
-
   const inputClass =
     "w-full px-3 py-2.5 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring focus:border-transparent";
   const labelClass = "block text-xs sm:text-sm text-muted-foreground mb-1.5";
-
   if (loadingReferences) {
     return (
       <div className="p-3 sm:p-6 space-y-4">
@@ -277,7 +257,6 @@ export function NewTransfertPage({
       </div>
     );
   }
-
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 pb-24 sm:pb-6">
       {/* Fil d'Ariane */}
@@ -292,7 +271,6 @@ export function NewTransfertPage({
         <span>/</span>
         <span className="text-foreground font-medium">Nouveau transfert</span>
       </div>
-
       {/* Header */}
       <div className="flex items-start gap-3">
         <div className="p-2.5 bg-primary/10 rounded-lg flex-shrink-0">
@@ -309,16 +287,13 @@ export function NewTransfertPage({
           </p>
         </div>
       </div>
-
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           {erreur && (
-            <div className="flex items-start gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
-              <X className="h-4 w-4 shrink-0 mt-0.5" />
+            <Message variant="danger">
               {erreur}
-            </div>
+            </Message>
           )}
-
           {ETAPES.map((etapeDef) => {
             const Icon = etapeDef.icon;
             const active = etape === etapeDef.numero;
@@ -365,7 +340,6 @@ export function NewTransfertPage({
                     }`}
                   />
                 </button>
-
                 <div className={`${active ? "block" : "hidden"} p-4 sm:p-6 pt-0`}>
                   {/* ------------- ÉTAPE 1 — ORIGINE ------------- */}
                   {etapeDef.numero === 1 && (
@@ -414,7 +388,6 @@ export function NewTransfertPage({
                           </select>
                         </div>
                       </div>
-
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <label className={labelClass}>
@@ -471,15 +444,15 @@ export function NewTransfertPage({
                           )}
                         </div>
                       </div>
-
                       {/* Responsables du service d'origine — automatiques */}
-                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                            Responsables de la Direction d'origine (automatiques)
-                          </span>
-                        </div>
+                      <div className="msg msg--info msg--lg">
+                        <div className="msg-body">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Info className="msg-icon h-4 w-4" />
+                            <span className="msg-title text-sm">
+                              Responsables de la Direction d'origine (automatiques)
+                            </span>
+                          </div>
                         <div className="grid gap-4 sm:grid-cols-3">
                           <div>
                             <label className={labelClass}>Dépositaire du service</label>
@@ -494,15 +467,15 @@ export function NewTransfertPage({
                             <input className={inputClass} value={responsablesOrigine.chefService2} readOnly />
                           </div>
                         </div>
-                        <p className="mt-3 text-xs text-blue-700 dark:text-blue-300">
+                        <p className="mt-3 text-xs">
                           Ils valideront la SORTIE (3 signatures) avant l'envoi du
                           matériel. Aucun « Dépositaire général » : les
                           responsables sont ceux du service concerné.
                         </p>
+                        </div>
                       </div>
                     </div>
                   )}
-
                   {/* ------------- ÉTAPE 2 — DESTINATION ------------- */}
                   {etapeDef.numero === 2 && (
                     <div className="space-y-4">
@@ -556,15 +529,15 @@ export function NewTransfertPage({
                           </select>
                         </div>
                       </div>
-
                       {/* Responsables du service destinataire — automatiques */}
-                      <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50/60 dark:bg-green-900/20 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Info className="h-4 w-4 text-green-600 dark:text-green-400" />
-                          <span className="text-sm font-medium text-green-800 dark:text-green-200">
-                            Responsables de la Direction destinataire (automatiques)
-                          </span>
-                        </div>
+                      <div className="msg msg--success msg--lg">
+                        <div className="msg-body">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Info className="msg-icon h-4 w-4" />
+                            <span className="msg-title text-sm">
+                              Responsables de la Direction destinataire (automatiques)
+                            </span>
+                          </div>
                         <div className="grid gap-4 sm:grid-cols-3">
                           <div>
                             <label className={labelClass}>Dépositaire du service</label>
@@ -579,14 +552,14 @@ export function NewTransfertPage({
                             <input className={inputClass} value={responsablesDestination.chefService2} readOnly />
                           </div>
                         </div>
-                        <p className="mt-3 text-xs text-green-700 dark:text-green-300">
+                        <p className="mt-3 text-xs">
                           Ils valideront la RÉCEPTION (0/3 → 3/3) à l'arrivée du
                           matériel : entrée en stock validée à 3/3.
                         </p>
+                        </div>
                       </div>
                     </div>
                   )}
-
                   {/* ------------- ÉTAPE 3 — MOTIF ------------- */}
                   {etapeDef.numero === 3 && (
                     <div className="space-y-4">
@@ -628,7 +601,6 @@ export function NewTransfertPage({
                       </div>
                     </div>
                   )}
-
                   {/* ------------- ÉTAPE 4 — VÉRIFICATION ------------- */}
                   {etapeDef.numero === 4 && (
                     <div className="space-y-4">
@@ -667,14 +639,12 @@ export function NewTransfertPage({
                           </div>
                         </div>
                       </div>
-
-                      <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <Message variant="info" size="sm" icon={Info}>
                         Processus : SORTIE VALIDÉE (3 signatures origine) → EN
-                        TRANSFERT → RÉCEPTION EN COURS (3 signatures
-                        destination) → ENTRÉE EN STOCK VALIDÉE. Un numéro de
-                        transfert TRF-AAAA-NNN et un QR Code seront générés.
-                      </div>
+                        TRANSFERT → RÉCEPTION EN COURS (3 signatures destination)
+                        → ENTRÉE EN STOCK VALIDÉE. Un numéro de transfert
+                        TRF-AAAA-NNN et un QR Code seront générés.
+                      </Message>
                     </div>
                   )}
                 </div>
@@ -682,7 +652,6 @@ export function NewTransfertPage({
             );
           })}
         </div>
-
         {/* ---------------- Colonne latérale — processus ---------------- */}
         <div className="space-y-4 sm:space-y-6">
           <div className="bg-card border border-border rounded-lg shadow-sm p-4 sm:p-6">
@@ -707,7 +676,6 @@ export function NewTransfertPage({
               ))}
             </ol>
           </div>
-
           <div className="bg-card border border-border rounded-lg shadow-sm p-4 sm:p-6">
             <h3 className="text-sm font-medium text-card-foreground mb-2">
               Affectation ou transfert ?
@@ -723,7 +691,6 @@ export function NewTransfertPage({
           </div>
         </div>
       </div>
-
       {/* Barre d'actions */}
       <div className="fixed bottom-0 left-0 right-0 lg:left-72 border-t border-border bg-background/95 backdrop-blur p-3 sm:p-4 flex items-center justify-between gap-3 z-40">
         <button

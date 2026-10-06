@@ -30,6 +30,7 @@ import {
   MovementDetailModal,
   MouvementDetailTab,
 } from "./MovementDetailModal";
+import { Message } from "./ui/message";
 
 const PAGE_SIZE = 6;
 
@@ -306,11 +307,10 @@ export function ExitsPage({ user, onViewRequest }: ExitsPageProps) {
       </div>
 
       {isDemandeur && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-          <BadgeCheck className="h-4 w-4" />
+        <Message variant="info" size="sm" icon={BadgeCheck}>
           Périmètre : sorties concernant {user?.department || "votre service"} —
           la validation et la préparation relèvent du responsable habilité.
-        </div>
+        </Message>
       )}
 
       {/* Indicateurs */}

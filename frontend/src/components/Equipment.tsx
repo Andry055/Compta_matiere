@@ -9,7 +9,6 @@ import {
   Trash2,
   Eye,
   Filter,
-  Check,
   X,
   Grid3X3,
   BarChart3,
@@ -22,6 +21,7 @@ import { JournalEntry } from "../types/accounting";
 import { splitDepartement } from "../lib/movements";
 import { fetchMaterialsOrThrow, MaterialOption } from "../lib/api";
 import { toast } from "sonner";
+import { Message } from "./ui/message";
 
 interface EquipmentItem {
   id: number | string;
@@ -473,12 +473,12 @@ export function Equipment({ user }: { user?: UserType }) {
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Success Message */}
       {showSuccessMessage && (
-        <div className="fixed top-4 right-4 z-50 flex items-center gap-2 px-4 py-3 bg-green-100 border border-green-200 rounded-lg shadow-lg text-green-800 dark:bg-green-900/30 dark:border-green-800 dark:text-green-400">
-          <Check className="h-4 w-4" />
-          <span className="text-sm">
-            Équipement enregistré dans le journal comptable!
-          </span>
-        </div>
+        <Message
+          variant="success"
+          className="fixed top-4 right-4 z-50 shadow-lg"
+        >
+          Équipement enregistré dans le journal comptable !
+        </Message>
       )}
 
       {/* Header */}
@@ -522,11 +522,10 @@ export function Equipment({ user }: { user?: UserType }) {
       </div>
 
       {isDemandeur && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-          <Eye className="h-4 w-4" />
+        <Message variant="info" size="sm" icon={Eye}>
           Consultation seule : la création, la modification et la suppression
           d'équipements relèvent des responsables habilités.
-        </div>
+        </Message>
       )}
 
       {/* Statistics Cards */}

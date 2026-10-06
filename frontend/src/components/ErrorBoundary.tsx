@@ -29,14 +29,14 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
 
       return (
         <div className="min-h-[50vh] flex items-center justify-center p-6">
-          <div className="w-full max-w-md rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm dark:border-red-800 dark:bg-red-950/30">
+          <div className="msg msg--danger msg--lg w-full max-w-md flex-col items-center text-center shadow-sm">
             <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-300">
               ⚠
             </div>
-            <h2 className="text-lg font-semibold text-red-700 dark:text-red-300">
+            <h2 className="text-lg font-semibold msg-title">
               {this.props.title ?? "Impossible de charger la page."}
             </h2>
-            <p className="mt-2 text-sm text-red-700/80 dark:text-red-300/80">
+            <p className="mt-2 text-sm msg-text">
               {this.props.message ?? "Une erreur est survenue pendant le rendu."}
             </p>
             <button

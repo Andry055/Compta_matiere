@@ -1,5 +1,6 @@
 import { Copy, Check, User, Shield } from "lucide-react"
 import { useState } from "react"
+import { Message } from "./ui/message";
 
 interface DemoAccount {
   name: string
@@ -166,17 +167,14 @@ export function DemoAccounts({ onSelectAccount }: DemoAccountsProps) {
         ))}
       </div>
 
-      <div className="mt-6 p-4 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
-        <h4 className="text-sm font-medium text-amber-800 dark:text-amber-300 mb-2">
-          ℹ️ Mode Démonstration
-        </h4>
-        <ul className="text-xs text-amber-700 dark:text-amber-400 space-y-1">
-          <li>• Les données sont simulées et ne sont pas persistantes</li>
-          <li>• Chaque compte a des permissions différentes</li>
-          <li>• L'administrateur a accès à toutes les fonctionnalités</li>
-          <li>• Le personnel n'a accès qu'aux fonctions de gestion matériel</li>
+      <Message variant="info" size="lg" className="mt-6" title="Mode Démonstration">
+        <ul className="msg-list">
+          <li>Les données sont simulées et ne sont pas persistantes</li>
+          <li>Chaque compte a des permissions différentes</li>
+          <li>L'administrateur a accès à toutes les fonctionnalités</li>
+          <li>Le personnel n'a accès qu'aux fonctions de gestion matériel</li>
         </ul>
-      </div>
+      </Message>
     </div>
   )
 }

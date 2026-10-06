@@ -38,6 +38,7 @@ import {
   getStatutEntreeAffiche,
   ActivityItem,
 } from "../lib/movements";
+import { Message } from "./ui/message";
 import {
   getDemandesForUser,
   getStatsDemandes,
@@ -260,13 +261,10 @@ function DemandeurDashboard({ user }: { user?: User }) {
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {erreurStock && (
-        <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20 text-sm text-amber-700 dark:text-amber-300">
-          <AlertTriangle className="h-4 w-4 shrink-0" />
-          <span>
-            Stock momentanément indisponible (serveur injoignable) —
-            l'indicateur « Équipements disponibles » est incomplet.
-          </span>
-        </div>
+        <Message variant="warning">
+          Stock momentanément indisponible (serveur injoignable) — l'indicateur
+          « Équipements disponibles » est incomplet.
+        </Message>
       )}
 
       {/* Header */}

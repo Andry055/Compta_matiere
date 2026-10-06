@@ -13,6 +13,7 @@ import {
   Loader2,
 } from "lucide-react";
 import { User } from "../App";
+import { Message } from "./ui/message";
 import {
   EntreeLigne,
   EntreeAdmin,
@@ -281,9 +282,9 @@ export function NewEntryModal({ open, user, onClose, onCreated }: NewEntryModalP
         {/* Contenu */}
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           {erreur && (
-            <div className="px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
+            <Message variant="danger" size="sm">
               {erreur}
-            </div>
+            </Message>
           )}
 
           {/* ÉTAPE 1 — Informations administratives (Section A) */}
@@ -575,12 +576,11 @@ export function NewEntryModal({ open, user, onClose, onCreated }: NewEntryModalP
                   </tbody>
                 </table>
               </div>
-              <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
+              <Message variant="info" size="sm" icon={CheckCircle2}>
                 L'entrée sera enregistrée avec le statut « En attente » (0/3
                 signatures). Elle ne sera VALIDÉE qu'après les 3 signatures
                 obligatoires : Dépositaire, Chef de service 1, Chef de service 2.
-              </div>
+              </Message>
             </div>
           )}
         </div>

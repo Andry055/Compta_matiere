@@ -69,6 +69,13 @@
     },
     "conforme": {
       "type": "boolean"
+    },
+    "photos": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": [
+        "images"
+      ]
     }
   }
 }

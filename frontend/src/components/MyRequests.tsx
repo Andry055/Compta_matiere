@@ -38,6 +38,7 @@ import {
   quantiteDemande,
   splitDepartementDemandeur,
 } from "../lib/demandes";
+import { Message } from "./ui/message";
 import { mockEquipment } from "./Equipment";
 
 interface MyRequestsProps {
@@ -326,10 +327,7 @@ export function MyRequests({
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
       {/* Message de succès */}
       {successMessage && (
-        <div className="flex items-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-sm text-green-700 dark:text-green-400">
-          <Check className="h-4 w-4" />
-          {successMessage}
-        </div>
+        <Message variant="success">{successMessage}</Message>
       )}
 
       {/* Header */}
@@ -358,11 +356,10 @@ export function MyRequests({
       </div>
 
       {/* Bandeau rôle */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-        <Inbox className="h-4 w-4" />
-        Vous créez, modifiez (brouillon) et annulez vos demandes : la
-        validation appartient aux responsables habilités.
-      </div>
+      <Message variant="info" size="sm" icon={Inbox}>
+        Vous créez, modifiez (brouillon) et annulez vos demandes : la validation
+        appartient aux responsables habilités.
+      </Message>
 
       {/* Indicateurs */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
@@ -675,10 +672,9 @@ export function MyRequests({
 
             <div className="p-6 space-y-6">
               {formError && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
-                  <X className="h-4 w-4" />
+                <Message variant="danger" size="sm" icon={X}>
                   {formError}
-                </div>
+                </Message>
               )}
 
               {/* Informations du demandeur (profil connecté) */}

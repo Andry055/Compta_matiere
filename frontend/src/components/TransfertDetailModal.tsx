@@ -11,11 +11,11 @@ import {
   QrCode as QrCodeIcon,
   History,
   Loader2,
-  AlertTriangle,
   Maximize2,
   XCircle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { Message } from "./ui/message";
 import { User } from "../App";
 import {
   TransfertRecord,
@@ -36,7 +36,6 @@ import {
   genererExcelTransfert,
   valeurQrTransfert,
 } from "../lib/transfertDocuments";
-
 interface TransfertDetailModalProps {
   open: boolean;
   transfert: TransfertRecord | null;
@@ -44,7 +43,6 @@ interface TransfertDetailModalProps {
   onChanged?: () => void;
   onClose: () => void;
 }
-
 function InfoField({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
@@ -53,9 +51,7 @@ function InfoField({ label, value }: { label: string; value: string | number }) 
     </div>
   );
 }
-
 type CleSignature = "depositaire" | "chefService1" | "chefService2";
-
 export function TransfertDetailModal({
   open,
   transfert,
@@ -74,11 +70,9 @@ export function TransfertDetailModal({
   const [qrAgrandi, setQrAgrandi] = useState(false);
   // Copie locale mise à jour après chaque signature
   const [locale, setLocale] = useState<TransfertRecord | null>(null);
-
   if (!open || !transfert) return null;
   const record =
     locale && locale.reference === transfert.reference ? locale : transfert;
-
   const validationsSortie = getValidationsSortie(record);
   const validationsReception = getValidationsReception(record);
   const nbSortie = getSignatureSortieCount(record);
@@ -87,7 +81,6 @@ export function TransfertDetailModal({
   const termine = nbSortie >= 3 && nbReception >= 3;
   const rejetee = record.statut === "Rejeté";
   const qrValue = valeurQrTransfert(record);
-
   const poserSignature = (type: "sortie" | "reception", key: CleSignature) => {
     setBusy(true);
     setErreur("");
@@ -113,7 +106,6 @@ export function TransfertDetailModal({
       setBusy(false);
     }
   };
-
   const rejeter = () => {
     setBusy(true);
     setErreur("");
@@ -132,7 +124,6 @@ export function TransfertDetailModal({
       setBusy(false);
     }
   };
-
   const telechargerPdf = async (action: "download" | "preview") => {
     setBusyDoc("pdf");
     setErreur("");
@@ -144,7 +135,6 @@ export function TransfertDetailModal({
       setBusyDoc("");
     }
   };
-
   const telechargerExcel = async () => {
     setBusyDoc("excel");
     setErreur("");
@@ -156,7 +146,6 @@ export function TransfertDetailModal({
       setBusyDoc("");
     }
   };
-
   const telechargerQr = () => {
     const svg = document.getElementById(
       `qr-transfert-${record.reference}`
@@ -184,7 +173,6 @@ export function TransfertDetailModal({
     };
     img.src = url;
   };
-
   const carteValidation = (
     v: { key: CleSignature; label: string; signed: boolean; date?: string; signataire?: string },
     idx: number,
@@ -256,7 +244,6 @@ export function TransfertDetailModal({
       </div>
     );
   };
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -294,7 +281,6 @@ export function TransfertDetailModal({
             <X className="h-5 w-5" />
           </button>
         </div>
-
         {/* Actions documents */}
         <div className="flex flex-wrap items-center gap-2 p-4 border-b border-border">
           <button
@@ -342,15 +328,12 @@ export function TransfertDetailModal({
             </button>
           )}
         </div>
-
         <div className="p-6 space-y-6">
           {erreur && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
+            <Message variant="danger" size="sm">
               {erreur}
-            </div>
+            </Message>
           )}
-
           {/* Informations */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3">
@@ -385,7 +368,6 @@ export function TransfertDetailModal({
               )}
             </div>
           </div>
-
           {/* Trajet */}
           <div className="rounded-lg border border-border bg-muted/20 p-4">
             <div className="flex flex-col sm:flex-row items-center gap-3 text-sm text-center">
@@ -416,7 +398,6 @@ export function TransfertDetailModal({
               </div>
             </div>
           </div>
-
           {/* Validation de la SORTIE */}
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -437,24 +418,19 @@ export function TransfertDetailModal({
               )}
             </div>
             {nbSortie < 3 ? (
-              <div className="mt-3 flex items-start gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                <PenTool className="h-4 w-4 shrink-0 mt-0.5" />
+              <Message variant="info" size="sm" icon={PenTool} className="mt-3">
                 Les 3 responsables de la Direction d'origine valident la SORTIE
                 (Dépositaire → Chef de service 1 → Chef de service 2). Le stock
                 d'origine est diminué uniquement après la 3ᵉ signature.
-              </div>
+              </Message>
             ) : (
-              <div className="mt-3 flex items-start gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>
-                  <strong>SORTIE VALIDÉE (3/3) — EN TRANSFERT</strong> : le
-                  matériel n'est plus dans le stock de {record.directionOrigine}{" "}
-                  / {record.serviceOrigine}.
-                </span>
-              </div>
+              <Message variant="info" size="sm" className="mt-3">
+                <strong>SORTIE VALIDÉE (3/3) — EN TRANSFERT</strong> : le matériel
+                n'est plus dans le stock de {record.directionOrigine} /{" "}
+                {record.serviceOrigine}.
+              </Message>
             )}
           </div>
-
           {/* Validation de la RÉCEPTION */}
           <div>
             <div className="flex items-center justify-between mb-3">
@@ -485,17 +461,13 @@ export function TransfertDetailModal({
               )}
             </div>
             {termine && (
-              <div className="mt-3 flex items-start gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400">
-                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>
-                  <strong>✓ TRANSFERT RÉCEPTIONNÉ — ENTRÉE EN STOCK VALIDÉE</strong>{" "}
-                  : +{record.quantite} unité(s) dans {record.directionDestination}{" "}
-                  / {record.serviceDestination}. Transfert terminé et verrouillé.
-                </span>
-              </div>
+              <Message variant="success" size="sm" className="mt-3">
+                <strong>TRANSFERT RÉCEPTIONNÉ — ENTRÉE EN STOCK VALIDÉE</strong> : +
+                {record.quantite} unité(s) dans {record.directionDestination} /{" "}
+                {record.serviceDestination}. Transfert terminé et verrouillé.
+              </Message>
             )}
           </div>
-
           {/* Historique */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3 flex items-center gap-2">
@@ -519,7 +491,6 @@ export function TransfertDetailModal({
               ))}
             </ul>
           </div>
-
           {/* QR Code */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 border border-border rounded-lg bg-muted/20">
             <div className="p-2 bg-white rounded-lg shrink-0">
@@ -559,7 +530,6 @@ export function TransfertDetailModal({
             </div>
           </div>
         </div>
-
         {/* Confirmation de signature */}
         {confirm && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
@@ -606,7 +576,6 @@ export function TransfertDetailModal({
             </div>
           </div>
         )}
-
         {/* Confirmation du rejet */}
         {confirmRejet && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
@@ -649,7 +618,6 @@ export function TransfertDetailModal({
             </div>
           </div>
         )}
-
         {/* QR agrandi */}
         {qrAgrandi && (
           <div

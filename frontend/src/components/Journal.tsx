@@ -1184,7 +1184,7 @@ export function Journal() {
                         (mvt) => (
                           <div
                             key={mvt.id}
-                            className="text-xs p-2.5 rounded-lg border bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800 text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1"
+                            className="text-xs p-2.5 rounded-lg border bg-emerald-50/50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800 text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1"
                           >
                             <span className="font-mono font-medium">
                               {mvt.id} : +{mvt.quantiteMouvement} unité(s)

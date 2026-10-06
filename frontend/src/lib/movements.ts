@@ -61,6 +61,17 @@ export interface DocumentRef {
 /** Ligne matérielle d'une entrée (tableau « ORDRE D'ENTRÉE ») */
 export interface EntreeLigne {
   numeroOrdre: number;
+  /** Identifiant Strapi de la ligne (documentId) : sert au routage de l'entrée
+   *  et des lignes côté serveur. */
+  documentId?: string;
+  /** Id NUMÉRIQUE de la ligne : c'est CETTE valeur qu'attend `POST /api/upload`
+   *  dans `refId`. Le plugin upload rattache le fichier via la table morph
+   *  `files_related_mph.related_id`, comparée à la clé primaire de la ligne —
+   *  un documentId y est stocké sans jamais être retrouvé (populate vide). */
+  id?: number;
+  /** Photos réellement persistées côté serveur (URL Strapi). Vides avant le
+   *  premier envoi — les Data URLs locales ne sont JAMAIS persistées. */
+  photos?: string[];
   /** Référence du bien (ex. MAT-2026-001) */
   reference?: string;
   designation: string;

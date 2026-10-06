@@ -13,6 +13,7 @@ import {
   Package,
 } from "lucide-react";
 import { User } from "../App";
+import { Message } from "./ui/message";
 import { EntreeRecord } from "../lib/movements";
 import { fetchDirections, fetchServices, RefOption } from "../lib/api";
 import {
@@ -298,10 +299,9 @@ export function NewAffectationPage({
         {/* Colonne formulaire */}
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           {erreur && (
-            <div className="flex items-start gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
-              <Info className="h-4 w-4 shrink-0 mt-0.5" />
+            <Message variant="danger">
               {erreur}
-            </div>
+            </Message>
           )}
 
           {ETAPES.map((etapeDef) => {
@@ -461,12 +461,11 @@ export function NewAffectationPage({
                             </option>
                           ))}
                       </select>
-                      <div className="mt-3 flex items-start gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-300">
-                        <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                      <Message variant="success" size="sm" className="mt-3">
                         Le service destinataire appartient obligatoirement à la
                         Direction « {direction || "—"} » : Direction A → Direction B
                         est automatiquement bloquée (ce serait un transfert).
-                      </div>
+                      </Message>
                       {serviceSource && serviceDestinataire && (
                         <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 text-sm text-card-foreground">
                           {direction} / {serviceSource} → {serviceDestinataire}
@@ -583,13 +582,14 @@ export function NewAffectationPage({
                       </div>
 
                       {/* Responsables automatiques */}
-                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                            Responsables de l'affectation (automatiques)
-                          </span>
-                        </div>
+                      <div className="msg msg--info msg--lg">
+                        <div className="msg-body">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Info className="msg-icon h-4 w-4" />
+                            <span className="msg-title text-sm">
+                              Responsables de l'affectation (automatiques)
+                            </span>
+                          </div>
                         <div className="grid gap-4 sm:grid-cols-2">
                           <div>
                             <label className={labelClass}>
@@ -632,15 +632,15 @@ export function NewAffectationPage({
                             />
                           </div>
                         </div>
+                        </div>
                       </div>
 
-                      <div className="flex items-start gap-2 px-4 py-3 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
-                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        L'affectation démarre « En attente » (0/4) : Responsable
-                        du transfert (créateur) → Dépositaire → Chef de service 1
-                        → Chef de service 2. À 4/4, le stock est mis à jour
-                        (−source / +destinataire) et l'affectation est verrouillée.
-                      </div>
+                      <Message variant="info" size="sm" icon={Info}>
+                        L'affectation démarre « En attente » (0/4) : Responsable du
+                        transfert (créateur) → Dépositaire → Chef de service 1 →
+                        Chef de service 2. À 4/4, le stock est mis à jour (−source /
+                        +destinataire) et l'affectation est verrouillée.
+                      </Message>
                     </div>
                   )}
                 </div>

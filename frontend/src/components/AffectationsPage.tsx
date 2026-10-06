@@ -29,6 +29,7 @@ import {
 } from "../lib/affectations";
 import { NewAffectationPage } from "./NewAffectationPage";
 import { AffectationDetailModal } from "./AffectationDetailModal";
+import { Message } from "./ui/message";
 
 const PAGE_SIZE = 6;
 
@@ -236,13 +237,12 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
       </div>
 
       {/* Rappel métier */}
-      <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-        <BadgeCheck className="h-4 w-4" />
+      <Message variant="info" size="sm" icon={BadgeCheck}>
         Affectation = réaffectation interne entre deux services d'une MÊME
         Direction : pas de sortie, pas de nouvelle entrée, seulement la mise à
-        jour du stock et la traçabilité. Validation obligatoire en 4 étapes
-        (0/4 → 4/4) ; une affectation validée n'est plus modifiable.
-      </div>
+        jour du stock et la traçabilité. Validation obligatoire en 4 étapes (0/4
+        → 4/4) ; une affectation validée n'est plus modifiable.
+      </Message>
 
       {/* Indicateurs */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
@@ -542,10 +542,13 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
 
       {/* Message flash */}
       {flash && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg shadow-lg text-sm text-green-700 dark:text-green-400">
-          <CheckCircle2 className="h-4 w-4" />
+        <Message
+          variant="success"
+          className="fixed bottom-6 right-6 z-50 shadow-lg"
+          role="status"
+        >
           {flash}
-        </div>
+        </Message>
       )}
     </div>
   );

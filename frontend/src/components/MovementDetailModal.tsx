@@ -32,6 +32,7 @@ import {
   SIGNATURE_ROLE_LABELS,
 } from "../lib/movements";
 import { QRCodeSVG } from "qrcode.react";
+import { Message } from "./ui/message";
 import { getAllDemandes } from "../lib/demandes";
 import { User } from "../App";
 import { rejeterEntree, signerEntree, type ControleLignePayload } from "../lib/api";
@@ -650,10 +651,9 @@ export function MovementDetailModal({
               </div>
 
               {erreur && (
-                <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
-                  <AlertTriangle className="h-4 w-4" />
+                <Message variant="danger" size="sm">
                   {erreur}
-                </div>
+                </Message>
               )}
 
               {/* QR Code de l'entrée (identification, sans données sensibles) */}
@@ -775,24 +775,20 @@ export function MovementDetailModal({
               </div>
 
               {entree!.statut === "Rejetée" ? (
-                <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
-                  <AlertTriangle className="h-4 w-4" />
+                <Message variant="danger" size="sm">
                   Cette entrée a été rejetée : les signatures sont bloquées.
-                </div>
+                </Message>
               ) : nbSigs === 3 ? (
-                <div className="flex items-center gap-2 px-4 py-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400">
-                  <CheckCircle2 className="h-4 w-4" />
-                  🟢 ENTRÉE VALIDÉE — 3/3 signatures réunies, matériel
-                  enregistré au stock, traçabilité complète.
-                </div>
+                <Message variant="success" size="sm">
+                  ENTRÉE VALIDÉE — 3/3 signatures réunies, matériel enregistré au
+                  stock, traçabilité complète.
+                </Message>
               ) : (
-                <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                  <PenTool className="h-4 w-4" />
-                  L'entrée n'est validée que lorsque les 3 signatures sont
-                  réunies (3/3). Ordre : Dépositaire → Chef de service 1 →
-                  Chef de service 2. Une signature enregistrée n'est jamais
-                  modifiable.
-                </div>
+                <Message variant="info" size="sm" icon={PenTool}>
+                  L'entrée n'est validée que lorsque les 3 signatures sont réunies
+                  (3/3). Ordre : Dépositaire → Chef de service 1 → Chef de service
+                  2. Une signature enregistrée n'est jamais modifiable.
+                </Message>
               )}
 
               {(user?.role === "admin" || user?.role === "depositaire") &&

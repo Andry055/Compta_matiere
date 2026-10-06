@@ -189,6 +189,56 @@ describe("Step3SignatureLogistique — enrichissement chef logistique", () => {
     expect(tableSynthese).toBeTruthy();
   });
 
+  it("place le bon de livraison et la synthèse du contrôle côte à côte", () => {
+    rendre();
+
+    // Conteneur en grille deux colonnes (sélecteur d'attribut : le `:` du nom
+    // de classe Tailwind ne peut pas être écrit tel quel dans un sélecteur).
+    const grille = document.querySelector('div[class~="md:grid-cols-2"]');
+    expect(grille).not.toBeNull();
+
+    // Les deux cartes sont les DEUX enfants de cette grille : une par colonne.
+    expect(grille!.children).toHaveLength(2);
+    expect(within(grille!).getByText("Bon de livraison")).toBeTruthy();
+    const synthese = within(grille!).getByText(/Synthèse du contrôle physique/i);
+    expect(synthese).toBeTruthy();
+    // ... et chacune tient dans un enfant différent.
+    expect(grille!.children[0].contains(within(grille!).getByText("Bon de livraison"))).toBe(true);
+    expect(grille!.children[1].contains(synthese)).toBe(true);
+    expect(grille!.children[0].contains(synthese)).toBe(false);
+  });
+
+  it("affiche les photos du magasinier DANS le tableau des articles", () => {
+    const data = donneesTest();
+    // La pièce jointe de l'article en réserve, telle que l'API la renvoie
+    // (URL absolue servie par le backend).
+    data.controles[2].photos = ["http://localhost:1337/uploads/ligne-3_1.jpg"];
+    render(
+      <Step3SignatureLogistique
+        data={data}
+        logistiqueCertifie={false}
+        onCertifier={vi.fn()}
+      />
+    );
+
+    // La photo est dans la LIGNE de son article (colonne « Photos »).
+    // Le tableau est reach par son nom accessible (« Détails des articles »).
+    const table = screen.getByRole("table", { name: /Détails des articles/i });
+    const ligneEcran = within(table).getByText("Écran 24 pouces").closest("tr")!;
+    const image = within(ligneEcran).getByAltText("Écran 24 pouces — photo 1");
+    expect(image.getAttribute("src")).toBe(
+      "http://localhost:1337/uploads/ligne-3_1.jpg"
+    );
+    // Ligne sans photo : emplacement réservé, pas d'image.
+    const ligneImprimante = within(table)
+      .getByText("Clavier AZERTY")
+      .closest("tr")!;
+    expect(within(ligneImprimante).queryByRole("img")).toBeNull();
+
+    // L'ancien bloc séparé sous le tableau a disparu (source unique).
+    expect(screen.queryByText(/Photos jointes par le magasinier/i)).toBeNull();
+  });
+
   it("non-régression : la case de certification logistique fonctionne toujours", () => {
     const onCertifier = vi.fn();
     const { rerender } = render(

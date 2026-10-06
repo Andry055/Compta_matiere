@@ -1,4 +1,5 @@
 import { useState } from "react"
+import { Message } from "./ui/message";
 import { Settings as SettingsIcon, Key, Shield, Database, Bell, Palette, Globe, Save, AlertCircle } from "lucide-react"
 
 interface SettingsSection {
@@ -521,17 +522,12 @@ export function Settings() {
           </div>
 
           {/* Warning Alert */}
-          <div className="mt-4 sm:mt-6 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-            <div className="flex items-start gap-3">
-              <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400 mt-0.5 flex-shrink-0" />
-              <div>
-                <h4 className="text-sm text-orange-900 dark:text-orange-100">Important</h4>
-                <p className="text-xs text-orange-700 dark:text-orange-300 mt-1">
-                  Certains changements peuvent nécessiter un redémarrage de l'application pour prendre effet.
-                  Assurez-vous de sauvegarder vos modifications avant de fermer la session.
-                </p>
-              </div>
-            </div>
+          <div className="mt-4 sm:mt-6">
+            <Message variant="warning" title="Important">
+              Certains changements peuvent nécessiter un redémarrage de
+              l'application pour prendre effet. Assurez-vous de sauvegarder vos
+              modifications avant de fermer la session.
+            </Message>
           </div>
         </div>
       </div>

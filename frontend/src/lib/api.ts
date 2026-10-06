@@ -20,6 +20,19 @@ export const api = axios.create({
   timeout: 8000,
 });
 
+/** URL AFFICHABLE d’un média renvoyé par Strapi (photos des lignes d’entrée,
+ *  etc.). L’API renvoie des chemins RELATIFS (`/uploads/xxx.jpg`) ; rendus
+ *  tels quels dans une page servie par le front (Vite : autre port, aucun
+ *  proxy), le navigateur les demandait au FRONT, qui répondait par la
+ *  SPA fallback (200 text/html) : les photos paraissaient perdues alors
+ *  qu’elles étaient bien stockées. Les URL absolues, les Data URLs et les
+ *  URL de signature sont laissées intactes. */
+export function urlMediaAffichable(url: string | null | undefined): string {
+  if (!url) return "";
+  if (/^(https?:)?\/\//i.test(url) || url.startsWith("data:")) return url;
+  return `${API_URL}${url.startsWith("/") ? url : `/${url}`}`;
+}
+
 // ---------------------------------------------------------------------------
 // Session Strapi (JWT) : connexion Content API
 //
@@ -194,6 +207,7 @@ interface StrapiEntity {
   } | null;
   lignes?: Array<{
     id: number;
+    documentId?: string | null;
     numero_ordre?: number | null;
     reference?: string | null;
     designation?: string | null;
@@ -205,6 +219,9 @@ interface StrapiEntity {
     nomenclature?: string | null;
     piece_justificative?: string | null;
     observations?: string | null;
+    /** Champ media `photos` de entree-ligne, peuplé seulement si le client
+     *  demande `populate[...][photos]` (ou `*`). */
+    photos?: Array<{ url?: string | null; documentId?: string | null }> | null;
     materiel?: {
       designation?: string | null;
       categorie?: { nom?: string | null } | null;
@@ -303,6 +320,16 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
 
   const lignesMappees: EntreeLigne[] = lignes.map((l, i) => ({
     numeroOrdre: l.numero_ordre ?? i + 1,
+    // Cible des photos + pièces déjà persistées : sans le documentId, le
+    // client ne peut pas rattacher une photo à SA ligne via /api/upload.
+    documentId: l.documentId || String(l.id),
+    // `refId` de POST /api/upload = id NUMÉRIQUE de la ligne (cf. EntreeLigne.id).
+    id: Number(l.id) || undefined,
+    // URL normalisée (absolue) : le chemin relatif renvoyé par Strapi ne
+    // s’affiche pas depuis l’application servie par un autre port que l’API.
+    photos: (l.photos ?? [])
+      .map((p) => urlMediaAffichable(p?.url))
+      .filter((u): u is string => !!u),
     reference: l.reference || "",
     designation: l.designation || l.materiel?.designation || "—",
     espece: l.espece || l.materiel?.categorie?.nom || "—",
@@ -451,7 +478,12 @@ export async function fetchEntreesDetail(): Promise<
           direction: true,
           service: true,
           lignes: {
-            populate: { materiel: { populate: ["categorie"] } },
+            // `photos` : champ media des lignes — sans lui, les pièces jointes
+            // par le magasinier disparaissent de l'écran après rechargement.
+            populate: {
+              materiel: { populate: ["categorie"] },
+              photos: true,
+            },
           },
         },
       },
@@ -567,6 +599,73 @@ export async function signerEntree(
     data: { role, ...(controles ? { controles } : {}) },
   });
   return mapEntree(data.data);
+}
+
+/**
+ * Photos d'une ligne d'entrée — envoi via le plugin d'upload NATIF de Strapi
+ * (POST /api/upload), jamais via un endpoint maison : le mécanisme de
+ * rattachement d'un média à un champ `ref/refId/field` est celui de Strapi.
+ *
+ * Les fichiers arrivent déjà compressés côté client (PhotoCapture,
+ * compressImageFile) : ils sont renvoyés tels quels, sans recompression.
+ */
+export const LIGNE_ENTREE_UID = "api::entree-ligne.entree-ligne";
+
+/** Convertit une Data URL (JPEG déjà compressé) en File, pour l'envoi
+ *  multipart. Les Data URLs ne sont jamais stockées côté serveur. */
+export function dataUrlVersFile(dataUrl: string, nomFichier: string): File | null {
+  const virgule = dataUrl.indexOf(",");
+  if (virgule < 0) return null;
+  const entete = dataUrl.slice(0, virgule);
+  const base64 = dataUrl.slice(virgule + 1);
+  if (!entete.startsWith("data:")) return null;
+  const type = entete.slice(5).split(";")[0] || "image/jpeg";
+  try {
+    const binaire = atob(base64);
+    const octets = new Uint8Array(binaire.length);
+    for (let i = 0; i < binaire.length; i += 1) octets[i] = binaire.charCodeAt(i);
+    return new File([octets], nomFichier, { type });
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Envoie les photos d UNE ligne d'entrée et renvoie les URL persistées.
+ * Le serveur rattache chaque fichier au champ media `photos` de la ligne visée.
+ *
+ * `ligneRefId` = `refId` attendu par le plugin upload : l'id NUMÉRIQUE de la
+ * ligne (`EntreeLigne.id`). Passer le documentId écrit bien le fichier sur le
+ * disque mais ne le rattache jamais à la ligne (populate `photos` vide).
+ */
+export async function uploadPhotosLigne(
+  ligneRefId: string | number,
+  dataUrls: string[]
+): Promise<string[]> {
+  const nomBase = `ligne-${ligneRefId}`;
+  const fichiers = dataUrls
+    .map((dataUrl, i) => dataUrlVersFile(dataUrl, `${nomBase}-${i + 1}.jpg`))
+    .filter((f): f is File => f !== null);
+  if (fichiers.length === 0) return [];
+
+  const forme = new FormData();
+  for (const fichier of fichiers) forme.append("files", fichier);
+  forme.append("ref", LIGNE_ENTREE_UID);
+  forme.append("refId", String(ligneRefId));
+  forme.append("field", "photos");
+
+  // multipart : ne PAS fixer Content-Type (axios ajoute la boundary).
+  const { data } = await api.post("/api/upload", forme, {
+    timeout: 20000,
+  });
+  const fichiersRetournes: Array<{ url?: string }> = Array.isArray(data)
+    ? data
+    : Array.isArray(data?.files)
+    ? data.files
+    : [];
+  return fichiersRetournes
+    .map((f) => f?.url)
+    .filter((u): u is string => !!u);
 }
 
 /** Rejet d'une entrée par un responsable habilité. */

@@ -38,6 +38,9 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   const [isMobile, setIsMobile] = useState(false)
   // Lien « Demande associée » ouvert depuis la page Sorties
   const [requestDetailId, setRequestDetailId] = useState<number | null>(null)
+  // Pièce à ouvrir dans l'écran Arrivée Matériel, demandée par un clic sur une
+  // notification de la cloche du navbar (les 3 rôles du flux de réception).
+  const [entreeCibleId, setEntreeCibleId] = useState<string | number | null>(null)
 
   // Navigation programmatique depuis un écran (ex. PV de réception → journal).
   // Passée aux écrans via la prop onNavigate.
@@ -77,7 +80,14 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
       case "dashboard":
         return <Dashboard user={user} />
       case "arrivee":
-        return <MaterialEntry user={user} onNavigate={handleSectionChange} />
+        return (
+          <MaterialEntry
+            user={user}
+            onNavigate={handleSectionChange}
+            entreeCibleId={entreeCibleId}
+            onEntreeCibleConsumed={() => setEntreeCibleId(null)}
+          />
+        )
       case "entries":
         return <EntriesPage user={user} />
       case "affectations":
@@ -123,9 +133,24 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
 
   const handleSectionChange = (section: string) => {
     setActiveSection(section)
+    // Une navigation classique invalide la pièce demandée par une notification :
+    // l'utilisateur choisit librement son écran d'arrivée.
+    setEntreeCibleId(null)
     if (section !== "requests") {
       setRequestDetailId(null)
     }
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
+  }
+
+  // Ouverture d'une pièce depuis une notification de la cloche du navbar : la
+  // cible est posée AVANT le changement d'écran (handleSectionChange effacerait
+  // toute cible), pour que l'écran Arrivée Matériel s'ouvre directement sur le
+  // bon de livraison à traiter.
+  const handleOuvrirNotification = (entreeId: string | number) => {
+    setEntreeCibleId(entreeId)
+    setActiveSection("arrivee")
     if (isMobile) {
       setMobileMenuOpen(false)
     }
@@ -207,8 +232,12 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
               </span>
             </div>
 
-            {/* Notifications (compteur des non lues) */}
-            <NotificationBell user={user} />
+            {/* Notifications : actions en attente du rôle + informations. Un clic sur une
+                notification de réception ouvre la pièce dans Arrivée Matériel. */}
+            <NotificationBell
+              user={user}
+              onOpenEntree={handleOuvrirNotification}
+            />
 
             {/* Theme Toggle */}
             <ThemeToggle />

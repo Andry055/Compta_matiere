@@ -59,6 +59,7 @@ import {
   genererExcelOrdreEntree,
 } from "../lib/ordreDocument";
 import { NewTransfertPage } from "./NewTransfertPage";
+import { Message } from "./ui/message";
 
 // Processus métier : DIRECTION → SERVICE → ENTRÉE EN STOCK → VÉRIFICATION →
 // VALIDATION PAR LES RESPONSABLES DU SERVICE → STOCK DU SERVICE.
@@ -689,9 +690,9 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
         </div>
 
         {erreur && (
-          <div className="ordre-entree-actions rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          <Message variant="danger" className="ordre-entree-actions">
             {erreur}
-          </div>
+          </Message>
         )}
 
         <article className="ordre-entree-document border border-slate-900 bg-white p-4 text-slate-900 shadow-sm sm:p-8">
@@ -809,10 +810,10 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
   if (referencesError) {
     return (
       <div className="p-3 sm:p-6">
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-6 text-center shadow-sm dark:border-red-800 dark:bg-red-950/30">
+        <div className="msg msg--danger msg--lg flex-col items-center text-center shadow-sm">
           <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-red-100 text-xl text-red-600 dark:bg-red-900/40 dark:text-red-300">⚠</div>
-          <h2 className="text-lg font-semibold text-red-700 dark:text-red-300">Impossible de charger la page.</h2>
-          <p className="mt-2 text-sm text-red-700/80 dark:text-red-300/80">{referencesError}</p>
+          <h2 className="text-lg font-semibold msg-title">Impossible de charger la page.</h2>
+          <p className="mt-2 text-sm msg-text">{referencesError}</p>
           <button
             type="button"
             onClick={() => window.location.reload()}
@@ -873,10 +874,9 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
         -------------------------------------------------------------- */}
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
           {erreur && (
-            <div className="flex items-start gap-2 px-4 py-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-700 dark:text-red-400">
-              <X className="h-4 w-4 shrink-0 mt-0.5" />
+            <Message variant="danger">
               {erreur}
-            </div>
+            </Message>
           )}
 
           {/* Sections numérotées — accordéons sur mobile, cartes sur desktop */}
@@ -979,13 +979,14 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                       </div>
 
                       {/* Responsables du service — récupérés automatiquement */}
-                      <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50/60 dark:bg-blue-900/20 p-4">
-                        <div className="flex items-center gap-2 mb-3">
-                          <Info className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                          <span className="text-sm font-medium text-blue-800 dark:text-blue-200">
-                            Responsables du service (automatiques)
-                          </span>
-                        </div>
+                      <div className="msg msg--info msg--lg">
+                        <div className="msg-body">
+                          <div className="flex items-center gap-2 mb-3">
+                            <Info className="msg-icon h-4 w-4" />
+                            <span className="msg-title text-sm">
+                              Responsables du service (automatiques)
+                            </span>
+                          </div>
                         <div className="grid gap-4 sm:grid-cols-3">
                           <div>
                             <label className={labelClass}>
@@ -1021,20 +1022,20 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                             />
                           </div>
                         </div>
-                        <p className="mt-3 text-xs text-blue-700 dark:text-blue-300">
+                        <p className="mt-3 text-xs">
                           Destination du matériel : {nomDirection} / {nomService} —
                           le matériel sera enregistré dans le stock de ce service.
                           Aucun « Dépositaire général » : les responsables sont
                           ceux du service.
                         </p>
+                        </div>
                       </div>
 
-                      <div className="flex items-start gap-2 px-4 py-3 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
-                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                        Processus : DIRECTION → SERVICE → ENTRÉE EN STOCK DU
-                        SERVICE → VÉRIFICATION → VALIDATION PAR LES 3
-                        RESPONSABLES DU SERVICE → STOCK DU SERVICE.
-                      </div>
+                      <Message variant="info" size="sm" icon={Info}>
+                        Processus : DIRECTION → SERVICE → ENTRÉE EN STOCK DU SERVICE
+                        → VÉRIFICATION → VALIDATION PAR LES 3 RESPONSABLES DU
+                        SERVICE → STOCK DU SERVICE.
+                      </Message>
                     </div>
                   )}
 
@@ -1127,12 +1128,11 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                         </div>
                       </div>
 
-                      <div className="flex items-start gap-2 px-4 py-3 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
-                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <Message variant="info" size="sm" icon={Info}>
                         Référence de l'entrée attribuée automatiquement à
                         l'enregistrement : ENT-AAAA-NNN (visible aussi dans le QR
                         Code).
-                      </div>
+                      </Message>
                     </div>
                   )}
 
@@ -1435,11 +1435,10 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                           {formatMontant(total)}
                         </span>
                       </div>
-                      <div className="flex items-start gap-2 px-4 py-3 bg-muted/30 border border-border rounded-lg text-xs text-muted-foreground">
-                        <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                      <Message variant="info" size="sm" icon={Info}>
                         Valeur = Quantité × Prix unitaire — le montant de chaque
                         ligne puis le TOTAL sont calculés automatiquement.
-                      </div>
+                      </Message>
                     </div>
                   )}
 
@@ -1541,13 +1540,12 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
                         </div>
                       </div>
 
-                      <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                        <Info className="h-4 w-4 shrink-0 mt-0.5" />
+                      <Message variant="info" size="sm" icon={Info}>
                         L'entrée démarre « En attente » (0/3). Elle n'est VALIDÉE
                         qu'après les 3 validations obligatoires du service :
                         Dépositaire → Chef de service 1 → Chef de service 2. Vous
                         ne pouvez jamais signer à la place d'un responsable.
-                      </div>
+                      </Message>
 
                       <div className="flex flex-col sm:flex-row flex-wrap gap-2">
                         <button

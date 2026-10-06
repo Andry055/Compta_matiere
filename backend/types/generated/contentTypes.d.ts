@@ -718,6 +718,7 @@ export interface ApiEntreeLigneEntreeLigne extends Struct.CollectionTypeSchema {
     nomenclature: Schema.Attribute.String;
     numero_ordre: Schema.Attribute.Integer;
     observations: Schema.Attribute.String;
+    photos: Schema.Attribute.Media<'images', true>;
     piece_justificative: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     quantite: Schema.Attribute.Integer &

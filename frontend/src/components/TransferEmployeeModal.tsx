@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Message } from "./ui/message";
 import {
   ArrowRightLeft,
   X,
@@ -8,7 +9,7 @@ import {
   Briefcase,
   Calendar,
   FileText,
-  AlertCircle,
+
   Check,
 } from "lucide-react";
 
@@ -311,23 +312,21 @@ export function TransferEmployeeModal({
                   </div>
 
                   {selectedService && (
-                    <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          isInternal 
-                            ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                            : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400"
-                        }`}>
-                          Transfert {transferType}
-                        </span>
-                      </div>
+                    <Message variant="info" size="lg">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium mb-2 ${
+                        isInternal
+                          ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                          : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400"
+                      }`}>
+                        Transfert {transferType}
+                      </span>
                       <div className="text-sm space-y-1">
                         <div><strong>Service:</strong> {selectedService.name}</div>
                         <div><strong>Responsable:</strong> {selectedService.manager}</div>
                         <div><strong>Localisation:</strong> {selectedService.location}</div>
                         <div><strong>Description:</strong> {selectedService.description}</div>
                       </div>
-                    </div>
+                    </Message>
                   )}
                 </div>
 
@@ -417,17 +416,10 @@ export function TransferEmployeeModal({
             ) : (
               /* Confirmation */
               <div className="space-y-6">
-                <div className="flex items-center gap-3 p-4 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
-                  <AlertCircle className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-                  <div>
-                    <h4 className="font-medium text-orange-800 dark:text-orange-200">
-                      Confirmer le Transfert
-                    </h4>
-                    <p className="text-sm text-orange-700 dark:text-orange-300">
-                      Cette action va déplacer l'employé vers un nouveau service. Veuillez vérifier les informations.
-                    </p>
-                  </div>
-                </div>
+                <Message variant="warning" size="lg" title="Confirmer le Transfert">
+                  Cette action va déplacer l'employé vers un nouveau service.
+                  Veuillez vérifier les informations.
+                </Message>
 
                 <div className="space-y-4">
                   <h4 className="font-medium text-card-foreground">Résumé du Transfert</h4>

@@ -35,6 +35,7 @@ import {
 } from "./MovementDetailModal";
 import { NewEntryPage } from "./NewEntryPage";
 import { ErrorBoundary } from "./ErrorBoundary";
+import { Message } from "./ui/message";
 
 const PAGE_SIZE = 6;
 
@@ -368,13 +369,12 @@ export function EntriesPage({ user }: EntriesPageProps) {
       </div>
 
       {isDemandeur && (
-        <div className="flex items-center gap-2 px-4 py-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-          <BadgeCheck className="h-4 w-4" />
+        <Message variant="info" size="sm" icon={BadgeCheck}>
           Vous pouvez enregistrer une nouvelle entrée : elle démarre « En
-          attente » (0/3) et n'est VALIDÉE qu'après les 3 signatures
-          obligatoires (Dépositaire, Chef de service 1, Chef de service 2).
-          Vous ne pouvez jamais signer à la place d'un responsable.
-        </div>
+          attente » (0/3) et n'est VALIDÉE qu'après les 3 signatures obligatoires
+          (Dépositaire, Chef de service 1, Chef de service 2). Vous ne pouvez
+          jamais signer à la place d'un responsable.
+        </Message>
       )}
 
       {/* Indicateurs */}
@@ -764,10 +764,13 @@ export function EntriesPage({ user }: EntriesPageProps) {
 
       {/* Message flash */}
       {flash && (
-        <div className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-800 rounded-lg shadow-lg text-sm text-green-700 dark:text-green-400">
-          <CheckCircle2 className="h-4 w-4" />
+        <Message
+          variant="success"
+          className="fixed bottom-6 right-6 z-50 shadow-lg"
+          role="status"
+        >
           {flash}
-        </div>
+        </Message>
       )}
     </div>
   );

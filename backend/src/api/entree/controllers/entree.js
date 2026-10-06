@@ -186,9 +186,21 @@ const ROLE_FOR_SIGNATURE = {
 };
 
 async function loadEntree(strapi, documentId) {
+  // `lignes` est peuplée en profondeur : les photos (champ media `photos` de
+  // entree-ligne) et le matériel des lignes. Sans ce `populate` imbriqué, les
+  // pièces jointes par le magasinier ne seraient jamais renvoyées (Strapi 5
+  // ne peuple que le premier niveau avec la forme tableau) — le PV et le
+  // détail d'une entrée traitée afficheraient alors des photos vides après un
+  // simple rechargement de page.
   return strapi.documents(ENTREE_UID).findOne({
     documentId,
-    populate: ['lignes', 'fournisseur', 'direction', 'service', 'mouvements'],
+    populate: {
+      lignes: { populate: ['photos', 'materiel'] },
+      fournisseur: true,
+      direction: true,
+      service: true,
+      mouvements: true,
+    },
   });
 }
 
@@ -518,6 +530,16 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
       return badRequest(ctx, 'Cette entrée a été rejetée : signature impossible.');
     }
 
+    // Photos de l'étape 2 (magasinier) : le stockage passe par le endpoint
+    // standard d'upload de Strapi (POST /api/upload avec
+    // ref=api::entree-ligne.entree-ligne, refId=<ligne>, field="photos") —
+    // AUCUN mécanisme d'upload n'est recodé ici, et la signature ne dépend
+    // JAMAIS des photos : un échec d'envoi ne peut ni bloquer ni annuler la
+    // signature (elle est déjà actée). Cette liste sert uniquement à
+    // renvoyer au client la correspondance numero_ordre → documentId, pour
+    // qu'il rattache chaque photo à la BONNE ligne sans nouvel aller-retour.
+    const ciblesPhotos = [];
+
     const config = SIGNATURE_ROLES[roleKey];
 
     // --- Double signature interdite ------------------------------------------
@@ -564,6 +586,11 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
             typeof controle.observations === 'string' && controle.observations.trim()
               ? controle.observations.trim()
               : null,
+        });
+        ciblesPhotos.push({
+          numero_ordre: Number(ligne.numero_ordre),
+          documentId: ligne.documentId,
+          designation: ligne.designation || null,
         });
       }
       // Pas de valeur par défaut silencieuse : toute ligne sans etat/conforme
@@ -631,7 +658,17 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
     );
 
     const finale = await loadEntree(app, documentId);
-    return { data: finale, meta: { signatures: nbSignatures, statut: statutFinal } };
+    return {
+      data: finale,
+      meta: {
+        signatures: nbSignatures,
+        statut: statutFinal,
+        // Cibles d'upload des photos (étape 2) : le client y joint ses Data
+        // URLs via /api/upload APRÈS cette réponse — la signature est déjà
+        // enregistrée, un échec d'envoi n'a donc aucun effet sur elle.
+        lignesPhotos: ciblesPhotos,
+      },
+    };
   },
 
   /**

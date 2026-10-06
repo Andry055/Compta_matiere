@@ -261,6 +261,25 @@ const AFFECTATION_ACTIONS = [
 const ROLES_SIGNATAIRES = ['depositaire', 'magasinier', 'logistique', 'comptable'];
 
 // ---------------------------------------------------------------------------
+// Téléversement des photos des pièces jointes d'une entrée.
+// `POST /api/upload` est la route content-api du plugin upload ; l'uid de la
+// permission est dérivé du NOM DU CONTRÔLEUR, pas du content-type : le
+// contrôleur s'appelle `content-api` et son action `upload`, d'où
+// `plugin::upload.content-api.upload` (`registerAPIsActions` de @strapi/core
+// construit `plugin::<nom>.content-api.<action>`).
+// `plugin::upload.content-api.find` est nécessaire en plus pour que le
+// sanitizer puisse peupler le champ média `photos` à la relecture des lignes.
+// ATTENTION : `syncPermissions()` du plugin users-permissions SUPPRIME au boot
+// toute permission absente de la liste des actions des contrôleurs ; il faut
+// donc les créer ici (dans le bootstrap), toute insertion manuelle en base
+// disparaît au redémarrage.
+// ---------------------------------------------------------------------------
+const UPLOAD_ACTIONS = [
+  'plugin::upload.content-api.upload',
+  'plugin::upload.content-api.find',
+];
+
+// ---------------------------------------------------------------------------
 // Reddition de compte : lecture seule des rapports (recapitulation, etat
 // appreciatif, inventaire, grand-livre, bordereau) + CRUD de l'ouverture
 // d'exercice (stock initial par nomenclature). Réservé aux profils
@@ -436,7 +455,26 @@ async function ensureAuthSetup(strapi) {
     }
   }
 
-  // 2quinquies) Permissions « Reddition de compte » : rapports (lecture) et
+  // 2quinquies) Permissions « Téléversement des photos » :POST /api/upload
+  // (pièces jointes des lignes d'entrée) et lecture des fichiers, accordées
+  // aux rôles signataires — sans quoi la certification magasinier se termine
+  // par un 403 et les photos ne sont jamais enregistrées.
+  for (const type of ROLES_SIGNATAIRES) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of UPLOAD_ACTIONS) {
+      if (granted.has(`${role.type}:${action}`)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+    }
+  }
+  if (authenticated) {
+    for (const action of UPLOAD_ACTIONS) {
+      if (granted.has(`authenticated:${action}`)) continue;
+      await permQuery.create({ data: { action, role: authenticated.id } });
+    }
+  }
+
+  // 2sexies) Permissions « Reddition de compte » : rapports (lecture) et
   // ouverture d'exercice (CRUD du stock initial), accordées aux rôles
   // dépositaire / comptable / logistique. Le Demandeur n'y a jamais accès.
   for (const type of ROLES_RAPPORTS) {

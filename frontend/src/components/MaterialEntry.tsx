@@ -33,6 +33,7 @@ import {
   creerEntree,
   fetchEntreesDetail,
   signerEntree,
+  uploadPhotosLigne,
   EchecApi,
   NouvelleEntreePayload,
 } from "../lib/api";
@@ -57,15 +58,18 @@ import {
   resolveActiveRole,
 } from "../lib/role-access";
 // Notifications « étapes » : indicateur DÉRIVÉ recalculé depuis fetchEntrees()
-// (aucun stockage). lib/notifications.ts et lib/journal-store.ts ne sont plus
-// référencés par ce fichier — ils restent en place pour leurs autres
-// consommateurs (Journal.tsx, hors périmètre de la fusion).
+// (aucun stockage). La cloche du navbar (NotificationBell) présente la même
+// liste pour les rôles métier ; cet import ne sert plus qu'au simulateur de
+// session (carte « Connecté en tant que »), masqué pour ces rôles.
+// lib/notifications.ts et lib/journal-store.ts ne sont pas référencés par ce
+// fichier — ils restent en place pour leurs autres consommateurs (Journal.tsx).
 import {
   NotificationEtape,
   notificationsPourRole,
 } from "../lib/notificationEtapes";
-import type { EntreeRecord } from "../lib/movements";
+import type { EntreeLigne, EntreeRecord } from "../lib/movements";
 import { getOrdreEntreeDocument } from "../lib/movements";
+import { Message } from "./ui/message";
 
 // ──────────────────────────────────────────────
 // Helpers « ancrage écran ↔ entrée serveur »
@@ -120,7 +124,7 @@ const CLE_SIGNATURE: Partial<Record<AppRole, "chefService1" | "chefService2" | "
  *  Non dès que le rôle a apposé SA signature : la pièce quitte alors son onglet
  *  de traitement (elle reste consultable en lecture seule). Non plus si elle est
  *  terminée/rejetée, ou si elle est à une autre étape du circuit. */
-function entreeResteATraiter(e: EntreeRecord, role: AppRole): boolean {
+export function entreeResteATraiter(e: EntreeRecord, role: AppRole): boolean {
   if (entreeEstTerminee(e)) return false;
   const s = e.signatures ?? {};
   // Un brouillon n'existe que pour son dépositaire (saisie de l'étape 1).
@@ -140,7 +144,7 @@ function entreeResteATraiter(e: EntreeRecord, role: AppRole): boolean {
 /** Le rôle connecté a-t-il DÉJÀ traité cette entrée (signature posée) ?
  *  → elle alimente la page « Articles traités » (lecture seule), pas l'onglet
  *  de traitement. */
-function entreeTraiteeParRole(e: EntreeRecord, role: AppRole): boolean {
+export function entreeTraiteeParRole(e: EntreeRecord, role: AppRole): boolean {
   const cle = CLE_SIGNATURE[role];
   if (!cle) return false;
   return !!e.signatures?.[cle];
@@ -202,19 +206,11 @@ interface MaterialEntryProps {
   user: User;
   /** Navigation programmatique fournie par DashboardLayout (ex. ouvrir le journal). */
   onNavigate?: (section: string) => void;
-}
-
-/** Badge du bandeau « plusieurs entrées attendent votre rôle » : couleur selon
- *  le rôle actif (les autres rôles ne passent jamais par ce bandeau). */
-function bandeauRoleClasse(role: AppRole): string {
-  switch (role) {
-    case "magasinier":
-      return "bg-blue-50 text-blue-700 dark:bg-blue-950/30 dark:text-blue-300";
-    case "logistique":
-      return "bg-cyan-50 text-cyan-700 dark:bg-cyan-950/30 dark:text-cyan-300";
-    default:
-      return "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300";
-  }
+  /** Pièce à ouvrir au montage (clic sur une notification de la cloche du
+   *  navbar). Ignorée tant que la liste serveur ne l'a pas chargée. */
+  entreeCibleId?: string | number | null;
+  /** La pièce demandée a été ouverte : le parent peut oublier la cible. */
+  onEntreeCibleConsumed?: () => void;
 }
 
 const STEP_LABELS = [
@@ -658,103 +654,18 @@ function getRoleHomeStep(role: AppRole, data: ReceptionData): number {
 
 function ReadOnlyNotice({ requiredRoleLabel }: { requiredRoleLabel: string }) {
   return (
-    <div className="flex items-center gap-2 p-3 rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-900/20">
-      <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-      <span className="text-sm text-amber-700 dark:text-amber-300">
-        Lecture seule — en attente du {requiredRoleLabel}.
-      </span>
-    </div>
+    <Message
+      variant="warning"
+      size="sm"
+      icon={Lock}
+      title={`Lecture seule — en attente du ${requiredRoleLabel}.`}
+    />
   );
 }
 
 // ──────────────────────────────────────────────
 // Vue simplifiée MAGASINIER — il ne voit que SON onglet
 // ──────────────────────────────────────────────
-
-/** Cloche de notifications (version compacte du panneau). Étape 5 : la liste
- *  est DÉRIVÉE des entrées serveur (actions en attente pour le rôle), plus
- *  aucune lecture d'un stock « lu/non lu ». « Tout marquer lu » disparaît —
- *  un indicateur d'état se solde en AGISSANT, pas en cochant. */
-function NotificationsBell({
-  role,
-  entrees,
-  onSelectEntree,
-}: {
-  role: AppRole;
-  entrees: EntreeRecord[] | null;
-  onSelectEntree?: (entree: EntreeRecord) => void;
-}) {
-  const notifications = notificationsPourRole(role, entrees ?? []);
-  const unread = notifications.length;
-
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          className="print-hidden gap-2 w-fit"
-          title="Notifications"
-        >
-          <Bell className="h-4 w-4" />
-          Mes notifications
-          {unread > 0 && (
-            <Badge className="bg-red-500 text-white px-1.5 min-w-5 h-5">
-              {unread > 9 ? "9+" : unread}
-            </Badge>
-          )}
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="end" className="w-80 p-0">
-        <div className="flex items-center justify-between px-3 py-2 border-b border-border">
-          <span className="text-sm font-semibold">
-            En attente — {ROLES_CONFIG[role].label}
-          </span>
-        </div>
-        <div className="max-h-72 overflow-auto">
-          {notifications.length === 0 ? (
-            <div className="px-3 py-8 text-center text-sm text-muted-foreground">
-              Aucune action en attente pour le moment.
-            </div>
-          ) : (
-            notifications.map((n: NotificationEtape) => {
-              const e = entrees?.find((ent) => ent.id === n.entreeId);
-              return (
-                <div
-                  key={n.id}
-                  onClick={() => {
-                    if (e && onSelectEntree) onSelectEntree(e);
-                  }}
-                  className={`px-3 py-2.5 border-b border-border/60 last:border-0 ${
-                    onSelectEntree && e ? "hover:bg-muted/60 cursor-pointer transition-colors" : ""
-                  }`}
-                >
-                  <div className="flex items-start gap-2">
-                    {n.type === "ecart" ? (
-                      <Lock className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
-                    ) : n.type === "reception_confirmee" ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-600 shrink-0 mt-0.5" />
-                    ) : (
-                      <ClipboardCheck className="h-4 w-4 text-primary shrink-0 mt-0.5" />
-                    )}
-                    <div className="min-w-0 flex-1">
-                      <p className="text-sm font-medium leading-snug">{n.title}</p>
-                      <p className="text-xs text-muted-foreground mt-0.5">
-                        {n.body}
-                      </p>
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        {new Date(n.date).toLocaleString("fr-FR")}
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
 
 /** Badge d'état de l'onglet du magasinier (en-tête de la vue simplifiée). */
 function Step2Badge({ certified }: { certified: boolean }) {
@@ -772,7 +683,12 @@ function Step2Badge({ certified }: { certified: boolean }) {
   );
 }
 
-/** Écran d'attente : aucun BL saisi par le dépositaire → rien à contrôler. */
+/** Écran d'attente : l'entrée ouverte n'a pas encore son bon de livraison.
+ *
+ *  Attention : cet écran ne concerne QUE l'entrée réellement ouverte. Quand
+ *  plusieurs pièces attendent le rôle, la liste « À traiter » prend le relais
+ *  (voir `ListeEntreesATraiter`) et cet écran doit rester masqué — sinon il
+ *  afficherait « aucun matériel à contrôler » alors que les articles existent. */
 function MagasinierLockedNotice({
   depositaireName,
 }: {
@@ -809,7 +725,7 @@ function MagasinierDoneCard({
   onOpenPV: () => void;
 }) {
   return (
-    <Card className="print-hidden border-green-500 bg-green-50/50 dark:bg-green-950/20">
+    <Card className="print-hidden border-green-500 bg-green-50/50 dark:bg-green-900/20">
       <CardContent className="py-8 text-center space-y-3">
         <div className="mx-auto w-12 h-12 rounded-full bg-green-600 flex items-center justify-center">
           <PackageCheck className="h-6 w-6 text-white" />
@@ -980,17 +896,14 @@ function Step1BonLivraison({
         </CardHeader>
         <CardContent className="space-y-4">
           {ecartsQte.length > 0 && (
-            <div className="flex items-start gap-2.5 p-3 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-300 text-sm">
-              <AlertTriangle className="h-5 w-5 text-amber-600 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-semibold">
-                  {ecartsQte.length} écart(s) de quantité détecté(s) (commandé ≠ livré)
-                </p>
-                <p className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">
-                  La quantité livrée diffère de la quantité initialement commandée. Ces écarts seront tracés dans les observations comptables et les mouvements de stock.
-                </p>
-              </div>
-            </div>
+            <Message
+              variant="warning"
+              title={`${ecartsQte.length} écart(s) de quantité détecté(s) (commandé ≠ livré)`}
+            >
+              La quantité livrée diffère de la quantité initialement
+              commandée. Ces écarts seront tracés dans les observations
+              comptables et les mouvements de stock.
+            </Message>
           )}
 
           {data.articles.length === 0 ? (
@@ -1646,26 +1559,21 @@ function Step2ControleMagasinier({
 
       {/* Alerte sur les réserves constatées */}
       {reservesCount > 0 && (
-        <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-amber-800 dark:text-amber-300 space-y-1">
-          <div className="flex items-center gap-2 font-semibold">
-            <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
-            <span>
-              {reservesCount} article(s) signalé(s) avec réserve ou non conforme(s)
-            </span>
-          </div>
-          <p className="text-xs text-amber-700 dark:text-amber-400">
-            {missingRemarks > 0
-              ? `⚠️ Une remarque explicative est obligatoire pour les ${missingRemarks} article(s) concerné(s) avant de pouvoir certifier la réception.`
-              : "Tous les motifs de réserves ont été renseignés. Vous pouvez certifier la réception physique avec réserves."}
-          </p>
-        </div>
+        <Message
+          variant="warning"
+          title={`${reservesCount} article(s) signalé(s) avec réserve ou non conforme(s)`}
+        >
+          {missingRemarks > 0
+            ? `Une remarque explicative est obligatoire pour les ${missingRemarks} article(s) concerné(s) avant de pouvoir certifier la réception.`
+            : "Tous les motifs de réserves ont été renseignés. Vous pouvez certifier la réception physique avec réserves."}
+        </Message>
       )}
 
       {/* Certification du magasinier */}
       <Card
         className={`transition-all duration-300 ${
           data.magasinierCertifie
-            ? "border-green-500 bg-green-50/50 dark:bg-green-950/20"
+            ? "border-green-500 bg-green-50/50 dark:bg-green-900/20"
             : "border-orange-300 dark:border-orange-700"
         }`}
       >
@@ -1711,6 +1619,53 @@ function Step2ControleMagasinier({
   );
 }
 
+/** Cellule « Photos » d'un tableau d'articles : vignettes des pièces jointes
+ *  par le magasinier, DANS la ligne concernée.
+ *
+ *  Les photos vivaient dans un bloc séparé sous le tableau : le lien entre la
+ *  désignation et son image était diffus (il fallait lire la liste pour
+ *  retrouver laquelle revient à quel article) et la colonne vide du tableau
+ *  laissait croire qu'aucune preuve n'existait. Ici, la photo est dans la
+ *  ligne — ce qu'attend la lecture d'un PV ou d'un tableau de contrôle.
+ *
+ *  URLs déjà normalisées en absolu par `mapEntree` (API sur un autre port que
+ *  le front) ; Data URLs acceptés tels quels pendant la saisie. */
+export function CellulePhotos({
+  photos,
+  designation,
+}: {
+  photos: string[] | undefined;
+  designation: string;
+}) {
+  const liste = photos ?? [];
+  if (liste.length === 0) {
+    return (
+      <span className="text-xs text-muted-foreground" aria-label="Aucune photo">
+        —
+      </span>
+    );
+  }
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {liste.map((p, i) => (
+        <a
+          key={`${p}-${i}`}
+          href={p}
+          target="_blank"
+          rel="noreferrer"
+          title={`${designation} — photo ${i + 1} (cliquer pour agrandir)`}
+        >
+          <img
+            src={p}
+            alt={`${designation} — photo ${i + 1}`}
+            className="h-12 w-12 object-cover rounded border hover:opacity-80 transition-opacity print:h-16 print:w-16"
+          />
+        </a>
+      ))}
+    </div>
+  );
+}
+
 /** Case de certification du dépositaire (« Le dépositaire certifie
  *  l'enregistrement »).
  *
@@ -1739,7 +1694,7 @@ function CertificationDepositaireCard({
     <Card
       className={`transition-all duration-300 ${className} ${
         certifie
-          ? "border-green-500 bg-green-50/50 dark:bg-green-950/20"
+          ? "border-green-500 bg-green-50/50 dark:bg-green-900/20"
           : "border-orange-300 dark:border-orange-700"
       }`}
     >
@@ -1956,12 +1911,10 @@ function Step3EnregistrementDepositaire({
             </div>
           )}
 
-          <div className="flex items-center gap-2 p-2.5 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-700 dark:text-blue-300">
-            <PackageCheck className="h-4 w-4 shrink-0 text-blue-600 dark:text-blue-400" />
-            <span>
-              La validation de cette étape créera automatiquement les entrées correspondantes dans le grand livre des mouvements de stock.
-            </span>
-          </div>
+          <Message variant="info" size="sm" icon={PackageCheck}>
+            La validation de cette étape créera automatiquement les entrées
+            correspondantes dans le grand livre des mouvements de stock.
+          </Message>
         </CardContent>
       </Card>
 
@@ -2057,13 +2010,16 @@ function Step3EnregistrementDepositaire({
         </CardContent>
       </Card>
 
-      {/* Certification du dépositaire */}
-      <CertificationDepositaireCard
-        certifie={data.depositaireCertifie}
-        onCertifie={(v) => onChange({ depositaireCertifie: v })}
-        canEdit={canEdit}
-        requiredRoleLabel={requiredRoleLabel}
-      />
+      {/* Certification du dépositaire — même règle qu'à l'étape 4 : rendue
+          uniquement pour le rôle qui peut l'exécuter. */}
+      {canEdit && (
+        <CertificationDepositaireCard
+          certifie={data.depositaireCertifie}
+          onCertifie={(v) => onChange({ depositaireCertifie: v })}
+          canEdit={canEdit}
+          requiredRoleLabel={requiredRoleLabel}
+        />
+      )}
     </div>
   );
 }
@@ -2072,7 +2028,7 @@ function Step3EnregistrementDepositaire({
 // ÉTAPE 4 — PV de réception
 // ──────────────────────────────────────────────
 
-function Step4PVReception({
+export function Step4PVReception({
   data,
   extra,
   entreeServeur,
@@ -2081,7 +2037,7 @@ function Step4PVReception({
   logistiqueName,
   onOpenJournal,
   onChange,
-  canEditCertification,
+  peutCertifier,
   requiredRoleLabel,
 }: {
   data: ReceptionData;
@@ -2092,7 +2048,9 @@ function Step4PVReception({
   logistiqueName: string;
   onOpenJournal: () => void;
   onChange: (d: Partial<ReceptionData>) => void;
-  canEditCertification: boolean;
+  /** Vrai UNIQUEMENT pour le rôle propriétaire de l'étape 4 (dépositaire) :
+   *  la case de certification n'est ni affichée ni éditable sinon. */
+  peutCertifier: boolean;
   requiredRoleLabel: string;
 }) {
   const totalValeur = data.articles.reduce(
@@ -2234,6 +2192,7 @@ function Step4PVReception({
                   <TableHead className="text-right">P.U.</TableHead>
                   <TableHead className="text-right">Total</TableHead>
                   <TableHead>État constaté</TableHead>
+                  <TableHead>Photos</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -2284,6 +2243,12 @@ function Step4PVReception({
                             </Badge>
                           ))}
                       </TableCell>
+                      <TableCell>
+                        <CellulePhotos
+                          photos={controle?.photos}
+                          designation={article.designation}
+                        />
+                      </TableCell>
                     </TableRow>
                   );
                 })}
@@ -2300,6 +2265,7 @@ function Step4PVReception({
                     {formatAriary(totalValeur)}
                   </TableCell>
                   <TableCell />
+                  <TableCell />
                 </TableRow>
               </TableFooter>
             </Table>
@@ -2309,43 +2275,6 @@ function Step4PVReception({
                 <strong>Observations :</strong> {data.observationsBL}
               </div>
             )}
-
-            {/* Preuves photographiques du contrôle magasinier */}
-            {(() => {
-              const articlesWithPhotos = data.articles
-                .map((a) => ({
-                  article: a,
-                  photos: data.controles.find((c) => c.articleId === a.id)?.photos ?? [],
-                }))
-                .filter((x) => x.photos.length > 0);
-              if (articlesWithPhotos.length === 0) return null;
-              return (
-                <div className="space-y-2">
-                  <Separator />
-                  <h4 className="text-sm font-semibold flex items-center gap-2">
-                    <Camera className="h-4 w-4 text-muted-foreground" />
-                    Preuves photographiques — contrôle magasinier
-                  </h4>
-                  {articlesWithPhotos.map(({ article, photos }) => (
-                    <div key={article.id} className="space-y-1">
-                      <p className="text-xs font-medium text-muted-foreground">
-                        {article.designation} ({photos.length} photo(s))
-                      </p>
-                      <div className="flex flex-wrap gap-2">
-                        {photos.map((p, i) => (
-                          <img
-                            key={i}
-                            src={p}
-                            alt={`${article.designation} — photo ${i + 1}`}
-                            className="h-20 w-20 object-cover rounded border print:h-24 print:w-24"
-                          />
-                        ))}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              );
-            })()}
 
             <Separator />
 
@@ -2430,19 +2359,27 @@ function Step4PVReception({
             </Badge>
           </CardContent>
         </Card>
-      )}
-
-      {/* Certification du dépositaire — ACTION de l'étape 4, hors du document
+      )}{/* Certification du dépositaire — ACTION de l'étape 4, hors du document
           imprimé : c'est la case que l'écran exige avant d'activer le bouton
-          « Signer la validation finale » (canProceed, étape 4). Placée après le
-          PV et juste avant ce bouton. */}
-      <CertificationDepositaireCard
-        className="print-hidden"
-        certifie={data.depositaireCertifie}
-        onCertifie={(v) => onChange({ depositaireCertifie: v })}
-        canEdit={canEditCertification}
-        requiredRoleLabel={requiredRoleLabel}
-      />
+          «Signer la validation finale» (canProceed, étape 4). Placée après le
+          PV et juste avant ce bouton.
+
+          Elle n'est RENDUE QUE pour le rôle qui peut l'exécuter (le
+          dépositaire comptable). Affichée en lecture seule aux autres
+          rôles — le chef logistique en particulier — elle matérialisait une
+          action qui ne lui revient pas, avec une mention « Étape réservée
+          au Dépositaire » qui surlignait l'anomalie au lieu de la lever.
+          Le PV reste par ailleurs entièrement consultable par tous : seule
+          la case d'ACTION disparaît. */}
+      {peutCertifier && (
+        <CertificationDepositaireCard
+          className="print-hidden"
+          certifie={data.depositaireCertifie}
+          onCertifie={(v) => onChange({ depositaireCertifie: v })}
+          canEdit={peutCertifier}
+          requiredRoleLabel={requiredRoleLabel}
+        />
+      )}
 
       {/* Print-specific CSS */}
       <style>{`
@@ -2578,6 +2515,81 @@ function Step3WaitingLogistique({
   );
 }
 
+/** Photo dont l'envoi a échoué APRÈS la signature : elle est conservée en
+ *  mémoire pour permettre un nouvel envoi seul (sans repasser par la
+ *  signature, qui est déjà actée côté serveur). */
+export type PhotoEnEchec = {
+  ligneRefId: string;
+  numeroOrdre: number;
+  designation: string;
+  dataUrls: string[];
+  raison: string;
+};
+
+/**
+ * Envoie les photos d'un contrôle magasinier APRÈS la signature — jamais
+ * avant, et JAMAIS de façon bloquante.
+ *
+ * La signature est déjà enregistrée quand cette fonction est appelée : elle ne
+ * lève donc jamais (toute erreur est collectée dans `echecs`) et le client peut
+ * rejouer l'envoi plus tard via `reessayerPhotos`. Un contrôle sans photo
+ * n'appelle rien du tout.
+ */
+export async function envoyerPhotosApresSignature(
+  controles: Array<{ numero_ordre: number; photos?: string[] }>,
+  lignes: EntreeLigne[],
+  upload: (ligneRefId: string, dataUrls: string[]) => Promise<string[]> =
+    uploadPhotosLigne
+): Promise<{ envoyees: number; echecs: PhotoEnEchec[] }> {
+  let envoyees = 0;
+  const echecs: PhotoEnEchec[] = [];
+  for (const controle of controles) {
+    const dataUrls = controle.photos ?? [];
+    if (dataUrls.length === 0) continue; // aucune photo : rien à envoyer
+    const ligne = (lignes ?? []).find(
+      (l) => Number(l.numeroOrdre) === Number(controle.numero_ordre)
+    );
+    // `POST /api/upload` rattache le fichier via `files_related_mph.related_id`,
+    // comparé à l'id NUMÉRIQUE de la ligne : l'id numérique prime, le
+    // documentId n'est qu'un repli (sans lui, le fichier reste orphelin).
+    const ligneRefId = ligne?.id ? String(ligne.id) : ligne?.documentId;
+    const designation = ligne?.designation || `Article ${controle.numero_ordre}`;
+    if (!ligneRefId) {
+      echecs.push({
+        ligneRefId: "",
+        numeroOrdre: controle.numero_ordre,
+        designation,
+        dataUrls,
+        raison: "ligne introuvable côté serveur",
+      });
+      continue;
+    }
+    try {
+      const urls = await upload(ligneRefId, dataUrls);
+      if (!urls || urls.length === 0) {
+        echecs.push({
+          ligneRefId,
+          numeroOrdre: controle.numero_ordre,
+          designation,
+          dataUrls,
+          raison: "aucun fichier enregistré par le serveur",
+        });
+        continue;
+      }
+      envoyees += urls.length;
+    } catch (e) {
+      echecs.push({
+        ligneRefId,
+        numeroOrdre: controle.numero_ordre,
+        designation,
+        dataUrls,
+        raison: e instanceof Error ? e.message : "envoi impossible",
+      });
+    }
+  }
+  return { envoyees, echecs };
+}
+
 /** Étape 3 — Vue dédiée du logistique (chef de service 2).
  *  Affiche la synthèse du contrôle magasinier et une case de validation
  *  propre au logistique. NE PAS confondre avec Step3EnregistrementDepositaire
@@ -2621,117 +2633,128 @@ export function Step3SignatureLogistique({
         </span>
       </div>
 
-      {/* En-tête du bon de livraison — même source que Step1/Step4 : la
-          synthèse ci-dessous ne donnait QUE des agrégats, le chef logistique
-          ne pouvait donc vérifier ni le circuit ni le contenu livré. */}
-      <Card>
-        <CardHeader className="py-4">
-          <div className="flex items-center gap-2">
-            <FileText className="h-5 w-5 text-muted-foreground" />
-            <CardTitle className="text-base">Bon de livraison</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid gap-4 sm:grid-cols-3 text-sm">
-            <div>
-              <span className="text-muted-foreground block">Fournisseur :</span>
-              <div className="font-semibold">{data.fournisseur || "—"}</div>
-            </div>
-            <div>
-              <span className="text-muted-foreground block">N° Bon de livraison :</span>
-              <div className="font-semibold font-mono">{data.numeroBL || "—"}</div>
-            </div>
-            <div>
-              <span className="text-muted-foreground block">Date du BL :</span>
-              <div className="font-semibold">{data.dateBL || "—"}</div>
-            </div>
-          </div>
-          <div className="mt-3 text-sm">
-            <span className="text-muted-foreground">Référence de l'entrée :</span>{" "}
-            <span className="font-semibold font-mono">{data.journalEntryId || "—"}</span>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Synthèse du contrôle magasinier */}
-      <Card className="border-l-4 border-l-blue-500">
-        <CardHeader className="py-4">
-          <div className="flex items-center justify-between">
+      {/* Bon de livraison + Synthèse du contrôle physique — côte à côte dès
+          la largeur `md` (le conteneur porte `md:grid-cols-2`). Empilés, ces
+          deux cartes Occupaient tout l'écran en hauteur pour une information
+          dense : le chef logistique devait faire défiler pour faire le lien
+          entre le BL et le constat du magasinier — les deux lectures sont
+          faites ensemble, sur une seule ligne.
+          `items-start` évite qu'une carte plus courte s'étire sur la hauteur
+          de l'autre. */}
+      <div className="grid gap-6 md:grid-cols-2 items-start">
+        <Card>
+          <CardHeader className="py-4">
             <div className="flex items-center gap-2">
-              <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-              <CardTitle className="text-base">
-                Synthèse du contrôle physique (Magasinier)
-              </CardTitle>
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <CardTitle className="text-base">Bon de livraison</CardTitle>
             </div>
-            <Badge
-              className={
-                magasinierCertifie
-                  ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                  : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
-              }
-            >
-              {magasinierCertifie
-                ? "Certifié par le magasinier"
-                : "En attente du magasinier"}
-            </Badge>
-          </div>
-        </CardHeader>
-        <CardContent className="pt-0 space-y-3">
-          <div className="grid gap-3 sm:grid-cols-3 text-sm">
-            <div className="p-2.5 rounded bg-muted/60">
-              <span className="text-xs text-muted-foreground block">Articles conformes</span>
-              <span className="text-base font-semibold text-green-600 dark:text-green-400">
-                {conformesCount} / {data.articles.length}
-              </span>
-            </div>
-            <div className="p-2.5 rounded bg-muted/60">
-              <span className="text-xs text-muted-foreground block">Articles avec réserve(s)</span>
-              <span className={`text-base font-semibold ${articlesAvecReserves.length > 0 ? "text-destructive" : "text-muted-foreground"}`}>
-                {articlesAvecReserves.length}
-              </span>
-            </div>
-            <div className="p-2.5 rounded bg-muted/60">
-              <span className="text-xs text-muted-foreground block">Écarts de quantité</span>
-              <span className={`text-base font-semibold ${ecartsQte.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
-                {ecartsQte.length}
-              </span>
-            </div>
-          </div>
-
-          {articlesAvecReserves.length > 0 && (
-            <div className="space-y-1.5 pt-1">
-              <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
-                <AlertTriangle className="h-3.5 w-3.5" />
-                Réserves émises par le magasinier ({articlesAvecReserves.length}) :
-              </p>
-              <div className="space-y-1.5">
-                {articlesAvecReserves.map((c) => {
-                  const art = data.articles.find((a) => a.id === c.articleId);
-                  return (
-                    <div
-                      key={c.articleId}
-                      className="text-xs p-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
-                    >
-                      <div>
-                        <span className="font-semibold text-destructive">{art?.designation || "Article"} :</span>{" "}
-                        <span>{c.remarque || "(Aucun motif saisi)"}</span>
-                      </div>
-                      <Badge variant="destructive" className="text-[10px] shrink-0 self-start sm:self-auto">
-                        État : {ETAT_LABELS[c.etat]} — Non conforme
-                      </Badge>
-                    </div>
-                  );
-                })}
+          </CardHeader>
+          <CardContent className="pt-0">
+            {/* 2 colonnes (et non 3) : la carte occupe désormais la moitié de la
+                largeur, trois champs y seraient illisibles. */}
+            <div className="grid gap-4 sm:grid-cols-2 text-sm">
+              <div>
+                <span className="text-muted-foreground block">Fournisseur :</span>
+                <div className="font-semibold">{data.fournisseur || "—"}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">N° Bon de livraison :</span>
+                <div className="font-semibold font-mono">{data.numeroBL || "—"}</div>
+              </div>
+              <div>
+                <span className="text-muted-foreground block">Date du BL :</span>
+                <div className="font-semibold">{data.dateBL || "—"}</div>
               </div>
             </div>
-          )}
+            <div className="mt-3 text-sm">
+              <span className="text-muted-foreground">Référence de l'entrée :</span>{" "}
+              <span className="font-semibold font-mono">{data.journalEntryId || "—"}</span>
+            </div>
+          </CardContent>
+        </Card>
 
-          <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 text-sm">
-            <span className="text-muted-foreground">Valeur totale de l'entrée :</span>
-            <span className="font-semibold text-primary">{formatAriary(totalValeur)}</span>
-          </div>
-        </CardContent>
-      </Card>
+        {/* Synthèse du contrôle magasinier */}
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <ClipboardCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                <CardTitle className="text-base">
+                  Synthèse du contrôle physique (Magasinier)
+                </CardTitle>
+              </div>
+              <Badge
+                className={
+                  magasinierCertifie
+                    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                    : "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400"
+                }
+              >
+                {magasinierCertifie
+                  ? "Certifié par le magasinier"
+                  : "En attente du magasinier"}
+              </Badge>
+            </div>
+          </CardHeader>
+          <CardContent className="pt-0 space-y-3">
+            {/* Trois compteurs côte à côte à partir de `lg` : sous cette largeur
+                la carte est trop étroite, ils restent empilés. */}
+            <div className="grid gap-3 lg:grid-cols-3 text-sm">
+              <div className="p-2.5 rounded bg-muted/60">
+                <span className="text-xs text-muted-foreground block">Articles conformes</span>
+                <span className="text-base font-semibold text-green-600 dark:text-green-400">
+                  {conformesCount} / {data.articles.length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded bg-muted/60">
+                <span className="text-xs text-muted-foreground block">Articles avec réserve(s)</span>
+                <span className={`text-base font-semibold ${articlesAvecReserves.length > 0 ? "text-destructive" : "text-muted-foreground"}`}>
+                  {articlesAvecReserves.length}
+                </span>
+              </div>
+              <div className="p-2.5 rounded bg-muted/60">
+                <span className="text-xs text-muted-foreground block">Écarts de quantité</span>
+                <span className={`text-base font-semibold ${ecartsQte.length > 0 ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground"}`}>
+                  {ecartsQte.length}
+                </span>
+              </div>
+            </div>
+
+            {articlesAvecReserves.length > 0 && (
+              <div className="space-y-1.5 pt-1">
+                <p className="text-xs font-semibold text-destructive flex items-center gap-1.5">
+                  <AlertTriangle className="h-3.5 w-3.5" />
+                  Réserves émises par le magasinier ({articlesAvecReserves.length}) :
+                </p>
+                <div className="space-y-1.5">
+                  {articlesAvecReserves.map((c) => {
+                    const art = data.articles.find((a) => a.id === c.articleId);
+                    return (
+                      <div
+                        key={c.articleId}
+                        className="text-xs p-2.5 rounded-lg bg-destructive/10 border border-destructive/30 text-foreground flex flex-col sm:flex-row sm:items-center justify-between gap-1.5"
+                      >
+                        <div>
+                          <span className="font-semibold text-destructive">{art?.designation || "Article"} :</span>{" "}
+                          <span>{c.remarque || "(Aucun motif saisi)"}</span>
+                        </div>
+                        <Badge variant="destructive" className="text-[10px] shrink-0 self-start sm:self-auto">
+                          État : {ETAT_LABELS[c.etat]} — Non conforme
+                        </Badge>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between p-2.5 rounded-lg bg-muted/50 text-sm">
+              <span className="text-muted-foreground">Valeur totale de l'entrée :</span>
+              <span className="font-semibold text-primary">{formatAriary(totalValeur)}</span>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Détail ligne par ligne — LECTURE SEULE. Le chef logistique
           consulte, il ne modifie rien : aucun contrôle éditable ici. Les
@@ -2758,6 +2781,7 @@ export function Step3SignatureLogistique({
                 <TableHead className="text-right">Valeur</TableHead>
                 <TableHead>État constaté</TableHead>
                 <TableHead>Conformité</TableHead>
+                <TableHead>Photos</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -2807,6 +2831,12 @@ export function Step3SignatureLogistique({
                         <span className="text-xs text-muted-foreground">—</span>
                       )}
                     </TableCell>
+                    <TableCell>
+                      <CellulePhotos
+                        photos={controle?.photos}
+                        designation={article.designation}
+                      />
+                    </TableCell>
                   </TableRow>
                 );
               })}
@@ -2819,7 +2849,7 @@ export function Step3SignatureLogistique({
                 <TableCell className="text-right font-bold text-primary text-base">
                   {formatAriary(totalValeur)}
                 </TableCell>
-                <TableCell colSpan={2} />
+                <TableCell colSpan={3} />
               </TableRow>
             </TableFooter>
           </Table>
@@ -2829,52 +2859,13 @@ export function Step3SignatureLogistique({
               <strong>Observations :</strong> {data.observationsBL}
             </div>
           )}
-
-          {/* Preuves photographiques jointes par le magasinier — déjà
-              portées par data.controles[].photos, donc accessibles à cette
-              étape sans modifier le circuit de données. */}
-          {(() => {
-            const articlesWithPhotos = data.articles
-              .map((a) => ({
-                article: a,
-                photos: data.controles.find((c) => c.articleId === a.id)?.photos ?? [],
-              }))
-              .filter((x) => x.photos.length > 0);
-            if (articlesWithPhotos.length === 0) return null;
-            return (
-              <div className="space-y-2">
-                <Separator />
-                <h4 className="text-sm font-semibold flex items-center gap-2">
-                  <Camera className="h-4 w-4 text-muted-foreground" />
-                  Photos jointes par le magasinier
-                </h4>
-                {articlesWithPhotos.map(({ article, photos }) => (
-                  <div key={article.id} className="space-y-1">
-                    <p className="text-xs font-medium text-muted-foreground">
-                      {article.designation} ({photos.length} photo(s))
-                    </p>
-                    <div className="flex flex-wrap gap-2">
-                      {photos.map((p, i) => (
-                        <img
-                          key={i}
-                          src={p}
-                          alt={`${article.designation} — photo ${i + 1}`}
-                          className="h-20 w-20 object-cover rounded border"
-                        />
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            );
-          })()}
         </CardContent>
       </Card>
 
       {/* Case de certification logistique — propre à ce rôle */}
       <Card className={`transition-all duration-300 ${
         logistiqueCertifie
-          ? "border-green-500 bg-green-50/50 dark:bg-green-950/20"
+          ? "border-green-500 bg-green-50/50 dark:bg-green-900/20"
           : "border-cyan-300 dark:border-cyan-700"
       }`}>
         <CardContent className="pt-6">
@@ -2909,10 +2900,12 @@ export function Step3SignatureLogistique({
 
 /** Reconstruit l'état de l'écran (ReceptionData) depuis une entrée serveur.
  *  Source unique de vérité : la base — le localStorage n'est plus lu.
+ *  Les photos affichées sont celles RÉELLEMENT stockées côté serveur (URL
+ *  Strapi) : les Data URLs de saisie, volatiles, ne sont jamais persistées.
  *  Limitation documentée : le serveur ne stocke pas la quantité COMMANDÉE
  *  (uniquement la quantité livrée par ligne) — la valeur est reprise telle
  *  quelle, les écarts de saisie ne se reproduisent donc pas après rechargement. */
-function receptionDepuisEntree(entree: EntreeRecord): {
+export function receptionDepuisEntree(entree: EntreeRecord): {
   data: ReceptionData;
   extra: ReceptionDataExtra;
 } {
@@ -2933,6 +2926,9 @@ function receptionDepuisEntree(entree: EntreeRecord): {
     if (nonControle) etatsNonControles[`ligne-${l.numeroOrdre}`] = true;
     return {
       articleId: `ligne-${l.numeroOrdre}`,
+      // Photos déjà envoyées par le magasinier (URL persistée) : elles
+      // réapparaissent ici après un simple rechargement de page.
+      photos: l.photos ?? [],
       etat: (l.etat ?? "neuf") as EtatConstate,
       conforme: l.conforme ?? false,
       remarque: l.observation ?? "",
@@ -3077,6 +3073,141 @@ function OngletsTraitement({
         )}
       </button>
     </div>
+  );
+}
+
+/** Liste des entrées qui attendent la signature du rôle connecté.
+ *
+ *  Le magasinier (et les autres rôles) choisissent ici l'ordre de traitement :
+ *  une ligne = une pièce, un clic = l'écran de contrôle s'ouvre sur elle.
+ *  Tant que sa signature n'est pas apposée, la pièce reste dans cette liste ;
+ *  elle migre automatiquement dans « Articles traités » (les deux onglets sont
+ *  dérivés du même état serveur, aucun déplacement manuel n'est nécessaire).
+ *
+ *  Tri : les pièces ACTIONNABLES d'abord (bon de livraison saisi → le contrôle
+ *  peut commencer), puis les plus anciennes. Une pièce sans BL n'est pas
+ *  bloquante pour le magasinier : c'est le dépositaire qui doit encore la
+ *  saisir, on l'affiche donc sans la masquer, mais signalée « BL à saisir ». */
+export function ListeEntreesATraiter({
+  entrees,
+  role,
+  onOuvrir,
+}: {
+  entrees: EntreeRecord[];
+  role: AppRole;
+  onOuvrir: (e: EntreeRecord) => void;
+}) {
+  if (entrees.length === 0) {
+    return (
+      <Card className="print-hidden">
+        <CardContent className="py-12 text-center space-y-2">
+          <PackageCheck className="h-8 w-8 mx-auto text-muted-foreground" />
+          <p className="font-medium">Aucune entrée à traiter</p>
+          <p className="text-sm text-muted-foreground max-w-md mx-auto">
+            Toutes les entrées dont vous avez la charge sont traitées. L'écran
+            se mettra à jour automatiquement dès qu'une nouvelle pièce vous sera
+            confiée.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const triees = [...entrees].sort((a, b) => {
+    const actionnable = (e: EntreeRecord) => (e.admin?.bonLivraison ? 1 : 0);
+    const diff = actionnable(b) - actionnable(a);
+    if (diff !== 0) return diff;
+    return (
+      new Date(a.dateEntree).getTime() - new Date(b.dateEntree).getTime()
+    );
+  });
+
+  return (
+    <Card className="print-hidden">
+      <CardHeader className="py-4">
+        <CardTitle className="text-base flex items-center gap-2">
+          <ClipboardCheck className="h-4 w-4" />
+          À traiter — {ROLES_CONFIG[role].label}
+        </CardTitle>
+        <CardDescription>
+          Choisissez la pièce à contrôler en premier : un clic ouvre son écran
+          de traitement. Dès votre signature apposée, elle passe dans l'onglet
+          « Articles traités ».
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="p-0">
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Référence</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Fournisseur</TableHead>
+              <TableHead>Bon de livraison</TableHead>
+              <TableHead className="text-right">Lignes</TableHead>
+              <TableHead className="text-right">Réserves</TableHead>
+              <TableHead>Statut</TableHead>
+              <TableHead />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {triees.map((e) => {
+              const lignes = e.lignes ?? [];
+              const reserves = lignes.filter(
+                (l) => l.conforme === false || l.etat === "defaillant"
+              ).length;
+              const bl = e.admin?.bonLivraison;
+              return (
+                <TableRow key={e.id} className="hover:bg-muted/40">
+                  <TableCell className="font-mono text-xs">{e.reference}</TableCell>
+                  <TableCell className="whitespace-nowrap">
+                    {new Date(e.dateEntree).toLocaleDateString("fr-FR")}
+                  </TableCell>
+                  <TableCell className="max-w-[180px] truncate">
+                    {e.fournisseur || "—"}
+                  </TableCell>
+                  <TableCell className="font-mono text-xs">
+                    {bl ? (
+                      bl
+                    ) : (
+                      <Badge
+                        variant="outline"
+                        className="border-amber-500 text-amber-700 dark:text-amber-300"
+                      >
+                        BL à saisir
+                      </Badge>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-right">{lignes.length}</TableCell>
+                  <TableCell className="text-right">
+                    {reserves > 0 ? (
+                      <span className="text-destructive font-semibold">
+                        {reserves}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">0</span>
+                    )}
+                  </TableCell>
+                  <TableCell>
+                    <Badge variant="outline">{e.statut}</Badge>
+                  </TableCell>
+                  <TableCell className="text-right">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="gap-1.5 h-8"
+                      onClick={() => onOuvrir(e)}
+                    >
+                      Traiter
+                      <ArrowRight className="h-3 w-3" />
+                    </Button>
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </TableBody>
+        </Table>
+      </CardContent>
+    </Card>
   );
 }
 
@@ -3234,6 +3365,7 @@ export function DetailEntreeTraitee({
                 <TableHead>État constaté</TableHead>
                 <TableHead>Conformité</TableHead>
                 <TableHead>Observation</TableHead>
+                <TableHead>Photos</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -3272,6 +3404,13 @@ export function DetailEntreeTraitee({
                   </TableCell>
                   <TableCell className="text-sm text-muted-foreground">
                     {l.observation || "—"}
+                  </TableCell>
+                  {/* Pièces jointes du contrôle, DANS la ligne : même logique
+                      que le PV et l'étape logistique — la photo se lit avec la
+                      désignation, l'état et la conformité, sans chasse à un
+                      bloc séparé sous le tableau. */}
+                  <TableCell>
+                    <CellulePhotos photos={l.photos} designation={l.designation} />
                   </TableCell>
                 </TableRow>
               ))}
@@ -3426,7 +3565,12 @@ export function PiecesEnAttente({
   );
 }
 
-export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
+export function MaterialEntry({
+  user,
+  onNavigate,
+  entreeCibleId = null,
+  onEntreeCibleConsumed,
+}: MaterialEntryProps) {
   // Session simulée : sélecteur « Connecté en tant que ».
   // Initialisé sur le rôle de l'utilisateur réellement connecté (session App).
   // Simplification : le magasinier connecté ne peut PAS changer de rôle —
@@ -3459,6 +3603,11 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // Articles dont le contrôle est incomplet (état non renseigné) — mis en
   // évidence à l'étape 2 (bordure destructive) jusqu'à correction.
   const [articlesIncomplets, setArticlesIncomplets] = useState<Set<string>>(new Set());
+  // Photos non envoyées APRÈS une signature DÉJÀ enregistrée (réseau coupé au
+  // moment de l'envoi). Elles restent en mémoire, avec leur ligne cible, pour
+  // permettre un réessai « photos seules » — la signature n'est JAMAIS rejouée.
+  const [photosEnEchec, setPhotosEnEchec] = useState<PhotoEnEchec[]>([]);
+  const [reenvoiPhotos, setReenvoiPhotos] = useState(false);
   // Informations complémentaires de l'entrée hydratée (brouillon ? états non
   // contrôlés par ligne ?) — recalculées à chaque hydratation uniquement.
   const [extra, setExtra] = useState<ReceptionDataExtra>({
@@ -3469,6 +3618,16 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // dépendances stables) pour ré-ancrer l'écran sur la MÊME entrée après un
   // rafraîchissement, au lieu d'en substituer une autre.
   const entreeServeurRef = useRef<EntreeRecord | null>(null);
+  // Pièce demandée par la cloche du navbar. Miroir REF : chargerEtatServeur
+  // (callback à dépendances stables) doit pouvoir la lire sans être recreé à
+  // chaque clic sur une notification.
+  const entreeCibleRef = useRef<string | number | null>(entreeCibleId);
+  entreeCibleRef.current = entreeCibleId;
+  // Miroir du callback de consommation : chargerEtatServeur ne doit pas être
+  // recréé quand le parent passe une fonction inline (le rechargement au
+  // montage dépend de son identité).
+  const onCibleConsumedRef = useRef(onEntreeCibleConsumed);
+  onCibleConsumedRef.current = onEntreeCibleConsumed;
   // Vrai dès qu'une SAISIE LOCALE non enregistrée existe (champs du bon de
   // livraison, constats du magasinier, case logistique). Une relecture de fond
   // s'abstient alors : elle ne doit jamais écraser la saisie en cours. Remis à
@@ -3524,6 +3683,36 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
             return;
           }
           modifieLocalementRef.current = false;
+
+        // ─── 0) Pièce demandée par la cloche du navbar ───
+        // Un clic sur une notification est une demande EXPLICITE : elle prime
+        // sur le routage automatique (ré-ancrage, rôle, pièce unique) et sur
+        // toute saisie en cours — l'utilisateur a visé CETTE pièce. La cible
+        // est consommée dès qu'elle est servie : une relecture ultérieure ne
+        // peut donc pas rouvrir une pièce déjà traitée par ce poste.
+        const cibleDemandee = entreeCibleRef.current;
+        if (cibleDemandee != null) {
+          const demandee = entrees.find(
+            (e) => String(e.id) === String(cibleDemandee)
+          );
+          if (demandee) {
+            setEntreeServeur(demandee);
+            entreeServeurRef.current = demandee;
+            const h = receptionDepuisEntree(demandee);
+            setReceptionData(h.data);
+            setExtra(h.extra);
+            setLogistiqueCertifie(!!demandee.signatures?.chefService2);
+            setMultiAttente(null);
+            setPiecesEnAttente([]);
+            setCurrentStep(stepDepuisEntree(demandee));
+            setHydratation({ etat: "pret" });
+            entreeCibleRef.current = null;
+            onCibleConsumedRef.current?.();
+            return;
+          }
+          // Pièce inconnue (traitée entre-temps) : on poursuit le routage
+          // normal plutôt que d'afficher un écran vide.
+        }
 
         // ─── 1) Ré-ancrage : une entrée est déjà affichée à l'écran ───
         // Elle n'y reste que tant qu'elle attend une action du rôle connecté.
@@ -3763,6 +3952,55 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
   // Rafraîchissement = recharger les entrées depuis le serveur.
   const refreshNotifications = () => chargerEtatServeur();
 
+  // Réessai d'envoi des photos SEULES : la signature étant déjà actée côté
+  // serveur, on ne rejoue QUE l'upload des photos restées en échec. Ne lève
+  // jamais — un nouvel échec laisse la liste d'attente affichée.
+  const reessayerEnvoiPhotos = async (liste?: PhotoEnEchec[]) => {
+    const aEnvoyer = liste ?? photosEnEchec;
+    if (aEnvoyer.length === 0 || reenvoiPhotos) return;
+    setReenvoiPhotos(true);
+    try {
+      const resultat = await envoyerPhotosApresSignature(
+        aEnvoyer.map((p) => ({
+          numero_ordre: p.numeroOrdre,
+          photos: p.dataUrls,
+        })),
+        entreeServeur?.lignes ?? []
+      );
+      if (resultat.echecs.length === 0) {
+        setPhotosEnEchec([]);
+        const recharge = await fetchEntreesDetail();
+        if (recharge.ok) setEntreesChargees(recharge.entrees);
+        toast.success("Photos enregistrées", {
+          description:
+            "Les pièces jointes sont désormais disponibles au PV et à la consultation.",
+        });
+      } else {
+        setPhotosEnEchec(resultat.echecs);
+        toast.error("Envoi des photos toujours en échec", {
+          description: `${resultat.echecs.length} photo(s) à réessayer : ${resultat.echecs[0].raison}.`,
+        });
+      }
+    } finally {
+      setReenvoiPhotos(false);
+    }
+  };
+
+  // Une autre entrée affichée : les photos en attente d'envoi n'ont plus de
+  // sens (elles visaient la précédente).
+  useEffect(() => {
+    setPhotosEnEchec((enAttente) =>
+      enAttente.filter((p) =>
+        (entreeServeur?.lignes ?? []).some(
+          (l) =>
+            (l.id != null && String(l.id) === p.ligneRefId) ||
+            (l.id == null && l.documentId === p.ligneRefId)
+        )
+      )
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entreeServeur?.id]);
+
   useEffect(() => {
     // Chacun joue son rôle : au changement de rôle (autres que magasinier), on
     // repositionne sur son étape d'accueil. Le magasinier reste sur son
@@ -3841,6 +4079,25 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
     setLogistiqueCertifie(!!e.signatures?.chefService2);
     setCurrentStep(stepDepuisEntree(e));
   };
+
+  // ─── Ouverture demandée depuis la cloche du navbar ───
+  // Au montage, la sélection est déjà faite par chargerEtatServeur (qui lit
+  // entreeCibleRef). Cet effet couvre le cas où l'écran est DÉJÀ ouvert et que
+  // l'utilisateur clique une autre notification : la pièce est alors
+  // immédiatement sélectionnée depuis la liste déjà chargée ; si elle ne l'est
+  // pas encore, le chargement serveur en cours s'en chargera.
+  useEffect(() => {
+    if (entreeCibleId == null) return;
+    const dejaChargee = (entreesChargees ?? []).find(
+      (e) => String(e.id) === String(entreeCibleId)
+    );
+    if (dejaChargee) {
+      handleSelectionnerEntree(dejaChargee);
+      entreeCibleRef.current = null;
+      onEntreeCibleConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entreeCibleId]);
 
   // Case de certification logistique : la cocher est une saisie locale (la
   // signature n'est posée qu'au clic « Certifier ») — elle protège donc aussi
@@ -4029,6 +4286,55 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         toast.success(`Signature chef_service_1 posée — entrée ${updated.reference}`, {
           description: `Statut serveur : ${updated.statut}.`,
         });
+
+        // ─── Photos : envoyées APRÈS la signature ─────────────────────────
+        // La signature est DÉJÀ enregistrée : un échec d'envoi ne peut ni la
+        // bloquer ni l'annuler. On tente l'envoi, et les photos en échec sont
+        // conservées pour un réessai (bouton + toast) sans repasser par la
+        // signature. Bloc isolé par son propre try/catch : une erreur
+        // imprévue ici ne doit JAMAIT être rapportée comme un échec de
+        // certification (le `catch` de signature est réservé à la signature).
+        try {
+          const photosEnJeu = receptionData.controles
+            .map((c) => {
+              const art = receptionData.articles.find((a) => a.id === c.articleId);
+              return {
+                numero_ordre: receptionData.articles.indexOf(art!) + 1,
+                photos: c.photos,
+              };
+            })
+            .filter((c) => (c.photos?.length ?? 0) > 0);
+          if (photosEnJeu.length > 0) {
+            const resultat = await envoyerPhotosApresSignature(
+              photosEnJeu,
+              updated.lignes ?? []
+            );
+            if (resultat.envoyees > 0) {
+              // URLs désormais persistées : on les recharge pour que l'étape
+              // suivante (PV) affiche les photos RÉELLEMENT stockées.
+              const recharge = await fetchEntreesDetail();
+              if (recharge.ok) setEntreesChargees(recharge.entrees);
+            }
+            if (resultat.echecs.length > 0) {
+              setPhotosEnEchec(resultat.echecs);
+              toast.error("Signature enregistrée, mais photos non envoyées", {
+                description:
+                  resultat.echecs.length === 1
+                    ? `La photo de « ${resultat.echecs[0].designation} » n'a pas pu être envoyée (${resultat.echecs[0].raison}). La signature reste valide : utilisez « Réessayer l'envoi des photos ».`
+                    : `${resultat.echecs.length} photo(s) n'ont pas pu être envoyées (réseau instable). La signature reste valide : utilisez « Réessayer l'envoi des photos ».`,
+                duration: 12000,
+                action: {
+                  label: "Réessayer l'envoi des photos",
+                  onClick: () => void reessayerEnvoiPhotos(resultat.echecs),
+                },
+              });
+            }
+          }
+        } catch (photoErr) {
+          // Chemin théorique (envoyerPhotosApresSignature ne lève jamais) :
+          // on ne laisse pas une photo jeter la certification affichée.
+          console.warn("[photos] envoi après signature en échec :", photoErr);
+        }
       } catch (err) {
         const axiosErr = err as {
           response?: { status?: number; data?: { error?: { message?: string } } };
@@ -4406,6 +4712,45 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         </div>
       </div>
 
+      {/* Photos non envoyées APRÈS une signature déjà enregistrée : la signature
+          n'est jamais remise en cause, seul l'envoi est proposé à nouveau. */}
+      {photosEnEchec.length > 0 && (
+        <Message
+          variant="warning"
+          printHidden
+          title={`Signature enregistrée, mais ${photosEnEchec.length} photo(s) n'ont pas pu être envoyées`}
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              className="gap-1.5"
+              disabled={reenvoiPhotos}
+              onClick={() => void reessayerEnvoiPhotos()}
+            >
+              {reenvoiPhotos ? (
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+              ) : (
+                <RefreshCw className="h-3.5 w-3.5" />
+              )}
+              Réessayer
+            </Button>
+          }
+        >
+          <p>
+            Votre certification magasinier est VALIDE : seul l'envoi des pièces
+            jointes a échoué. Vous pouvez renvoyer les photos sans repasser par
+            la signature.
+          </p>
+          <ul className="msg-list">
+            {photosEnEchec.map((p) => (
+              <li key={`${p.ligneRefId}-${p.numeroOrdre}`}>
+                {p.designation} — {p.dataUrls.length} photo(s) : {p.raison}
+              </li>
+            ))}
+          </ul>
+        </Message>
+      )}
+
       {/* Aucune pièce n'attend la signature de ce rôle : on explique où le
           circuit est bloqué au lieu d'afficher une étape vide « 0 / 0 », et
           chaque pièce est consultable en détail (lecture seule). */}
@@ -4425,51 +4770,20 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         nbTraitees={entreesTraitees.length}
       />
 
-      {/* Notifications du rôle connecté (vue simplifiée : SON onglet uniquement) */}
-      {(isMagasinierSession || isFixedDepositaire || isFixedLogistique) && (
-        <NotificationsBell
-          role={activeRole}
-          entrees={entreesChargees}
-          onSelectEntree={handleSelectionnerEntree}
-        />
-      )}
+      {/* Les notifications du rôle connecté vivent désormais dans la cloche du
+          navbar (NotificationBell) : plus de second panneau sur cet écran.
 
-      {/* Plusieurs pièces attendent ce rôle : aucune n'est ouverte
-          automatiquement — l'utilisateur choisit dans la cloche ci-dessus
-          ou via les boutons d'accès rapide ci-dessous. */}
+          File de traitement : la liste des pièces qui attendent CE rôle. Le
+          magasinier y choisit celle qu'il traite en premier (un clic ouvre
+          l'écran de contrôle dessus). Aucune n'est ouverte automatiquement,
+          pour ne pas risquer d'agir sur la mauvaise pièce — sauf demande
+          explicite, via une notification de la cloche (entreeCibleId). */}
       {multiAttente && multiAttente.references.length > 1 && (
-        <div
-          className={`print-hidden flex flex-col gap-2 p-3 rounded-lg border border-border ${bandeauRoleClasse(
-            activeRole
-          )}`}
-        >
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 shrink-0" />
-            <span className="text-sm">
-              <strong>{multiAttente.references.length} entrées</strong> attendent
-              votre intervention. Choisissez celle à traiter :
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-2 pt-1">
-            {multiAttente.references.map((ref) => {
-              const e = entreesChargees?.find((ent) => ent.reference === ref);
-              return (
-                <Button
-                  key={ref}
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (e) handleSelectionnerEntree(e);
-                  }}
-                  className="gap-1.5 h-8 bg-background/80 hover:bg-background"
-                >
-                  <span>Ouvrir {ref}</span>
-                  <ArrowRight className="h-3 w-3" />
-                </Button>
-              );
-            })}
-          </div>
-        </div>
+        <ListeEntreesATraiter
+          entrees={entreesATraiter}
+          role={activeRole}
+          onOuvrir={handleSelectionnerEntree}
+        />
       )}
 
       {/* Étape 1 branchée sur l'API : la référence ENT-AAAA-NNN retournée par
@@ -4675,10 +4989,18 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
         </Card>
       ) : (
       <>
-      {/* Vue simplifiée du magasinier : SON onglet uniquement */}
-      {isMagasinierSession && !step1Complete(receptionData) && (
-        <MagasinierLockedNotice depositaireName={depositaireName} />
-      )}
+      {/* Vue simplifiée du magasinier : SON onglet uniquement.
+          L'écran d'attente ne concerne QUE l'entrée réellement ouverte. Quand
+          plusieurs pièces attendent le rôle, c'est la LISTE « À traiter » qui
+          est affichée à la place : sans cette garde, `receptionData` étant le
+          jeu de données VIDE de repli (aucune entrée présélectionnée),
+          `step1Complete` valait false et l'écran annonçait à tort « aucun
+          matériel à contrôler » alors que les articles attendaient. */}
+      {isMagasinierSession &&
+        !(multiAttente && multiAttente.references.length > 1) &&
+        !step1Complete(receptionData) && (
+          <MagasinierLockedNotice depositaireName={depositaireName} />
+        )}
       {isMagasinierSession &&
         step1Complete(receptionData) &&
         !receptionData.magasinierCertifie && (
@@ -4756,7 +5078,7 @@ export function MaterialEntry({ user, onNavigate }: MaterialEntryProps) {
           logistiqueName={logistiqueName}
           onOpenJournal={() => onNavigate?.("journal")}
           onChange={handleDataChange}
-          canEditCertification={canPerformStepAction(activeRole, 4)}
+          peutCertifier={canPerformStepAction(activeRole, 4)}
           requiredRoleLabel={ROLES_CONFIG.depositaire.label}
         />
       )}

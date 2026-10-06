@@ -11,10 +11,10 @@ import {
   QrCode as QrCodeIcon,
   History,
   Loader2,
-  AlertTriangle,
   Maximize2,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { Message } from "./ui/message";
 import { User } from "../App";
 import {
   AffectationCleValidation,
@@ -32,7 +32,6 @@ import {
   genererExcelAffectation,
   valeurQrAffectation,
 } from "../lib/affectationDocuments";
-
 interface AffectationDetailModalProps {
   open: boolean;
   affectation: AffectationRecord | null;
@@ -42,7 +41,6 @@ interface AffectationDetailModalProps {
   onChanged?: () => void;
   onClose: () => void;
 }
-
 function InfoField({ label, value }: { label: string; value: string | number }) {
   return (
     <div>
@@ -51,7 +49,6 @@ function InfoField({ label, value }: { label: string; value: string | number }) 
     </div>
   );
 }
-
 export function AffectationDetailModal({
   open,
   affectation,
@@ -69,16 +66,13 @@ export function AffectationDetailModal({
   const [qrAgrandi, setQrAgrandi] = useState(false);
   // Copie locale mise à jour après chaque signature
   const [locale, setLocale] = useState<AffectationRecord | null>(null);
-
   if (!open || !affectation) return null;
   const record = locale && locale.reference === affectation.reference ? locale : affectation;
-
   const validations = getValidationsAffectation(record);
   const nb = getValidationCount(record);
   const statut = getStatutAffectationAffiche(record);
   const validee = record.statut === "Validée" || nb >= 4;
   const qrValue = valeurQrAffectation(record);
-
   const poserValidation = (key: AffectationCleValidation) => {
     setBusy(true);
     setErreur("");
@@ -97,7 +91,6 @@ export function AffectationDetailModal({
       setBusy(false);
     }
   };
-
   const telechargerPdf = async (action: "download" | "preview") => {
     setBusyDoc("pdf");
     setErreur("");
@@ -109,7 +102,6 @@ export function AffectationDetailModal({
       setBusyDoc("");
     }
   };
-
   const telechargerExcel = async () => {
     setBusyDoc("excel");
     setErreur("");
@@ -121,7 +113,6 @@ export function AffectationDetailModal({
       setBusyDoc("");
     }
   };
-
   /** Téléchargement du QR Code en PNG */
   const telechargerQr = () => {
     const svg = document.getElementById(
@@ -150,7 +141,6 @@ export function AffectationDetailModal({
     };
     img.src = url;
   };
-
   const stockSource = stock.find(
     (l) =>
       l.direction === record.direction &&
@@ -163,7 +153,6 @@ export function AffectationDetailModal({
       l.service === record.serviceDestinataire &&
       l.materiel === record.materiel
   );
-
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
@@ -198,7 +187,6 @@ export function AffectationDetailModal({
             <X className="h-5 w-5" />
           </button>
         </div>
-
         {/* Actions documents */}
         <div className="flex flex-wrap items-center gap-2 p-4 border-b border-border">
           <button
@@ -235,15 +223,12 @@ export function AffectationDetailModal({
             Excel
           </button>
         </div>
-
         <div className="p-6 space-y-6">
           {erreur && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-xs text-red-700 dark:text-red-400">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
+            <Message variant="danger" size="sm">
               {erreur}
-            </div>
+            </Message>
           )}
-
           {/* Informations */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3">
@@ -269,7 +254,6 @@ export function AffectationDetailModal({
               )}
             </div>
           </div>
-
           {/* Responsables */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3">Responsables</h4>
@@ -293,14 +277,12 @@ export function AffectationDetailModal({
               ))}
             </div>
           </div>
-
           {/* Validation */}
           <div>
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm text-card-foreground">Validation</h4>
               <span className="text-xs font-mono text-muted-foreground">{nb} / 4</span>
             </div>
-
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {validations.map((v, idx) => {
                 const precedenteSignee =
@@ -367,28 +349,22 @@ export function AffectationDetailModal({
                 );
               })}
             </div>
-
             {validee ? (
-              <div className="mt-3 flex items-start gap-2 px-4 py-3 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded-lg text-xs text-green-700 dark:text-green-400">
-                <CheckCircle2 className="h-4 w-4 shrink-0 mt-0.5" />
-                <span>
-                  <strong>✓ AFFECTATION VALIDÉE (4/4)</strong> — stock mis à jour :
-                  −{record.quantite} ({record.serviceSource}) / +
-                  {record.quantite} ({record.serviceDestinataire}), total de la
-                  Direction inchangé. Affectation verrouillée : plus modifiable
-                  sans nouvelle opération.
-                </span>
-              </div>
+              <Message variant="success" size="sm" className="mt-3">
+                <strong>AFFECTATION VALIDÉE (4/4)</strong> — stock mis à jour : −
+                {record.quantite} ({record.serviceSource}) / +
+                {record.quantite} ({record.serviceDestinataire}), total de la
+                Direction inchangé. Affectation verrouillée : plus modifiable sans
+                nouvelle opération.
+              </Message>
             ) : (
-              <div className="mt-3 flex items-start gap-2 px-4 py-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-xs text-blue-700 dark:text-blue-300">
-                <PenTool className="h-4 w-4 shrink-0 mt-0.5" />
-                4 validations obligatoires dans l'ordre : Responsable du
-                transfert (créateur) → Dépositaire → Chef de service 1 → Chef de
-                service 2. Aucune sortie, aucune nouvelle entrée.
-              </div>
+              <Message variant="info" size="sm" icon={PenTool} className="mt-3">
+                4 validations obligatoires dans l'ordre : Responsable du transfert
+                (créateur) → Dépositaire → Chef de service 1 → Chef de service 2.
+                Aucune sortie, aucune nouvelle entrée.
+              </Message>
             )}
           </div>
-
           {/* Stock après affectation */}
           {validee && (stockSource || stockDest) && (
             <div>
@@ -415,7 +391,6 @@ export function AffectationDetailModal({
               </div>
             </div>
           )}
-
           {/* Historique */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3 flex items-center gap-2">
@@ -433,7 +408,6 @@ export function AffectationDetailModal({
               ))}
             </ul>
           </div>
-
           {/* QR Code */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 p-4 border border-border rounded-lg bg-muted/20">
             <div className="p-2 bg-white rounded-lg shrink-0">
@@ -472,7 +446,6 @@ export function AffectationDetailModal({
             </div>
           </div>
         </div>
-
         {/* Confirmation de validation */}
         {confirmKey && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
@@ -516,7 +489,6 @@ export function AffectationDetailModal({
             </div>
           </div>
         )}
-
         {/* QR agrandi */}
         {qrAgrandi && (
           <div

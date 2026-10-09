@@ -31,12 +31,17 @@ import { User } from "../App";
 import { useCallback } from "react";
 import {
   creerEntree,
+  creerMateriel,
   fetchEntreesDetail,
+  fetchMaterials,
   signerEntree,
   uploadPhotosLigne,
   EchecApi,
+  MaterialOption,
   NouvelleEntreePayload,
 } from "../lib/api";
+import { NOMENCLATURES, estCodeNomenclature } from "../lib/nomenclature";
+import { RapprochementMateriel } from "./RapprochementMateriel";
 import {
   formatDelaiSync,
   marquerSync,
@@ -759,22 +764,63 @@ function MagasinierDoneCard({
 // ÉTAPE 1 — Bon de livraison (Dépositaire)
 // ──────────────────────────────────────────────
 
-function Step1BonLivraison({
+/**
+ * Conversion des articles saisis → lignes du payload `create-complete`.
+ *
+ * C'est ici que la DÉCISION de rapprochement devient une relation serveur :
+ * `materiel_id` part dès la création de l'entrée (étape 1), le serveur pose
+ * donc entree_ligne → material immédiatement — et pas seulement à la 3ᵉ
+ * signature (appliquerImpactStock, inchangé).
+ *
+ * Le champ n'est présent QUE si l'utilisateur a confirmé un lien : aucune
+ * correspondance approximative n'est jamais déduite automatiquement. Sans
+ * décision, le serveur conserve son comportement historique.
+ *
+ * `nomenclature` vient de la liste de référence (03/05/10) — jamais du champ
+ * « Référence » libre, qui alimente seul `reference`.
+ */
+export function lignesPayloadDepuisArticles(
+  articles: BonLivraisonArticle[]
+): NouvelleEntreePayload["lignes"] {
+  return articles.map((article, index) => ({
+    numero_ordre: index + 1,
+    designation: article.designation,
+    reference: article.referenceNomenclature || undefined,
+    quantite: article.quantiteLivree,
+    valeur_unitaire: article.prixUnitaire,
+    nomenclature: article.nomenclature || undefined,
+    ...(article.materielId ? { materiel_id: article.materielId } : {}),
+  }));
+}
+
+export function Step1BonLivraison({
   data,
   onChange,
   canEdit,
   requiredRoleLabel,
+  materiels = [],
+  onMaterielCree,
 }: {
   data: ReceptionData;
   onChange: (d: Partial<ReceptionData>) => void;
   canEdit: boolean;
   requiredRoleLabel: string;
+  /** Fiches matériel déjà en base — base de recherche du rapprochement
+   *  approximatif et source des vignettes photo des candidats. */
+  materiels?: MaterialOption[];
+  /** Une nouvelle fiche vient d'être créée : le parent l'ajoute à la liste
+   *  partagée (les lignes suivantes la voient aussitôt). */
+  onMaterielCree?: (materiel: MaterialOption) => void;
 }) {
+  // Ligne en cours de création de fiche matériel (anti double-clic).
+  const [creationEnCours, setCreationEnCours] = useState<string | null>(null);
+
   const addArticle = () => {
     const newArticle: BonLivraisonArticle = {
       id: generateArticleId(),
       designation: "",
       referenceNomenclature: "",
+      nomenclature: "",
       quantiteCommandee: 1,
       quantiteLivree: 1,
       prixUnitaire: 0,
@@ -792,11 +838,152 @@ function Step1BonLivraison({
     value: string | number
   ) => {
     onChange({
-      articles: data.articles.map((a) =>
-        a.id === id ? { ...a, [field]: value } : a
-      ),
+      articles: data.articles.map((a) => {
+        if (a.id !== id) return a;
+        const maj: BonLivraisonArticle = { ...a, [field]: value };
+        // Retouche de la DÉSIGNATION : la décision de rapprochement porte sur
+        // l'ancien texte — elle est annulée, la proposition ré-apparaîtra.
+        if (field === "designation" && value !== a.materielDesignationLiee) {
+          delete maj.materielId;
+          delete maj.materielLien;
+          delete maj.materielDesignationLiee;
+        }
+        return maj;
+      }),
     });
   };
+
+  /** Confirmation EXPLICITE : « oui, c'est le même article ». La relation
+   *  entree_ligne → material partira avec la création de l'entrée (étape 1),
+   *  pas seulement à la 3ᵉ signature. */
+  const confirmerMaterielExistant = (
+    id: string,
+    materiel: MaterialOption
+  ) => {
+    onChange({
+      articles: data.articles.map((a) =>
+        a.id === id
+          ? {
+              ...a,
+              materielId: materiel.documentId,
+              materielLien: "existant" as const,
+              materielDesignationLiee: a.designation,
+              // La fiche existante apporte sa nomenclature si la ligne est
+              // encore vide (cohérence material ↔ entree_ligne).
+              nomenclature: a.nomenclature || materiel.nomenclature || "",
+            }
+          : a
+      ),
+    });
+    toast.success(`Rapprochement confirmé : « ${materiel.designation} »`, {
+      description:
+        "La ligne d'entrée est rattachée à ce matériel dès la saisie.",
+    });
+  };
+
+  /** « Non, c'est un nouvel article » : la fiche material est créée SUR-LE-CHAMP
+   *  avec la nomenclature choisie — la ligne n'est jamais laissée orpheline. */
+  const creerNouveauMateriel = async (id: string) => {
+    const article = data.articles.find((a) => a.id === id);
+    if (!article || creationEnCours) return;
+    const designation = article.designation.trim();
+    if (!designation) return;
+    if (!article.nomenclature) {
+      toast.error("Nomenclature requise", {
+        description:
+          "Choisissez le code de nomenclature (03 / 05 / 10) de l'article avant de créer sa fiche.",
+      });
+      return;
+    }
+    setCreationEnCours(id);
+    try {
+      const cree = await creerMateriel({
+        designation,
+        nomenclature: article.nomenclature,
+      });
+      onChange({
+        articles: data.articles.map((a) =>
+          a.id === id
+            ? {
+                ...a,
+                materielId: cree.documentId,
+                materielLien: "nouveau" as const,
+                materielDesignationLiee: a.designation,
+              }
+            : a
+        ),
+      });
+      onMaterielCree?.(cree);
+      toast.success(`Fiche matériel créée : « ${cree.designation} »`, {
+        description: `Nomenclature ${article.nomenclature} — la ligne y est rattachée.`,
+      });
+    } catch (err) {
+      const axiosErr = err as {
+        response?: { data?: { error?: { message?: string } } };
+      };
+      toast.error("Création de la fiche matériel impossible", {
+        description:
+          axiosErr?.response?.data?.error?.message ||
+          (err instanceof Error ? err.message : "Erreur inconnue"),
+      });
+    } finally {
+      setCreationEnCours(null);
+    }
+  };
+
+  /** Bloc de rapprochement d'une ligne (désignation → fiche matériel). */
+  const rapprochement = (article: BonLivraisonArticle, index: number) => (
+    <RapprochementMateriel
+      articleId={article.id || String(index)}
+      designation={article.designation}
+      materiels={materiels}
+      nomenclature={article.nomenclature}
+      materielId={article.materielId}
+      materielLien={article.materielLien}
+      materielDesignationLiee={article.materielDesignationLiee}
+      peutModifier={canEdit}
+      creationEnCours={creationEnCours === article.id}
+      onConfirmerExistant={(m) => confirmerMaterielExistant(article.id, m)}
+      onNouvelArticle={() => void creerNouveauMateriel(article.id)}
+      onAnnulerLien={() =>
+        onChange({
+          articles: data.articles.map((a) => {
+            if (a.id !== article.id) return a;
+            const sans: BonLivraisonArticle = { ...a };
+            delete sans.materielId;
+            delete sans.materielLien;
+            delete sans.materielDesignationLiee;
+            return sans;
+          }),
+        })
+      }
+    />
+  );
+
+  /** Liste déroulante des codes de nomenclature (03 / 05 / 10) — remplace le
+   *  champ texte libre sur les NOUVELLES saisies ; une valeur antérieure hors
+   *  liste reste affichée telle quelle, sans être rétro-modifiée. */
+  const selectNomenclature = (article: BonLivraisonArticle, index: number) => (
+    <select
+      aria-label={`Nomenclature de l'article ${index + 1}`}
+      value={article.nomenclature ?? ""}
+      onChange={(e) => updateArticle(article.id, "nomenclature", e.target.value)}
+      disabled={!canEdit}
+      className="h-8 w-full min-w-[130px] rounded-md border border-input bg-background px-2 text-sm"
+    >
+      <option value="">— choisir —</option>
+      {NOMENCLATURES.map((n) => (
+        <option key={n.code} value={n.code}>
+          {n.code} — {n.libelle}
+        </option>
+      ))}
+      {article.nomenclature && !estCodeNomenclature(article.nomenclature) && (
+        <option value={article.nomenclature}>
+          {article.nomenclature} (saisie antérieure)
+        </option>
+      )}
+    </select>
+  );
 
   const totalBL = data.articles.reduce(
     (sum, a) => sum + a.quantiteLivree * a.prixUnitaire,
@@ -918,7 +1105,8 @@ function Step1BonLivraison({
                   <TableHeader>
                     <TableRow>
                       <TableHead className="w-[30%]">Désignation</TableHead>
-                      <TableHead>Réf. Nomenclature</TableHead>
+                      <TableHead>Référence</TableHead>
+                      <TableHead>Nomenclature</TableHead>
                       <TableHead className="text-right">Qté cmd.</TableHead>
                       <TableHead className="text-right">Qté livrée</TableHead>
                       <TableHead className="text-right">Prix unit.</TableHead>
@@ -927,7 +1115,7 @@ function Step1BonLivraison({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.articles.map((article) => (
+                    {data.articles.map((article, index) => (
                       <TableRow key={article.id}>
                         <TableCell>
                           <Input
@@ -943,6 +1131,9 @@ function Step1BonLivraison({
                             className="h-8 text-sm"
                             disabled={!canEdit}
                           />
+                          {/* Rapprochement approximatif : la suggestion
+                              apparaît dès la frappe, jamais liée seule. */}
+                          {rapprochement(article, index)}
                         </TableCell>
                         <TableCell>
                           <Input
@@ -959,6 +1150,7 @@ function Step1BonLivraison({
                             disabled={!canEdit}
                           />
                         </TableCell>
+                        <TableCell>{selectNomenclature(article, index)}</TableCell>
                         <TableCell>
                           <Input
                             type="number"
@@ -1044,7 +1236,7 @@ function Step1BonLivraison({
                   </TableBody>
                   <TableFooter>
                     <TableRow>
-                      <TableCell colSpan={5} className="text-right font-semibold">
+                      <TableCell colSpan={6} className="text-right font-semibold">
                         Total
                       </TableCell>
                       <TableCell className="text-right font-bold text-primary">
@@ -1085,6 +1277,7 @@ function Step1BonLivraison({
                         className="h-8 text-sm"
                         disabled={!canEdit}
                       />
+                      {rapprochement(article, index)}
                       <Input
                         value={article.referenceNomenclature}
                         onChange={(e) =>
@@ -1098,6 +1291,10 @@ function Step1BonLivraison({
                         className="h-8 text-sm font-mono"
                         disabled={!canEdit}
                       />
+                      <div className="space-y-1">
+                        <Label className="text-xs">Nomenclature</Label>
+                        {selectNomenclature(article, index)}
+                      </div>
                       <div className="grid grid-cols-3 gap-2">
                         <div>
                           <Label className="text-xs">Qté cmd.</Label>
@@ -2912,10 +3109,19 @@ export function receptionDepuisEntree(entree: EntreeRecord): {
   const articles: BonLivraisonArticle[] = (entree.lignes ?? []).map((l) => ({
     id: `ligne-${l.numeroOrdre}`,
     designation: l.designation,
-    referenceNomenclature: l.nomenclature || l.reference || "",
+    // « Référence » = champ `reference` ; « Nomenclature » = code 03/05/10.
+    // Repli sur `nomenclature` pour les lignes antérieures qui n'avaient qu'un
+    // seul texte libre servi aux deux champs (aucune rétro-modification).
+    referenceNomenclature: l.reference || l.nomenclature || "",
+    nomenclature: l.nomenclature || "",
     quantiteCommandee: l.quantite,
     quantiteLivree: l.quantite,
     prixUnitaire: l.prixUnitaire,
+    // Liaison déjà tranchée à la saisie : reprise après rechargement — l'écran
+    // ne re-propose JAMAIS un rapprochement sur une ligne déjà rattachée.
+    materielId: l.materielId,
+    materielLien: l.materielId ? "existant" : undefined,
+    materielDesignationLiee: l.materielId ? l.designation : undefined,
   }));
   // État non renseigné = on le note dans etatsNonControles ; la valeur locale
   // du champ reste neutre ("neuf") mais n'est JAMAIS affichée comme un vrai
@@ -3614,6 +3820,34 @@ export function MaterialEntry({
     estBrouillon: false,
     etatsNonControles: {},
   });
+  // Fiches matériel existantes : base de recherche du RAPPROCHEMENT approximatif
+  // à la saisie (étape 1) + vignettes photo des candidats. Chargées au montage,
+  // enrichies à chaque création de fiche depuis la saisie.
+  const [materiels, setMateriels] = useState<MaterialOption[]>([]);
+  const handleMaterielCree = useCallback((materiel: MaterialOption) => {
+    setMateriels((liste) =>
+      liste.some((m) => m.documentId === materiel.documentId)
+        ? liste
+        : [...liste, materiel]
+    );
+    // Écran Équipements / tableau de bord : la nouvelle fiche est déjà en
+    // base, on leur demande de relire le stock (même mécanisme qu'à la
+    // validation finale d'une entrée).
+    window.dispatchEvent(new CustomEvent("stock-mis-a-jour"));
+  }, []);
+  useEffect(() => {
+    let vivant = true;
+    // Échec réseau = liste vide : la saisie reste utilisable, seule la
+    // proposition de rapprochement s'en prive (aucun repli fictif).
+    fetchMaterials()
+      .then((liste) => {
+        if (vivant) setMateriels(liste);
+      })
+      .catch(() => undefined);
+    return () => {
+      vivant = false;
+    };
+  }, []);
   // Miroir REF de entreeServeur : lu par chargerEtatServeur (callback à
   // dépendances stables) pour ré-ancrer l'écran sur la MÊME entrée après un
   // rafraîchissement, au lieu d'en substituer une autre.
@@ -4194,14 +4428,7 @@ export function MaterialEntry({
           // dérive alors affectation_depositaire depuis l'utilisateur connecté
           // et laisse chef_service_1/2 à null jusqu'aux signatures.
           exigerAffectations: false,
-          lignes: receptionData.articles.map((article, index) => ({
-            numero_ordre: index + 1,
-            designation: article.designation,
-            reference: article.referenceNomenclature || undefined,
-            quantite: article.quantiteLivree,
-            valeur_unitaire: article.prixUnitaire,
-            nomenclature: article.referenceNomenclature || undefined,
-          })),
+          lignes: lignesPayloadDepuisArticles(receptionData.articles),
         };
         const entree = await creerEntree(payload);
         setEntreeServeur(entree);
@@ -5030,6 +5257,8 @@ export function MaterialEntry({
           onChange={handleDataChange}
           canEdit={canPerformStepAction(activeRole, 1)}
           requiredRoleLabel={ROLES_CONFIG.depositaire.label}
+          materiels={materiels}
+          onMaterielCree={handleMaterielCree}
         />
       )}
       {/* Dépositaire connecté : à l'étape 2 il n'a rien à faire — écran

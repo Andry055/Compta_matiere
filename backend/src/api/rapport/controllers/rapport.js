@@ -82,6 +82,33 @@ async function chargerMateriaux(strapi) {
   });
 }
 
+/**
+ * Identité de la fiche matériel affichée en tête de Fiche de stock :
+ * désignation, nomenclature et PHOTO DE RÉFÉRENCE (champ media `photos`,
+ * première image en guise de vignette). Lecture seule, optionnelle — un
+ * matériel sans photo renvoie `photo: null`, jamais une erreur.
+ */
+async function chargerFicheMateriel(strapi, documentId) {
+  if (!documentId) return null;
+  try {
+    const materiel = await strapi.documents(MATERIEL_UID).findOne({
+      documentId,
+      populate: ['photos'],
+    });
+    if (!materiel) return null;
+    const photos = Array.isArray(materiel.photos) ? materiel.photos : [];
+    const premiere = photos.find((p) => p && p.url);
+    return {
+      documentId: materiel.documentId,
+      designation: materiel.designation || null,
+      nomenclature: materiel.nomenclature || null,
+      photo: (premiere && premiere.url) || null,
+    };
+  } catch (e) {
+    return null;
+  }
+}
+
 module.exports = createCoreController('api::rapport.rapport', ({ strapi: app }) => ({
   /**
    * GET /api/rapports/recapitulation?annee=AAAA
@@ -199,7 +226,15 @@ module.exports = createCoreController('api::rapport.rapport', ({ strapi: app }) 
     }
 
     const { entrees, sorties } = await chargerLignes(app);
-    const data = calculs.calculerGrandLivre({ materielId: materiel, entrees, sorties, annee });
+    // En-tête de la fiche : identité + photo de référence du matériel suivi.
+    const fiche = await chargerFicheMateriel(app, materiel);
+    const data = calculs.calculerGrandLivre({
+      materielId: materiel,
+      entrees,
+      sorties,
+      annee,
+      materiel: fiche,
+    });
     ctx.body = { data };
   },
 

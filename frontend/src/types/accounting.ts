@@ -176,6 +176,22 @@ export interface BonLivraisonArticle {
   quantiteCommandee: number;
   quantiteLivree: number;
   prixUnitaire: number;
+  /** Code de NOMENCLATURE retenu dans la liste de référence (03/05/10).
+   *  Optionnel : les lignes antérieures à la liste de référence restent en
+   *  texte libre sans être rétro-modifiées. */
+  nomenclature?: string;
+  /** documentId de la fiche matériel LIÉE, posée À LA SAISIE après
+   *  confirmation explicite de l'utilisateur (jamais déduite automatiquement).
+   *  Absente = la ligne n'est pas encore rattachée. */
+  materielId?: string;
+  /** Décision humaine déjà prise pour cette ligne :
+   *  - "existant" : rapprochement confirmé sur une fiche déjà en stock ;
+   *  - "nouveau"  : l'utilisateur a déclaré un nouvel article, la fiche a
+   *                 été créée immédiatement (ligne plus orpheline). */
+  materielLien?: "existant" | "nouveau";
+  /** Désignation au moment de la décision : si l'utilisateur retouche le
+   *  texte, la décision est annulée et la proposition re-apparaît. */
+  materielDesignationLiee?: string;
 }
 
 export interface ControleArticle {

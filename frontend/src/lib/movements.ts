@@ -89,6 +89,12 @@ export interface EntreeLigne {
   etat?: "neuf" | "bon" | "moyen" | "defaillant" | null;
   /** Conformité constatée (null = pas encore contrôlé). */
   conforme?: boolean | null;
+  /** documentId de la fiche matériel RATTACHÉE à cette ligne : la relation
+   *  entree_ligne → material est posée DÈS LA SAISIE après confirmation du
+   *  rapprochement (ou à la création de la nouvelle fiche). */
+  materielId?: string;
+  /** Désignation de la fiche rattachée (affichage du lien). */
+  materielDesignation?: string;
 }
 
 /**

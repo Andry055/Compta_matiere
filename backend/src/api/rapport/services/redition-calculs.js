@@ -414,8 +414,13 @@ function calculerInventaire({ annee, entrees, sorties, materiaux = [], ouverture
 /**
  * FICHE DE STOCK / GRAND-LIVRE d'un matériel — chronologie des mouvements
  * avec quantité cumulée (tri par date puis référence).
+ *
+ * `materiel` (optionnel) est l'en-tête de la fiche : identité + photo de
+ * référence (champ media `photos` de material) renvoyée telle quelle — ce
+ * module reste PUR, aucune lecture de base ici. Absent : `materiel: null`
+ * (un matériel sans photo s'affiche normalement).
  */
-function calculerGrandLivre({ materielId, entrees, sorties, annee = null }) {
+function calculerGrandLivre({ materielId, entrees, sorties, annee = null, materiel = null }) {
   const lignes = [];
 
   for (const l of entrees) {
@@ -461,6 +466,8 @@ function calculerGrandLivre({ materielId, entrees, sorties, annee = null }) {
 
   return {
     materielId,
+    // En-tête de la fiche : désignation / nomenclature / photo de référence.
+    materiel: materiel || null,
     annee,
     mouvements,
     totalEntreesQ: mouvements.reduce((t, m) => t + m.quantiteEntree, 0),

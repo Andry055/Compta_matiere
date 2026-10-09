@@ -223,6 +223,9 @@ interface StrapiEntity {
      *  demande `populate[...][photos]` (ou `*`). */
     photos?: Array<{ url?: string | null; documentId?: string | null }> | null;
     materiel?: {
+      /** documentId de la fiche rattachée à la ligne (relation posée à la
+       *  saisie après confirmation du rapprochement). */
+      documentId?: string | null;
       designation?: string | null;
       categorie?: { nom?: string | null } | null;
     } | null;
@@ -343,6 +346,10 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
     // Étape 2 du flux « Arrivée matériel » : contrôle magasinier persisté.
     etat: (l.etat as EntreeLigne["etat"]) ?? null,
     conforme: l.conforme ?? null,
+    // Fiche matériel rattachée à la ligne : reprise du lien après rechargement
+    // (l'écran ne re-propose pas un rapprochement déjà tranché).
+    materielId: l.materiel?.documentId || undefined,
+    materielDesignation: l.materiel?.designation || undefined,
   }));
 
   return {
@@ -611,6 +618,11 @@ export async function signerEntree(
  */
 export const LIGNE_ENTREE_UID = "api::entree-ligne.entree-ligne";
 
+/** UID du content-type « fiche matériel » : cible du champ media `photos`
+ *  ajouté sur `material` (photo de référence, même mécanisme que les photos
+ *  de contrôle des lignes d'entrée). */
+export const MATERIAL_UID = "api::material.material";
+
 /** Convertit une Data URL (JPEG déjà compressé) en File, pour l'envoi
  *  multipart. Les Data URLs ne sont jamais stockées côté serveur. */
 export function dataUrlVersFile(dataUrl: string, nomFichier: string): File | null {
@@ -631,18 +643,24 @@ export function dataUrlVersFile(dataUrl: string, nomFichier: string): File | nul
 }
 
 /**
- * Envoie les photos d UNE ligne d'entrée et renvoie les URL persistées.
- * Le serveur rattache chaque fichier au champ media `photos` de la ligne visée.
+ * Envoi générique de photos vers le plugin d'upload NATIF de Strapi.
  *
- * `ligneRefId` = `refId` attendu par le plugin upload : l'id NUMÉRIQUE de la
- * ligne (`EntreeLigne.id`). Passer le documentId écrit bien le fichier sur le
- * disque mais ne le rattache jamais à la ligne (populate `photos` vide).
+ * Un seul mécanisme pour toutes les photos de l'application : lignes d'entrée
+ * (`api::entree-ligne.entree-ligne`) et fiches matériel
+ * (`api::material.material`) passent par POST /api/upload avec
+ * `ref` / `refId` / `field` — AUCUNE logique d'upload n'est recodée.
+ *
+ * `refId` doit être l'id NUMÉRIQUE de l'enregistrement : le plugin rattache le
+ * fichier via la table morph `files_related_mph.related_id`, comparée à la
+ * clé primaire. Un documentId y est stocké sans jamais être relu (populate vide).
  */
-export async function uploadPhotosLigne(
-  ligneRefId: string | number,
-  dataUrls: string[]
+async function envoyerPhotosVers(
+  uid: string,
+  champ: string,
+  refId: string | number,
+  dataUrls: string[],
+  nomBase: string
 ): Promise<string[]> {
-  const nomBase = `ligne-${ligneRefId}`;
   const fichiers = dataUrls
     .map((dataUrl, i) => dataUrlVersFile(dataUrl, `${nomBase}-${i + 1}.jpg`))
     .filter((f): f is File => f !== null);
@@ -650,9 +668,9 @@ export async function uploadPhotosLigne(
 
   const forme = new FormData();
   for (const fichier of fichiers) forme.append("files", fichier);
-  forme.append("ref", LIGNE_ENTREE_UID);
-  forme.append("refId", String(ligneRefId));
-  forme.append("field", "photos");
+  forme.append("ref", uid);
+  forme.append("refId", String(refId));
+  forme.append("field", champ);
 
   // multipart : ne PAS fixer Content-Type (axios ajoute la boundary).
   const { data } = await api.post("/api/upload", forme, {
@@ -666,6 +684,62 @@ export async function uploadPhotosLigne(
   return fichiersRetournes
     .map((f) => f?.url)
     .filter((u): u is string => !!u);
+}
+
+/**
+ * Envoie les photos d UNE ligne d'entrée et renvoie les URL persistées.
+ * Le serveur rattache chaque fichier au champ media `photos` de la ligne visée.
+ *
+ * `ligneRefId` = `refId` attendu par le plugin upload : l'id NUMÉRIQUE de la
+ * ligne (`EntreeLigne.id`). Passer le documentId écrit bien le fichier sur le
+ * disque mais ne le rattache jamais à la ligne (populate `photos` vide).
+ */
+export async function uploadPhotosLigne(
+  ligneRefId: string | number,
+  dataUrls: string[]
+): Promise<string[]> {
+  return envoyerPhotosVers(
+    LIGNE_ENTREE_UID,
+    "photos",
+    ligneRefId,
+    dataUrls,
+    `ligne-${ligneRefId}`
+  );
+}
+
+/**
+ * Photo de RÉFÉRENCE d'une fiche matériel (champ media `photos` de `material`).
+ * Même endpoint, même forme multipart que les photos de contrôle — seul le
+ * `ref` change. `materielRefId` est l'id NUMÉRIQUE de la fiche.
+ */
+export async function uploadPhotosMateriel(
+  materielRefId: string | number,
+  dataUrls: string[]
+): Promise<string[]> {
+  return envoyerPhotosVers(
+    MATERIAL_UID,
+    "photos",
+    materielRefId,
+    dataUrls,
+    `materiel-${materielRefId}`
+  );
+}
+
+/**
+ * Création d'une fiche matériel depuis la saisie d'une entrée.
+ *
+ * Appelé UNIQUEMENT quand l'utilisateur a déclaré « c'est un nouvel article »
+ * (aucune création silencieuse) : la ligne d'entrée est alors rattachée à la
+ * fiche créée au lieu de rester en désignation libre.
+ */
+export async function creerMateriel(payload: {
+  designation: string;
+  nomenclature?: string;
+  numero_serie?: string;
+  valeur_unitaire?: number;
+}): Promise<MaterialOption> {
+  const { data } = await api.post("/api/materials", { data: payload });
+  return mapMateriel(data?.data ?? {});
 }
 
 /** Rejet d'une entrée par un responsable habilité. */
@@ -689,6 +763,9 @@ export interface RefOption {
 }
 
 export interface MaterialOption {
+  /** Id NUMÉRIQUE Strapi — c'est la valeur attendue dans `refId` de
+   *  POST /api/upload pour rattacher une photo à la fiche. */
+  id?: number;
   documentId: string;
   designation: string;
   categorie?: string;
@@ -700,6 +777,10 @@ export interface MaterialOption {
   /** Statut serveur : en_stock / distribue / maintenance / reforme / sortie. */
   statut?: string;
   dateCreation?: string;
+  /** Photo de RÉFÉRENCE de la fiche (champ media `photos` de material).
+   *  URL absolue déjà normalisée — la première sert de vignette. Optionnel :
+   *  un matériel sans photo s'affiche normalement. */
+  photos?: string[];
 }
 
 /** Liste des fournisseurs (pour le formulaire « Nouvelle entrée »). */
@@ -797,6 +878,46 @@ export async function fetchMaterials(): Promise<MaterialOption[]> {
   }
 }
 
+interface StrapiLigneMateriel {
+  documentId?: string;
+  id: number;
+  designation?: string;
+  numero_serie?: string | null;
+  nomenclature?: string | null;
+  statut?: string | null;
+  quantite_stock?: number | null;
+  valeur_unitaire?: number | null;
+  categorie?: { nom?: string } | null;
+  createdAt?: string;
+  /** Champ media `photos` (photo de référence de la fiche) : peuplé seulement
+   *  si le client le demande — URL Strapi, normalisée en URL absolue. */
+  photos?: Array<{ url?: string | null }> | null;
+}
+
+/** Mapping ligne `material` → MaterialOption. Source partagée par la lecture
+ *  (GET /api/materials) et la création (POST /api/materials). */
+function mapMateriel(row: StrapiLigneMateriel): MaterialOption {
+  return {
+    // `id` NUMÉRIQUE : valeur attendue dans `refId` de POST /api/upload pour
+    // rattacher une photo à la fiche (clé primaire, jamais le documentId).
+    id: row.id,
+    documentId: row.documentId || String(row.id),
+    designation: row.designation || `Matériel #${row.id}`,
+    categorie: row.categorie?.nom || undefined,
+    quantiteStock: row.quantite_stock ?? undefined,
+    valeurUnitaire: row.valeur_unitaire ?? undefined,
+    numeroSerie: row.numero_serie || undefined,
+    nomenclature: row.nomenclature || undefined,
+    statut: row.statut || undefined,
+    dateCreation: row.createdAt || undefined,
+    // Photos de référence : la PREMIÈRE sert de vignette (pas de galerie).
+    // Aucune photo = tableau vide, jamais une erreur d'affichage.
+    photos: (row.photos ?? [])
+      .map((p) => urlMediaAffichable(p?.url))
+      .filter((u): u is string => !!u),
+  };
+}
+
 /** Comme fetchMaterials mais propage l'erreur : l'appelant peut afficher un
  *  état d'erreur explicite au lieu d'une liste vide silencieuse. */
 export async function fetchMaterialsOrThrow(): Promise<MaterialOption[]> {
@@ -804,34 +925,13 @@ export async function fetchMaterialsOrThrow(): Promise<MaterialOption[]> {
     params: {
       "pagination[pageSize]": 200,
       sort: "designation:asc",
-      populate: ["categorie"],
+      // `photos` : photo de référence de la fiche — sans ce populate la
+      // vignette serait toujours vide après un simple rechargement.
+      populate: ["categorie", "photos"],
     },
     timeout: 5000,
   });
-  return (data?.data ?? []).map(
-    (row: {
-      documentId?: string;
-      id: number;
-      designation?: string;
-      numero_serie?: string | null;
-      nomenclature?: string | null;
-      statut?: string | null;
-      quantite_stock?: number | null;
-      valeur_unitaire?: number | null;
-      categorie?: { nom?: string } | null;
-      createdAt?: string;
-    }) => ({
-      documentId: row.documentId || String(row.id),
-      designation: row.designation || `Matériel #${row.id}`,
-      categorie: row.categorie?.nom || undefined,
-      quantiteStock: row.quantite_stock ?? undefined,
-      valeurUnitaire: row.valeur_unitaire ?? undefined,
-      numeroSerie: row.numero_serie || undefined,
-      nomenclature: row.nomenclature || undefined,
-      statut: row.statut || undefined,
-      dateCreation: row.createdAt || undefined,
-    })
-  );
+  return (data?.data ?? []).map((row: StrapiLigneMateriel) => mapMateriel(row));
 }
 
 /**

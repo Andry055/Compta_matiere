@@ -896,6 +896,7 @@ export interface ApiMaterialMaterial extends Struct.CollectionTypeSchema {
     nomenclature: Schema.Attribute.String;
     numero_serie: Schema.Attribute.String;
     observations: Schema.Attribute.Text;
+    photos: Schema.Attribute.Media<'images', true>;
     publishedAt: Schema.Attribute.DateTime;
     quantite_stock: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<0>;
     statut: Schema.Attribute.Enumeration<

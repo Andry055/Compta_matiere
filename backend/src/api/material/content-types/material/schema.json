@@ -53,6 +53,13 @@
       "relation": "oneToMany",
       "target": "api::sortie-ligne.sortie-ligne",
       "mappedBy": "materiel"
+    },
+    "photos": {
+      "type": "media",
+      "multiple": true,
+      "allowedTypes": [
+        "images"
+      ]
     }
   }
 }

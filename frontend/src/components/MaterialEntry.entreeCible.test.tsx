@@ -8,7 +8,10 @@ import type { User } from "../App";
 
 vi.mock("../lib/api", () => ({
   creerEntree: vi.fn(),
+  creerMateriel: vi.fn(),
   fetchEntreesDetail: vi.fn(),
+  // Liste des fiches matériel pour le rapprochement à la saisie : aucune ici.
+  fetchMaterials: vi.fn(async () => []),
   signerEntree: vi.fn(),
   uploadPhotosLigne: vi.fn(async () => []),
 }));

@@ -33,6 +33,7 @@ import {
 } from "../lib/bordereauDocuments"
 import { genererPdfRecensement } from "../lib/pvRecensementDocuments"
 import { arrondirAriary } from "../lib/nombreEnLettres"
+import { MaterialPhoto } from "./MaterialPhoto"
 
 /* ─────────────────────── Affichage des montants ─────────────────────── */
 
@@ -433,6 +434,29 @@ export function RedditionSection({ user }: RedditionSectionProps) {
                 ))}
               </select>
             </div>
+
+            {/* Fiche matérielle : photo de RÉFÉRENCE du matériel suivi.
+                Champ optionnel — sans photo, la fiche s'affiche normalement. */}
+            {grandLivre.materiel && (
+              <div className="flex items-center gap-3 border border-border rounded-lg p-3 bg-muted/20">
+                <MaterialPhoto
+                  photo={grandLivre.materiel.photo}
+                  designation={grandLivre.materiel.designation}
+                  className="h-14 w-14 rounded-md object-cover flex-shrink-0"
+                />
+                <div>
+                  <div className="text-sm font-medium text-card-foreground">
+                    {grandLivre.materiel.designation || "—"}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    Nomenclature {grandLivre.materiel.nomenclature || "—"} ·
+                    {grandLivre.materiel.photo
+                      ? " photo de référence de la fiche"
+                      : " aucune photo de référence sur la fiche"}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Aperçu grand-livre */}
             <div className="overflow-x-auto border border-border rounded-lg">

@@ -241,6 +241,11 @@ const ENTREE_SIGN_ACTIONS = [
   'api::fournisseur.fournisseur.findOne',
   'api::material.material.find',
   'api::material.material.findOne',
+  // Saisie d'une entrée : quand l'utilisateur déclare « c'est un nouvel
+  // article », la fiche material est créée SUR-LE-CHAMP depuis le frontend
+  // (POST /api/materials) — sinon la ligne resterait en désignation libre.
+  // Jamais automatique : l'appel n'a lieu qu'après confirmation explicite.
+  'api::material.material.create',
   'api::category.category.find',
   'api::direction.direction.find',
   'api::service.service.find',
@@ -472,6 +477,19 @@ async function ensureAuthSetup(strapi) {
       if (granted.has(`authenticated:${action}`)) continue;
       await permQuery.create({ data: { action, role: authenticated.id } });
     }
+  }
+  // Lecture SEULE des fichiers téléversés pour TOUS les rôles métier (y
+  // compris Demandeur) : sans `plugin::upload.content-api.find`, le sanitizer
+  // Content-API retire le champ media `photos` des réponses et la photo de
+  // référence d'une fiche matériel n'apparaît jamais (Équipements, Fiche de
+  // stock) pour les profils non signataires. L'écriture (`content-api.upload`)
+  // reste réservée ci-dessus aux rôles habilités.
+  for (const def of APP_ROLES) {
+    const role = roles[def.type];
+    if (!role) continue;
+    const action = 'plugin::upload.content-api.find';
+    if (granted.has(`${def.type}:${action}`)) continue;
+    await permQuery.create({ data: { action, role: role.id } });
   }
 
   // 2sexies) Permissions « Reddition de compte » : rapports (lecture) et

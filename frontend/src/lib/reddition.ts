@@ -111,8 +111,20 @@ export interface GrandLivreMouvement {
   pieceJustificative: string | null;
 }
 
+/** En-tête de la Fiche de stock : identité du matériel + photo de RÉFÉRENCE
+ *  (champ media `photos` de material, première image). Absente = null : le
+ *  reste de la fiche s'affiche normalement. */
+export interface GrandLivreMateriel {
+  documentId?: string;
+  designation: string | null;
+  nomenclature: string | null;
+  photo: string | null;
+}
+
 export interface GrandLivre {
   materielId: string;
+  /** Fiche matériel rattachée (lecture seule, renvoyée par le serveur). */
+  materiel?: GrandLivreMateriel | null;
   annee: number | null;
   mouvements: GrandLivreMouvement[];
   totalEntreesQ: number;

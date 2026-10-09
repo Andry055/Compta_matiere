@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   AlertTriangle,
+  Camera,
   Package,
   RefreshCw,
   Search,
@@ -14,12 +15,17 @@ import {
   BarChart3,
 } from "lucide-react";
 import { AddEquipmentModal } from "./AddEquipmentModal";
+import { Button } from "./ui/button";
 import { AllEquipmentModal } from "./AllEquipmentModal";
 import { EquipmentActions } from "./EquipmentActions";
 import { User as UserType } from "../App";
 import { JournalEntry } from "../types/accounting";
 import { splitDepartement } from "../lib/movements";
-import { fetchMaterialsOrThrow, MaterialOption } from "../lib/api";
+import {
+  fetchMaterialsOrThrow,
+  MaterialOption,
+  uploadPhotosMateriel,
+} from "../lib/api";
 import { toast } from "sonner";
 import { Message } from "./ui/message";
 
@@ -48,6 +54,12 @@ interface EquipmentItem {
   quantity?: number;
   /** Localisation physique (vue lecture seule du Demandeur) */
   location?: string;
+  /** Photo de RÉFÉRENCE de la fiche (champ media `photos` de material).
+   *  Absente = vignette générique, aucun blocage d'affichage. */
+  photo?: string;
+  /** Id NUMÉRIQUE de la fiche côté serveur : valeur attendue dans `refId`
+   *  de POST /api/upload pour rattacher une nouvelle photo. */
+  serverId?: number;
 }
 
 // Mock current user - in real app this would come from props
@@ -230,8 +242,12 @@ function dateAchatAffichee(m: MaterialOption): string {
 }
 
 function materielVersEquipmentItem(m: MaterialOption): EquipmentItem {
+  // Photo de RÉFÉRENCE de la fiche (première sert de vignette) ; sans photo,
+  // repli sur le visuel générique déterministe — jamais d'image cassée.
+  const photo = m.photos?.[0] || undefined;
   return {
     id: m.documentId, // identifiant stable côté serveur (documentId)
+    serverId: m.id,
     name: m.designation,
     serialNumber: m.numeroSerie || m.nomenclature || m.documentId,
     category: m.categorie || "Non classé",
@@ -239,9 +255,12 @@ function materielVersEquipmentItem(m: MaterialOption): EquipmentItem {
     department: "Stock",
     purchaseDate: dateAchatAffichee(m),
     value: m.valeurUnitaire ?? 0,
-    image: `https://images.unsplash.com/photo-1541807084-5c52b6b3adef?w=80&h=80&fit=crop&crop=center&sig=${encodeURIComponent(
-      m.documentId
-    )}`, // visuel générique déterministe
+    photo,
+    image:
+      photo ||
+      `https://images.unsplash.com/photo-1541807084-5c52b6b3adef?w=80&h=80&fit=crop&crop=center&sig=${encodeURIComponent(
+        m.documentId
+      )}`,
     supplier: "",
     warranty: "",
     specifications: "",
@@ -250,6 +269,17 @@ function materielVersEquipmentItem(m: MaterialOption): EquipmentItem {
     quantity: m.quantiteStock ?? 0, // le STOCK RÉEL piloté par appliquerImpactStock
     location: "Magasin central",
   };
+}
+
+/** Fichier image → Data URL (compressée par le navigateur), forme attendue
+ *  par `uploadPhotosMateriel` (même chemin que les photos des lignes). */
+function fichierVersDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("Lecture du fichier impossible"));
+    reader.readAsDataURL(file);
+  });
 }
 
 export function Equipment({ user }: { user?: UserType }) {
@@ -271,6 +301,8 @@ export function Equipment({ user }: { user?: UserType }) {
   const [selectedItem, setSelectedItem] = useState<EquipmentItem | null>(null);
   const [showSuccessMessage, setShowSuccessMessage] = useState(false);
   const [showAllEquipmentModal, setShowAllEquipmentModal] = useState(false);
+  // Envoi d'une photo de référence en cours (anti double-clic).
+  const [photoEnCours, setPhotoEnCours] = useState(false);
 
   // Fonctionnalité : le demandeur consulte le stock en lecture seule
   const isDemandeur = user?.role === "demandeur";
@@ -405,8 +437,49 @@ export function Equipment({ user }: { user?: UserType }) {
     });
   };
 
-  const handleDeleteEquipment = (id: number) => {
+  const handleDeleteEquipment = (id: number | string) => {
     setEquipment((prev) => prev.filter((item) => item.id !== id));
+  };
+
+  /**
+   * Photo de RÉFÉRENCE d'une fiche matériel : envoyée par le même mécanisme
+   * que les photos de contrôle des lignes d'entrée (POST /api/upload natif,
+   * ref=api::material.material, field=`photos`). Un échec n'empêche jamais
+   * d'afficher la fiche — seul l'ajout de photo échoue.
+   */
+  const handlePhotoMateriel = async (
+    item: EquipmentItem,
+    file: File | null | undefined
+  ) => {
+    if (!file) return;
+    if (item.serverId == null) {
+      toast.error("Fiche non identifiable", {
+        description:
+          "Cette fiche n'a pas encore d'identifiant serveur : rechargez la liste puis réessayez.",
+      });
+      return;
+    }
+    setPhotoEnCours(true);
+    try {
+      const dataUrl = await fichierVersDataUrl(file);
+      const urls = await uploadPhotosMateriel(item.serverId, [dataUrl]);
+      if (urls.length === 0) {
+        throw new Error("Le serveur n'a renvoyé aucune URL");
+      }
+      toast.success("Photo de référence enregistrée", {
+        description: `${item.name} — elle sert à l'identification visuelle (rapprochement, Fiche de stock).`,
+      });
+      // Rechargement depuis la base : la vignette affichée est celle
+      // RÉELLEMENT persistée, pas l'aperçu local.
+      chargerMateriels();
+    } catch (err) {
+      toast.error("Envoi de la photo impossible", {
+        description:
+          err instanceof Error ? err.message : "Erreur inconnue — réessayez.",
+      });
+    } finally {
+      setPhotoEnCours(false);
+    }
   };
 
   // Equipment Actions Handlers
@@ -1000,6 +1073,36 @@ export function Equipment({ user }: { user?: UserType }) {
                   </div>
                 </div>
               </div>
+              {/* Photo de référence : optionnelle, ajoutée depuis la fiche */}
+              {!isDemandeur && (
+                <div className="flex flex-wrap items-center gap-2">
+                  <label className="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-foreground hover:bg-muted transition-colors">
+                    <Camera className="h-4 w-4" />
+                    {photoEnCours
+                      ? "Envoi de la photo…"
+                      : selectedItem.photo
+                      ? "Changer la photo de référence"
+                      : "Ajouter une photo de référence"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      data-testid="input-photo-materiel"
+                      disabled={photoEnCours}
+                      onChange={(e) => {
+                        const fichier = e.target.files?.[0];
+                        e.target.value = "";
+                        void handlePhotoMateriel(selectedItem, fichier);
+                      }}
+                    />
+                  </label>
+                  <span className="text-xs text-muted-foreground">
+                    {selectedItem.photo
+                      ? "Photo enregistrée sur la fiche (identification visuelle)."
+                      : "Optionnelle — sert à identifier le matériel à l'arrivée."}
+                  </span>
+                </div>
+              )}
               <div className="grid gap-3">
                 <div>
                   <div className="text-sm text-muted-foreground">Catégorie</div>

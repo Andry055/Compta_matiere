@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useMemo } from "react";
+import { useEffect, useRef, useState, useMemo, Fragment } from "react";
 import {
   AlertTriangle,
   ArrowDown,
@@ -75,6 +75,7 @@ import {
 import type { EntreeLigne, EntreeRecord } from "../lib/movements";
 import { getOrdreEntreeDocument } from "../lib/movements";
 import { Message } from "./ui/message";
+import { cn } from "../lib/utils";
 
 // ──────────────────────────────────────────────
 // Helpers « ancrage écran ↔ entrée serveur »
@@ -960,6 +961,17 @@ export function Step1BonLivraison({
     />
   );
 
+  /** Indique si un bloc de rapprochement (suggestion ou statut) doit être affiché sous la ligne. */
+  const aRapprochement = (article: BonLivraisonArticle) => {
+    const decisionValide =
+      !!article.materielId &&
+      !!article.materielLien &&
+      (article.materielDesignationLiee ?? "") === article.designation;
+    if (decisionValide) return true;
+    if (!canEdit) return false;
+    return (article.designation || "").trim().length >= 3;
+  };
+
   /** Liste déroulante des codes de nomenclature (03 / 05 / 10) — remplace le
    *  champ texte libre sur les NOUVELLES saisies ; une valeur antérieure hors
    *  liste reste affichée telle quelle, sans être rétro-modifiée. */
@@ -999,58 +1011,69 @@ export function Step1BonLivraison({
       {!canEdit && <ReadOnlyNotice requiredRoleLabel={requiredRoleLabel} />}
 
       {/* Bon de livraison */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Informations du Bon de Livraison
+      <Card className="border-border/80 p-0 overflow-hidden">
+        <CardHeader className="border-b border-border/80 px-4 py-3">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Bon de livraison
           </CardTitle>
-          <CardDescription>
-            Saisissez les informations du bon de livraison reçu du fournisseur
+          <CardDescription className="text-xs">
+            Saisissez le bon de livraison reçu du fournisseur
           </CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-3">
-            <div className="space-y-2">
-              <Label htmlFor="fournisseur">Fournisseur *</Label>
+        <CardContent className="space-y-3 px-4">
+          <div className="grid gap-3 md:grid-cols-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="fournisseur" className="text-xs">
+                Fournisseur *
+              </Label>
               <Input
                 id="fournisseur"
                 value={data.fournisseur}
                 onChange={(e) => onChange({ fournisseur: e.target.value })}
                 placeholder="Nom du fournisseur"
+                className="h-8 text-sm"
                 disabled={!canEdit}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="numeroBL">N° Bon de livraison *</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="numeroBL" className="text-xs">
+                N° Bon de livraison *
+              </Label>
               <Input
                 id="numeroBL"
                 value={data.numeroBL}
                 onChange={(e) => onChange({ numeroBL: e.target.value })}
                 placeholder="BL-2026-001"
-                className="font-mono"
+                className="h-8 text-sm font-mono"
                 disabled={!canEdit}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="dateBL">Date du BL *</Label>
+            <div className="space-y-1.5">
+              <Label htmlFor="dateBL" className="text-xs">
+                Date du BL *
+              </Label>
               <Input
                 id="dateBL"
                 type="date"
                 value={data.dateBL}
                 onChange={(e) => onChange({ dateBL: e.target.value })}
+                className="h-8 text-sm"
                 disabled={!canEdit}
               />
             </div>
           </div>
-          <div className="space-y-2">
-            <Label htmlFor="observationsBL">Observations générales</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="observationsBL" className="text-xs">
+              Observations générales
+            </Label>
             <Textarea
               id="observationsBL"
               value={data.observationsBL}
               onChange={(e) => onChange({ observationsBL: e.target.value })}
               placeholder="Remarques sur la livraison..."
               rows={2}
+              className="text-sm"
               disabled={!canEdit}
             />
           </div>
@@ -1058,15 +1081,15 @@ export function Step1BonLivraison({
       </Card>
 
       {/* Tableau d'articles */}
-      <Card>
-        <CardHeader>
+      <Card className="border-border/80 p-0 overflow-hidden">
+        <CardHeader className="border-b border-border/80 px-4 py-3">
           <div className="flex items-center justify-between">
             <div>
-              <CardTitle className="text-lg flex items-center gap-2">
-                <Package className="h-5 w-5" />
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Package className="h-4 w-4" />
                 Articles livrés
               </CardTitle>
-              <CardDescription>
+              <CardDescription className="text-xs">
                 {data.articles.length} article(s) — Valeur totale :{" "}
                 <span className="font-semibold text-primary">
                   {formatAriary(totalBL)}
@@ -1074,14 +1097,14 @@ export function Step1BonLivraison({
               </CardDescription>
             </div>
             {canEdit && (
-              <Button onClick={addArticle} size="sm" variant="outline">
-                <Plus className="h-4 w-4 mr-1" />
+              <Button onClick={addArticle} size="sm" variant="outline" className="h-7 text-xs">
+                <Plus className="h-3.5 w-3.5 mr-1" />
                 Ajouter
               </Button>
             )}
           </div>
         </CardHeader>
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-3 px-4">
           {ecartsQte.length > 0 && (
             <Message
               variant="warning"
@@ -1100,11 +1123,16 @@ export function Step1BonLivraison({
           ) : (
             <>
               {/* Desktop table */}
-              <div className="hidden md:block">
+              <div className="hidden overflow-x-auto md:block">
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead className="w-[30%]">Désignation</TableHead>
+                      {/* Colonne largeur minimale garantie : le panneau de
+                          rapprochement (suggestion / création de fiche) doit
+                          rester lisible sans écraser son texte. */}
+                      <TableHead className="w-[28%] min-w-[200px]">
+                        Désignation
+                      </TableHead>
                       <TableHead>Référence</TableHead>
                       <TableHead>Nomenclature</TableHead>
                       <TableHead className="text-right">Qté cmd.</TableHead>
@@ -1115,124 +1143,142 @@ export function Step1BonLivraison({
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {data.articles.map((article, index) => (
-                      <TableRow key={article.id}>
-                        <TableCell>
-                          <Input
-                            value={article.designation}
-                            onChange={(e) =>
-                              updateArticle(
-                                article.id,
-                                "designation",
-                                e.target.value
-                              )
-                            }
-                            placeholder="Désignation"
-                            className="h-8 text-sm"
-                            disabled={!canEdit}
-                          />
-                          {/* Rapprochement approximatif : la suggestion
-                              apparaît dès la frappe, jamais liée seule. */}
-                          {rapprochement(article, index)}
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            value={article.referenceNomenclature}
-                            onChange={(e) =>
-                              updateArticle(
-                                article.id,
-                                "referenceNomenclature",
-                                e.target.value
-                              )
-                            }
-                            placeholder="NOM-XXX-000"
-                            className="h-8 text-sm font-mono"
-                            disabled={!canEdit}
-                          />
-                        </TableCell>
-                        <TableCell>{selectNomenclature(article, index)}</TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            value={article.quantiteCommandee}
-                            onChange={(e) =>
-                              updateArticle(
-                                article.id,
-                                "quantiteCommandee",
-                                parseInt(e.target.value) || 0
-                              )
-                            }
-                            className="h-8 text-sm text-right w-20"
-                            disabled={!canEdit}
-                          />
-                        </TableCell>
-                        <TableCell className="align-top">
-                          <Input
-                            type="number"
-                            min={0}
-                            value={article.quantiteLivree}
-                            onChange={(e) =>
-                              updateArticle(
-                                article.id,
-                                "quantiteLivree",
-                                parseInt(e.target.value) || 0
-                              )
-                            }
-                            className="h-8 text-sm text-right w-20"
-                            disabled={!canEdit}
-                          />
-                          {article.quantiteCommandee > 0 &&
-                            article.quantiteLivree !== article.quantiteCommandee && (
-                              <span
-                                className={`block text-[11px] text-right font-medium mt-1 ${
-                                  article.quantiteLivree < article.quantiteCommandee
-                                    ? "text-amber-600 dark:text-amber-400"
-                                    : "text-blue-600 dark:text-blue-400"
-                                }`}
-                              >
-                                {article.quantiteLivree < article.quantiteCommandee
-                                  ? `Manque ${article.quantiteCommandee - article.quantiteLivree}`
-                                  : `Surplus +${article.quantiteLivree - article.quantiteCommandee}`}
-                              </span>
+                    {data.articles.map((article, index) => {
+                      const hasRapprochement = aRapprochement(article);
+                      return (
+                        <Fragment key={article.id}>
+                          <TableRow
+                            className={cn(
+                              "transition-colors",
+                              hasRapprochement ? "border-b-0 hover:bg-muted/20" : "hover:bg-muted/30"
                             )}
-                        </TableCell>
-                        <TableCell>
-                          <Input
-                            type="number"
-                            min={0}
-                            step={1000}
-                            value={article.prixUnitaire}
-                            onChange={(e) =>
-                              updateArticle(
-                                article.id,
-                                "prixUnitaire",
-                                parseFloat(e.target.value) || 0
-                              )
-                            }
-                            className="h-8 text-sm text-right w-28"
-                            disabled={!canEdit}
-                          />
-                        </TableCell>
-                        <TableCell className="text-right font-medium text-sm">
-                          {formatAriary(
-                            article.quantiteLivree * article.prixUnitaire
+                          >
+                            <TableCell className="align-top py-2.5">
+                              <Input
+                                value={article.designation}
+                                onChange={(e) =>
+                                  updateArticle(
+                                    article.id,
+                                    "designation",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="Désignation"
+                                className="h-8 text-sm"
+                                disabled={!canEdit}
+                              />
+                            </TableCell>
+                            <TableCell className="align-top py-2.5">
+                              <Input
+                                value={article.referenceNomenclature}
+                                onChange={(e) =>
+                                  updateArticle(
+                                    article.id,
+                                    "referenceNomenclature",
+                                    e.target.value
+                                  )
+                                }
+                                placeholder="NOM-XXX-000"
+                                className="h-8 text-sm font-mono"
+                                disabled={!canEdit}
+                              />
+                            </TableCell>
+                            <TableCell className="align-top py-2.5">
+                              {selectNomenclature(article, index)}
+                            </TableCell>
+                            <TableCell className="align-top py-2.5">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={article.quantiteCommandee}
+                                onChange={(e) =>
+                                  updateArticle(
+                                    article.id,
+                                    "quantiteCommandee",
+                                    parseInt(e.target.value) || 0
+                                  )
+                                }
+                                className="h-8 text-sm text-right w-20"
+                                disabled={!canEdit}
+                              />
+                            </TableCell>
+                            <TableCell className="align-top py-2.5">
+                              <Input
+                                type="number"
+                                min={0}
+                                value={article.quantiteLivree}
+                                onChange={(e) =>
+                                  updateArticle(
+                                    article.id,
+                                    "quantiteLivree",
+                                    parseInt(e.target.value) || 0
+                                  )
+                                }
+                                className="h-8 text-sm text-right w-20"
+                                disabled={!canEdit}
+                              />
+                              {article.quantiteCommandee > 0 &&
+                                article.quantiteLivree !== article.quantiteCommandee && (
+                                  <span
+                                    className={`block text-[11px] text-right font-medium mt-1 ${
+                                      article.quantiteLivree < article.quantiteCommandee
+                                        ? "text-amber-600 dark:text-amber-400"
+                                        : "text-blue-600 dark:text-blue-400"
+                                    }`}
+                                  >
+                                    {article.quantiteLivree < article.quantiteCommandee
+                                      ? `Manque ${article.quantiteCommandee - article.quantiteLivree}`
+                                      : `Surplus +${article.quantiteLivree - article.quantiteCommandee}`}
+                                  </span>
+                                )}
+                            </TableCell>
+                            <TableCell className="align-top py-2.5">
+                              <Input
+                                type="number"
+                                min={0}
+                                step={1000}
+                                value={article.prixUnitaire}
+                                onChange={(e) =>
+                                  updateArticle(
+                                    article.id,
+                                    "prixUnitaire",
+                                    parseFloat(e.target.value) || 0
+                                  )
+                                }
+                                className="h-8 text-sm text-right w-28"
+                                disabled={!canEdit}
+                              />
+                            </TableCell>
+                            <TableCell className="align-top py-2.5 text-right font-medium text-sm">
+                              <div className="h-8 flex items-center justify-end">
+                                {formatAriary(
+                                  article.quantiteLivree * article.prixUnitaire
+                                )}
+                              </div>
+                            </TableCell>
+                            <TableCell className="align-top py-2.5">
+                              {canEdit && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  onClick={() => removeArticle(article.id)}
+                                  className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              )}
+                            </TableCell>
+                          </TableRow>
+                          {hasRapprochement && (
+                            <TableRow className="border-t-0 hover:bg-transparent bg-muted/5">
+                              <TableCell colSpan={8} className="pt-0 pb-3 px-4">
+                                {rapprochement(article, index)}
+                              </TableCell>
+                            </TableRow>
                           )}
-                        </TableCell>
-                        <TableCell>
-                          {canEdit && (
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => removeArticle(article.id)}
-                              className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </Button>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                        </Fragment>
+                      );
+                    })}
                   </TableBody>
                   <TableFooter>
                     <TableRow>
@@ -1249,7 +1295,7 @@ export function Step1BonLivraison({
               </div>
 
               {/* Mobile cards */}
-              <div className="md:hidden space-y-3">
+              <div className="md:hidden space-y-2">
                 {data.articles.map((article, index) => (
                   <Card key={article.id} className="p-3">
                     <div className="flex items-start justify-between mb-2">
@@ -1277,7 +1323,6 @@ export function Step1BonLivraison({
                         className="h-8 text-sm"
                         disabled={!canEdit}
                       />
-                      {rapprochement(article, index)}
                       <Input
                         value={article.referenceNomenclature}
                         onChange={(e) =>
@@ -1359,6 +1404,7 @@ export function Step1BonLivraison({
                           />
                         </div>
                       </div>
+                      {rapprochement(article, index)}
                       <div className="text-right text-sm font-medium text-primary">
                         {formatAriary(
                           article.quantiteLivree * article.prixUnitaire

@@ -55,6 +55,8 @@ import {
   getJournalEntries,
   getMovementsByJournalId,
 } from "../lib/journal-store";
+import { fetchEntrees, fetchMaterialsOrThrow } from "../lib/api";
+import { MaterialPhoto } from "./MaterialPhoto";
 import { toast } from "sonner";
 
 // Données fictives pour le journal comptable
@@ -202,6 +204,51 @@ const mockJournalEntries: JournalEntry[] = [
 
 type ViewMode = "table" | "grid";
 
+/** Désignation normalisée (casse, espaces) pour comparer article à article. */
+function cleDesignation(valeur?: string | null): string {
+  return (valeur ?? "").trim().toLowerCase();
+}
+
+/**
+ * Photo à afficher dans les Détails d'une écriture du journal, dans l'ordre :
+ *  1. photos de contrôle des LIGNES d'entrée en base (l'écriture porte le n°
+ *     d'entrée ENT-AAAA-NNN) — la ligne de l'article est choisie par désignation ;
+ *  2. photo de RÉFÉRENCE de la fiche matériel (désignation identique) — la
+ *     même source que la Fiche de stock du grand livre ;
+ *  3. `null` : le bloc affiche « Aucune photo enregistrée ».
+ *
+ * Backend injoignable / écriture démo : échec silencieux, le reste du détail
+ * reste affiché (aucune promesse rejetée n'est laissée sans traitement).
+ */
+export async function photoPourEntreeJournal(
+  entry: JournalEntry
+): Promise<string | null> {
+  try {
+    const entrees = await fetchEntrees();
+    const entree = entrees?.find((e) => e.reference === entry.numeroOrdre);
+    const lignes = entree?.lignes ?? [];
+    const ligne =
+      lignes.find(
+        (l) => cleDesignation(l.designation) === cleDesignation(entry.designation)
+      ) ?? lignes[0];
+    const photoLigne = (ligne?.photos ?? []).find(Boolean);
+    if (photoLigne) return photoLigne;
+  } catch {
+    // API indisponible : on tente la fiche matériel ci-dessous.
+  }
+  try {
+    const materiaux = await fetchMaterialsOrThrow();
+    const materiel = materiaux.find(
+      (m) => cleDesignation(m.designation) === cleDesignation(entry.designation)
+    );
+    const photoFiche = (materiel?.photos ?? []).find(Boolean);
+    if (photoFiche) return photoFiche;
+  } catch {
+    // Aucune source disponible : pas de photo, sans erreur affichée.
+  }
+  return null;
+}
+
 export function Journal() {
   // Jeu de démonstration + écritures réellement enregistrées par le flux de
   // réception (localStorage) — les deux cohabitent dans la même vue.
@@ -214,6 +261,9 @@ export function Journal() {
   const [showAddModal, setShowAddModal] = useState(false);
   const [selectedEntry, setSelectedEntry] = useState<JournalEntry | null>(null);
   const [showDetailsModal, setShowDetailsModal] = useState(false);
+  // Photo affichée dans les Détails (source : lignes d'entrée puis fiche matériel).
+  const [photoDetail, setPhotoDetail] = useState<string | null>(null);
+  const [photoChargement, setPhotoChargement] = useState(false);
 
   // États pour les filtres
   const [filtres, setFiltres] = useState<FiltresJournal>({});
@@ -471,6 +521,29 @@ export function Journal() {
     setSelectedEntry(entry);
     setShowDetailsModal(true);
   };
+
+  /** Charge la photo de l'écriture affichée dans les Détails (réseau ≤ 2 appels).
+   *  Recalculée à chaque écriture ouverte ; annulée si la fenêtre se referme. */
+  useEffect(() => {
+    if (!showDetailsModal || !selectedEntry) {
+      setPhotoDetail(null);
+      setPhotoChargement(false);
+      return;
+    }
+    let actif = true;
+    setPhotoDetail(null);
+    setPhotoChargement(true);
+    photoPourEntreeJournal(selectedEntry)
+      .then((photo) => {
+        if (actif) setPhotoDetail(photo);
+      })
+      .finally(() => {
+        if (actif) setPhotoChargement(false);
+      });
+    return () => {
+      actif = false;
+    };
+  }, [showDetailsModal, selectedEntry]);
 
   /** La validation de l'étape 3 du flux de réception écrit directement via
    *  appendJournalEntryFromReception (idempotent) — on rafraîchit juste la vue
@@ -983,6 +1056,33 @@ export function Journal() {
             </DialogHeader>
 
             <div className="space-y-6">
+              {/* Photo de l'article : lignes d'entrée (base) puis fiche matériel */}
+              <div className="flex items-start gap-4">
+                <MaterialPhoto
+                  photo={photoDetail}
+                  designation={selectedEntry.designation}
+                  alt={`Photo — ${selectedEntry.designation}`}
+                  className="h-24 w-24 rounded-lg object-cover border border-border flex-shrink-0"
+                />
+                <div className="text-sm">
+                  <p className="font-medium mb-1">Photo</p>
+                  {photoChargement ? (
+                    <p className="text-muted-foreground">
+                      Chargement de la photo…
+                    </p>
+                  ) : photoDetail ? (
+                    <p className="text-muted-foreground">
+                      Photo de contrôle du magasinier ou photo de référence de
+                      la fiche matériel.
+                    </p>
+                  ) : (
+                    <p className="text-muted-foreground">
+                      Aucune photo enregistrée pour cet article.
+                    </p>
+                  )}
+                </div>
+              </div>
+
               {/* Informations générales */}
               <div className="grid grid-cols-2 gap-4">
                 <div>

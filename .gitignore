@@ -1,0 +1,11 @@
+# Données et documents personnels du ministère
+Data compta-matière/
+Data compta-matière.rar
+
+# Exports de conversation Freebuff
+freebuff-chat-*.md
+
+# Fichiers d'environnement réels
+.env
+frontend/.env
+backend/.env

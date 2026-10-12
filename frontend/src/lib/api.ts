@@ -781,6 +781,10 @@ export interface MaterialOption {
    *  URL absolue déjà normalisée — la première sert de vignette. Optionnel :
    *  un matériel sans photo s'affiche normalement. */
   photos?: string[];
+  /** Vignette de REPLI : photo de la LIGNE d'entrée rattachée à la fiche
+   *  (relation `materiel` posée au rapprochement), URL absolue. Présente
+   *  seulement si la fiche n'a pas encore de photo de référence. */
+  photoDeLigne?: string;
 }
 
 /** Liste des fournisseurs (pour le formulaire « Nouvelle entrée »). */
@@ -918,20 +922,114 @@ function mapMateriel(row: StrapiLigneMateriel): MaterialOption {
   };
 }
 
+/**
+ * Photos des LIGNES d'entrée rattachées à une fiche matériel, indexées par
+ * `documentId` de la fiche (relation `materiel` posée après le rapprochement).
+ *
+ * Repli d'AFFICHAGE (écran Équipements) : certaines fiches n'ont pas encore de
+ * photo de référence alors que leur ligne d'entrée, elle, en a une. Seule la
+ * relation compte : aucune correspondance par désignation approximative.
+ *
+ * Échec de l'appel = aucune vignette de repli, jamais de blocage : les
+ * matériels déjà lus restent affichés.
+ */
+async function fetchPhotosLignesParFiche(): Promise<Map<string, string>> {
+  const parFiche = new Map<string, string>();
+  let page = 1;
+  let pageCount = 1;
+  try {
+    do {
+      const { data } = await api.get("/api/entree-lignes", {
+        params: {
+          "pagination[page]": page,
+          "pagination[pageSize]": 200,
+          populate: ["materiel", "photos"],
+        },
+        timeout: 5000,
+      });
+
+      const rows: Array<{
+        materiel?: { documentId?: string } | null;
+        photos?: Array<{ url?: string | null }> | null;
+      }> = data?.data ?? [];
+      for (const row of rows) {
+        const fiche = row.materiel?.documentId;
+        const url = urlMediaAffichable(row.photos?.[0]?.url);
+        if (fiche && url && !parFiche.has(fiche)) {
+          parFiche.set(fiche, url);
+        }
+      }
+
+      const pagination = data?.meta?.pagination;
+      pageCount =
+        pagination && typeof pagination.pageCount === "number"
+          ? pagination.pageCount
+          : 1;
+      page++;
+    } while (page <= pageCount);
+  } catch {
+    /* Repli optionnel : on retourne la carte partielle (souvent vide). */
+  }
+  return parFiche;
+}
+
 /** Comme fetchMaterials mais propage l'erreur : l'appelant peut afficher un
- *  état d'erreur explicite au lieu d'une liste vide silencieuse. */
+ *  état d'erreur explicite au lieu d'une liste vide silencieuse.
+ *  Parcourt toutes les pages (meta.pagination) pour ne jamais tronquer silencieusement. */
 export async function fetchMaterialsOrThrow(): Promise<MaterialOption[]> {
-  const { data } = await api.get("/api/materials", {
-    params: {
-      "pagination[pageSize]": 200,
-      sort: "designation:asc",
-      // `photos` : photo de référence de la fiche — sans ce populate la
-      // vignette serait toujours vide après un simple rechargement.
-      populate: ["categorie", "photos"],
-    },
-    timeout: 5000,
-  });
-  return (data?.data ?? []).map((row: StrapiLigneMateriel) => mapMateriel(row));
+  const pageSize = 200;
+  let page = 1;
+  let pageCount = 1;
+  const tousLesMateriels: MaterialOption[] = [];
+
+  do {
+    const { data } = await api.get("/api/materials", {
+      params: {
+        "pagination[page]": page,
+        "pagination[pageSize]": pageSize,
+        sort: "designation:asc",
+        // `photos` : photo de référence de la fiche — sans ce populate la
+        // vignette serait toujours vide après un simple rechargement.
+        populate: ["categorie", "photos"],
+      },
+      timeout: 5000,
+    });
+
+    const rows = (data?.data ?? []).map((row: StrapiLigneMateriel) =>
+      mapMateriel(row)
+    );
+    tousLesMateriels.push(...rows);
+
+    const pagination = data?.meta?.pagination;
+    if (pagination && typeof pagination.pageCount === "number") {
+      pageCount = pagination.pageCount;
+    } else if (
+      pagination &&
+      typeof pagination.total === "number" &&
+      typeof pagination.pageSize === "number" &&
+      pagination.pageSize > 0
+    ) {
+      pageCount = Math.ceil(pagination.total / pagination.pageSize);
+    } else {
+      pageCount = 1;
+    }
+
+    page++;
+  } while (page <= pageCount);
+
+  // Vignette de repli : photo de la LIGNE d'entrée rattachée à la fiche.
+  // Une seule requête supplémentaire, et seulement s'il reste une fiche sans
+  // photo de référence (sinon rien à replier).
+  if (tousLesMateriels.some((m) => !m.photos?.[0])) {
+    const photoParFiche = await fetchPhotosLignesParFiche();
+    for (const materiel of tousLesMateriels) {
+      if (materiel.photos?.[0]) continue;
+      const url = photoParFiche.get(materiel.documentId);
+      if (url) materiel.photoDeLigne = url;
+    }
+  }
+
+  return tousLesMateriels;
 }
 
 /**

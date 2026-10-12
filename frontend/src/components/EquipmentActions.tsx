@@ -16,11 +16,15 @@ import {
   MapPin,
   User,
   Calendar,
+  Package,
 } from "lucide-react";
 import { User as UserType } from "../App";
 
+const INFO_BULLE_STOCK =
+  "Le stock évolue uniquement par le circuit d’entrée validé (3 signatures)";
+
 interface EquipmentItem {
-  id: number;
+  id: number | string;
   name: string;
   serialNumber: string;
   category: string;
@@ -30,6 +34,7 @@ interface EquipmentItem {
   purchaseDate: string;
   value: number;
   image: string;
+  photo?: string;
   supplier?: string;
   warranty?: string;
   specifications?: string;
@@ -41,7 +46,7 @@ interface EquipmentActionsProps {
   currentUser: UserType;
   onView: (equipment: EquipmentItem) => void;
   onEdit: (equipment: EquipmentItem) => void;
-  onDelete: (equipmentId: number) => void;
+  onDelete: (equipmentId: number | string) => void;
   onDuplicate?: (equipment: EquipmentItem) => void;
   onExport?: (equipment: EquipmentItem) => void;
   onShare?: (equipment: EquipmentItem) => void;
@@ -157,11 +162,21 @@ export function EquipmentActions({
             {/* Equipment Header */}
             <div className="p-4 border-b border-border bg-muted/20">
               <div className="flex items-center gap-3">
-                <img
-                  src={equipment.image}
-                  alt={equipment.name}
-                  className="w-10 h-10 rounded-lg object-cover"
-                />
+                {equipment.photo ||
+                (equipment.image && !equipment.image.includes("unsplash")) ? (
+                  <img
+                    src={equipment.photo || equipment.image}
+                    alt={equipment.name}
+                    className="w-10 h-10 rounded-lg object-cover"
+                  />
+                ) : (
+                  <div
+                    className="w-10 h-10 rounded-lg bg-muted flex items-center justify-center text-muted-foreground flex-shrink-0"
+                    aria-label="Sans photo"
+                  >
+                    <Package className="h-5 w-5" />
+                  </div>
+                )}
                 <div className="flex-1 min-w-0">
                   <h4 className="font-medium text-card-foreground truncate">
                     {equipment.name}
@@ -230,16 +245,17 @@ export function EquipmentActions({
 
                 {canEdit && (
                   <button
-                    onClick={() => handleAction(() => onEdit(equipment))}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-card-foreground hover:bg-muted rounded-lg transition-colors duration-150 group"
+                    disabled
+                    title={INFO_BULLE_STOCK}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground opacity-50 cursor-not-allowed rounded-lg"
                   >
-                    <div className="p-1.5 bg-green-100 text-green-600 rounded-md group-hover:bg-green-200 transition-colors dark:bg-green-900/30 dark:text-green-400">
+                    <div className="p-1.5 bg-muted text-muted-foreground rounded-md">
                       <Edit className="h-3.5 w-3.5" />
                     </div>
                     <div className="flex-1 text-left">
                       <div className="font-medium">Modifier</div>
                       <div className="text-xs text-muted-foreground">
-                        Éditer les propriétés
+                        Action désactivée
                       </div>
                     </div>
                   </button>
@@ -247,16 +263,17 @@ export function EquipmentActions({
 
                 {onViewHistory && (
                   <button
-                    onClick={() => handleAction(() => onViewHistory(equipment))}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-card-foreground hover:bg-muted rounded-lg transition-colors duration-150 group"
+                    disabled
+                    title={INFO_BULLE_STOCK}
+                    className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground opacity-50 cursor-not-allowed rounded-lg"
                   >
-                    <div className="p-1.5 bg-purple-100 text-purple-600 rounded-md group-hover:bg-purple-200 transition-colors dark:bg-purple-900/30 dark:text-purple-400">
+                    <div className="p-1.5 bg-muted text-muted-foreground rounded-md">
                       <History className="h-3.5 w-3.5" />
                     </div>
                     <div className="flex-1 text-left">
                       <div className="font-medium">Historique</div>
                       <div className="text-xs text-muted-foreground">
-                        Voir les mouvements
+                        Action désactivée
                       </div>
                     </div>
                   </button>
@@ -272,16 +289,17 @@ export function EquipmentActions({
 
                   {canDuplicate && onDuplicate && (
                     <button
-                      onClick={() => handleAction(() => onDuplicate(equipment))}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-card-foreground hover:bg-muted rounded-lg transition-colors duration-150 group"
+                      disabled
+                      title={INFO_BULLE_STOCK}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground opacity-50 cursor-not-allowed rounded-lg"
                     >
-                      <div className="p-1.5 bg-gray-100 text-gray-600 rounded-md group-hover:bg-gray-200 transition-colors dark:bg-gray-900/30 dark:text-gray-400">
+                      <div className="p-1.5 bg-muted text-muted-foreground rounded-md">
                         <Copy className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex-1 text-left">
                         <div className="font-medium">Dupliquer</div>
                         <div className="text-xs text-muted-foreground">
-                          Créer une copie
+                          Action désactivée
                         </div>
                       </div>
                     </button>
@@ -289,16 +307,17 @@ export function EquipmentActions({
 
                   {onExport && (
                     <button
-                      onClick={() => handleAction(() => onExport(equipment))}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-card-foreground hover:bg-muted rounded-lg transition-colors duration-150 group"
+                      disabled
+                      title={INFO_BULLE_STOCK}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground opacity-50 cursor-not-allowed rounded-lg"
                     >
-                      <div className="p-1.5 bg-indigo-100 text-indigo-600 rounded-md group-hover:bg-indigo-200 transition-colors dark:bg-indigo-900/30 dark:text-indigo-400">
+                      <div className="p-1.5 bg-muted text-muted-foreground rounded-md">
                         <Download className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex-1 text-left">
                         <div className="font-medium">Exporter</div>
                         <div className="text-xs text-muted-foreground">
-                          Télécharger les données
+                          Action désactivée
                         </div>
                       </div>
                     </button>
@@ -306,16 +325,17 @@ export function EquipmentActions({
 
                   {onShare && (
                     <button
-                      onClick={() => handleAction(() => onShare(equipment))}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-card-foreground hover:bg-muted rounded-lg transition-colors duration-150 group"
+                      disabled
+                      title={INFO_BULLE_STOCK}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground opacity-50 cursor-not-allowed rounded-lg"
                     >
-                      <div className="p-1.5 bg-cyan-100 text-cyan-600 rounded-md group-hover:bg-cyan-200 transition-colors dark:bg-cyan-900/30 dark:text-cyan-400">
+                      <div className="p-1.5 bg-muted text-muted-foreground rounded-md">
                         <Share2 className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex-1 text-left">
                         <div className="font-medium">Partager</div>
                         <div className="text-xs text-muted-foreground">
-                          Envoyer les détails
+                          Action désactivée
                         </div>
                       </div>
                     </button>
@@ -332,16 +352,17 @@ export function EquipmentActions({
 
                   {canArchive && onArchive && equipment.status !== "Retiré" && (
                     <button
-                      onClick={() => setShowArchiveConfirm(true)}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-card-foreground hover:bg-muted rounded-lg transition-colors duration-150 group"
+                      disabled
+                      title={INFO_BULLE_STOCK}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground opacity-50 cursor-not-allowed rounded-lg"
                     >
-                      <div className="p-1.5 bg-orange-100 text-orange-600 rounded-md group-hover:bg-orange-200 transition-colors dark:bg-orange-900/30 dark:text-orange-400">
+                      <div className="p-1.5 bg-muted text-muted-foreground rounded-md">
                         <Archive className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex-1 text-left">
                         <div className="font-medium">Archiver</div>
                         <div className="text-xs text-muted-foreground">
-                          Marquer comme retiré
+                          Action désactivée
                         </div>
                       </div>
                     </button>
@@ -349,16 +370,17 @@ export function EquipmentActions({
 
                   {canDelete && (
                     <button
-                      onClick={() => setShowDeleteConfirm(true)}
-                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 rounded-lg transition-colors duration-150 group"
+                      disabled
+                      title={INFO_BULLE_STOCK}
+                      className="w-full flex items-center gap-3 px-3 py-2 text-sm text-muted-foreground opacity-50 cursor-not-allowed rounded-lg"
                     >
-                      <div className="p-1.5 bg-red-100 text-red-600 rounded-md group-hover:bg-red-200 transition-colors dark:bg-red-900/30 dark:text-red-400">
+                      <div className="p-1.5 bg-muted text-muted-foreground rounded-md">
                         <Trash2 className="h-3.5 w-3.5" />
                       </div>
                       <div className="flex-1 text-left">
                         <div className="font-medium">Supprimer</div>
                         <div className="text-xs text-muted-foreground">
-                          Action irréversible
+                          Action désactivée
                         </div>
                       </div>
                     </button>

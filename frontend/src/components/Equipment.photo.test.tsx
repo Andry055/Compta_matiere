@@ -47,11 +47,25 @@ function charge(materiel: { photo?: string } = {}) {
   };
 }
 
+/** Réponse GET vide (aucun matériel, aucune ligne) avec pagination complète. */
+function reponseVide() {
+  return {
+    data: {
+      data: [],
+      meta: { pagination: { page: 1, pageSize: 100, pageCount: 1, total: 0 } },
+    },
+  };
+}
+
 describe("Équipements — photo de référence de la fiche matériel", () => {
   let getSpy: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     getSpy = vi.spyOn(api, "get");
+    // L'écran lit aussi les photos de LIGNES d'entrée (vignette de repli des
+    // fiches sans photo) : par défaut aucune ligne rattachée — et surtout
+    // JAMAIS de vraie requête réseau quand un test ne mocke que /api/materials.
+    getSpy.mockImplementation(() => Promise.resolve(reponseVide()));
   });
 
   it("5a. la photo de référence est affichée à côté du matériel (chargement)", async () => {
@@ -70,28 +84,38 @@ describe("Équipements — photo de référence de la fiche matériel", () => {
     expect(options?.params?.populate).toContain("photos");
   });
 
-  it("6a. une fiche SANS photo s'affiche normalement (visuel de repli, aucune erreur)", async () => {
+  it("6a. une fiche SANS photo s'affiche normalement (icône neutre de repli, aucune image Unsplash)", async () => {
     getSpy.mockResolvedValue(charge() as never);
 
     render(<Equipment />);
 
     await screen.findAllByText("Chaise de bureau ergonomique");
-    // Les deux fiches sont affichées, y compris celle sans photo.
-    const sansPhoto = screen.getAllByAltText("Chaise de bureau ergonomique");
+    // Les fiches sans photo affichent une icône neutre de repli (Package)
+    const sansPhoto = screen.getAllByLabelText("Sans photo");
     expect(sansPhoto.length).toBeGreaterThan(0);
-    expect(sansPhoto[0].getAttribute("src")).toContain("images.unsplash.com");
-    const avecPhoto = screen.getAllByAltText("Routeur Cisco RV340");
-    expect(avecPhoto[0].getAttribute("src")).toContain("images.unsplash.com");
-    expect(document.querySelector("img")?.getAttribute("alt")).toBeTruthy();
+    // Plus aucune image externe Unsplash n'est utilisée
+    const images = document.querySelectorAll("img");
+    images.forEach((img) => {
+      expect(img.getAttribute("src") || "").not.toContain("images.unsplash.com");
+    });
   });
 
   it("5b. la photo ajoutée depuis la fiche est persistée et visible après rechargement", async () => {
     // 1ʳᵉ lecture : sans photo. 2ᵉ (rechargement après envoi) : avec photo.
-    getSpy
-      .mockResolvedValueOnce(charge() as never)
-      .mockResolvedValueOnce(
-        charge({ photo: "/uploads/materiel_7_reference.jpg" }) as never
-      );
+    // 1ʳᵉ lecture materials sans photo ; appel intermédiaire /api/entree-lignes
+    // vide ; 2ᵉ lecture materials (rechargement après envoi) avec la photo
+    // persistée — l'écran ne doit lire que ces deux listes de matériels.
+    const lecturesMaterials = [
+      charge() as never,
+      charge({ photo: "/uploads/materiel_7_reference.jpg" }) as never,
+    ];
+    getSpy.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === "/api/materials"
+          ? lecturesMaterials.shift() ?? reponseVide()
+          : reponseVide()
+      )
+    );
     const postSpy = vi.spyOn(api, "post").mockResolvedValue({
       data: [{ id: 99, url: "/uploads/materiel_7_reference.jpg" }],
     } as never);
@@ -133,6 +157,8 @@ describe("Équipements — photo de référence de la fiche matériel", () => {
           )
       ).toBe(true)
     );
-    expect(getSpy).toHaveBeenCalledTimes(2);
+    expect(
+      getSpy.mock.calls.filter(([url]) => url === "/api/materials")
+    ).toHaveLength(2);
   });
 });

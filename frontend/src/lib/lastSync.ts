@@ -81,6 +81,30 @@ export function formatDelaiSync(
   return `il y a ${jours} j`;
 }
 
+/** Écart lisible précis : « Synchronisé il y a X s », « Synchronisé il y a X min ». */
+export function formatDelaiSyncExact(
+  depuis: Date | null,
+  maintenant: Date = new Date()
+): string {
+  if (!depuis) return "Non synchronisé";
+  const secondes = Math.max(
+    0,
+    Math.round((maintenant.getTime() - depuis.getTime()) / 1000)
+  );
+  if (secondes < 60) return `Synchronisé il y a ${secondes} s`;
+  const minutes = Math.round(secondes / 60);
+  if (minutes < 60) return `Synchronisé il y a ${minutes} min`;
+  const heures = Math.floor(minutes / 60);
+  const reste = minutes % 60;
+  if (heures < 24) {
+    return reste > 0
+      ? `Synchronisé il y a ${heures} h ${String(reste).padStart(2, "0")}`
+      : `Synchronisé il y a ${heures} h`;
+  }
+  const jours = Math.round(heures / 24);
+  return `Synchronisé il y a ${jours} j`;
+}
+
 /** Abonnement React à l'horodatage. Se ré-abonne à chaque changement ET
  *  rafraîchit périodiquement : le libellé doit vieillir même en l'absence de
  *  nouvelle synchronisation (sinon « il y a 0 min » resterait figé). */

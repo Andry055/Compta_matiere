@@ -24,6 +24,7 @@ import {
   Inbox,
   Hourglass,
   ClipboardCheck,
+  RefreshCw,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { User } from "../App";
@@ -45,7 +46,13 @@ import {
   getActiviteDemandeur,
   getRepartitionDemandes,
 } from "../lib/demandes";
-import { fetchMaterialsOrThrow, MaterialOption } from "../lib/api";
+import { MaterialOption } from "../lib/api";
+import {
+  useMaterialsLive,
+  UseMaterialsLiveResult,
+} from "../lib/useMaterialsLive";
+import { formatDelaiSyncExact } from "../lib/lastSync";
+import { Button } from "./ui/button";
 
 interface JournalMovement {
   id: number;
@@ -130,39 +137,28 @@ function getActivityIcon(type: ActivityItem["type"]) {
 // ---------------------------------------------------------------------------
 // Espace Demandeur : vue d'ensemble de SES demandes, équipements et mouvements
 // ---------------------------------------------------------------------------
-function DemandeurDashboard({ user }: { user?: User }) {
+function DemandeurDashboard({
+  user,
+  live,
+}: {
+  user?: User;
+  /** Stock réel lu par le hook partagé useMaterialsLive (UN SEUL appel par écran). */
+  live: UseMaterialsLiveResult;
+}) {
   const demandes = getDemandesForUser(user);
   const stats = getStatsDemandes(demandes);
   const mesSorties = sortiesPerimetre(sortieRecords, user);
   const statsSorties = getStatistiquesSorties(mesSorties);
 
-  // Stock RÉEL (GET /api/materials, même source que l'écran Équipements) :
-  // chargement au montage ; en cas d'API injoignable l'indicateur passe à 0
-  // et le bandeau d'erreur informe l'utilisateur (jamais de mock silencieux).
-  const [materiels, setMateriels] = useState<MaterialOption[]>([]);
-  const [erreurStock, setErreurStock] = useState(false);
-  useEffect(() => {
-    let vivant = true;
-    const charger = () => {
-      fetchMaterialsOrThrow()
-        .then((rows) => {
-          if (vivant) {
-            setMateriels(rows);
-            setErreurStock(false);
-          }
-        })
-        .catch(() => {
-          if (vivant) setErreurStock(true);
-        });
-    };
-    charger();
-    const handleStockUpdate = () => charger();
-    window.addEventListener("stock-mis-a-jour", handleStockUpdate);
-    return () => {
-      vivant = false;
-      window.removeEventListener("stock-mis-a-jour", handleStockUpdate);
-    };
-  }, []);
+  // Stock RÉEL alimenté en quasi temps réel par le hook partagé useMaterialsLive
+  const {
+    materials: materiels,
+    isInitialError,
+    isRefreshing,
+    messageErreur,
+    derniereSync,
+    refresh,
+  } = live;
 
   // Matériels reçus (sorties effectuées dans mon périmètre)
   const materielsRecus = mesSorties
@@ -170,8 +166,7 @@ function DemandeurDashboard({ user }: { user?: User }) {
     .reduce((sum, s) => sum + (s.quantite || 0), 0);
 
   // Équipements disponibles dans le stock : total des quantités des matériels
-  // réellement en stock (le comptage d'anciennes lignes mockées sous-estimait
-  // le stock — un matériel peut porter une quantité > 1).
+  // réellement en stock
   const equipementsDisponibles = materiels
     .filter((m) => (m.statut ?? "en_stock") === "en_stock")
     .reduce((somme, m) => somme + (m.quantiteStock ?? 0), 0);
@@ -260,21 +255,42 @@ function DemandeurDashboard({ user }: { user?: User }) {
 
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-      {erreurStock && (
+      {(messageErreur || isInitialError) && (
         <Message variant="warning">
-          Stock momentanément indisponible (serveur injoignable) — l'indicateur
-          « Équipements disponibles » est incomplet.
+          {messageErreur ||
+            "Stock momentanément indisponible (serveur injoignable) — l'indicateur « Équipements disponibles » est incomplet."}
         </Message>
       )}
 
       {/* Header */}
-      <div>
-        <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
-          Tableau de Bord
-        </h1>
-        <p className="text-muted-foreground text-sm sm:text-base">
-          Vue d'ensemble de vos demandes, équipements et mouvements
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
+            Tableau de Bord
+          </h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Vue d'ensemble de vos demandes, équipements et mouvements
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            {derniereSync
+              ? formatDelaiSyncExact(derniereSync)
+              : "Non synchronisé"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refresh()}
+            disabled={isRefreshing}
+            className="gap-1.5"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+            />
+            Rafraîchir
+          </Button>
+        </div>
       </div>
 
       {/* Indicateurs */}
@@ -391,11 +407,36 @@ function DemandeurDashboard({ user }: { user?: User }) {
 export function Dashboard({ user }: { user?: User }) {
   const [showAllEquipmentModal, setShowAllEquipmentModal] = useState(false);
 
+  // Stock RÉEL : UN SEUL hook partagé, appelé SANS CONDITION — un retour
+  // anticipé placé avant un hook violerait la règle des hooks React (l'arbre
+  // casserait si le rôle de l'utilisateur changeait entre deux rendus).
+  const live = useMaterialsLive();
+  const {
+    materials: materiels,
+    isInitialError,
+    isRefreshing,
+    messageErreur,
+    derniereSync,
+    refresh,
+  } = live;
+
   // Fonctionnalité : espace dédié au profil Demandeur
   const isDemandeur = user?.role === "demandeur";
   if (isDemandeur) {
-    return <DemandeurDashboard user={user} />;
+    return <DemandeurDashboard user={user} live={live} />;
   }
+
+  // Matériels en stock recalculés sur les mêmes données réelles que Equipment.tsx
+  const materielsEnStock = materiels
+    .filter((m) => (m.statut ?? "en_stock") === "en_stock")
+    .reduce((somme, m) => somme + (m.quantiteStock ?? 0), 0);
+
+  // Valeur totale inventaire calculée sur les matériels réels
+  const valeurInventaire = materiels.reduce(
+    (somme, m) => somme + (m.valeurUnitaire ?? 0) * (m.quantiteStock ?? 1),
+    0
+  );
+
   const mesDemandes =
     isDemandeur && user?.department
       ? mockRequests.filter((request) => request.department === user.department)
@@ -495,15 +536,43 @@ export function Dashboard({ user }: { user?: User }) {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
-      <div>
-        <h1 className="text-3xl tracking-tight mb-2 text-foreground">
-          Tableau de Bord - ComptaMatière
-        </h1>
-        <p className="text-muted-foreground">
-          Vue d'ensemble du système de comptabilité matière avec traçabilité
-          complète
-        </p>
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl tracking-tight mb-2 text-foreground">
+            Tableau de Bord - ComptaMatière
+          </h1>
+          <p className="text-muted-foreground">
+            Vue d'ensemble du système de comptabilité matière avec traçabilité
+            complète
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-xs text-muted-foreground hidden sm:inline">
+            {derniereSync
+              ? formatDelaiSyncExact(derniereSync)
+              : "Non synchronisé"}
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => void refresh()}
+            disabled={isRefreshing}
+            className="gap-1.5"
+          >
+            <RefreshCw
+              className={`h-3.5 w-3.5 ${isRefreshing ? "animate-spin" : ""}`}
+            />
+            Rafraîchir
+          </Button>
+        </div>
       </div>
+
+      {(messageErreur || isInitialError) && (
+        <Message variant="warning">
+          {messageErreur ||
+            "Stock momentanément indisponible (serveur injoignable) — indicateurs de stock incomplets."}
+        </Message>
+      )}
 
       {/* Key Metrics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -525,7 +594,9 @@ export function Dashboard({ user }: { user?: User }) {
             <h3 className="text-sm text-muted-foreground">Valeur Inventaire</h3>
             <Euro className="h-6 w-6 text-muted-foreground" />
           </div>
-          <div className="text-2xl text-card-foreground mb-2">485.2K Ar</div>
+          <div className="text-2xl text-card-foreground mb-2">
+            {valeurInventaire.toLocaleString()} Ar
+          </div>
           <p className="text-xs text-muted-foreground">Valorisation complète</p>
         </div>
 
@@ -537,7 +608,9 @@ export function Dashboard({ user }: { user?: User }) {
             </h3>
             <Package className="h-6 w-6 text-muted-foreground" />
           </div>
-          <div className="text-2xl text-card-foreground mb-2">856</div>
+          <div className="text-2xl text-card-foreground mb-2">
+            {materielsEnStock}
+          </div>
           <p className="text-xs text-muted-foreground">
             Disponibles distribution
           </p>

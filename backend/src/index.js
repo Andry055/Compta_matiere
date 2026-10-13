@@ -45,7 +45,7 @@ const SEED_DIRECTIONS = [
         localisation: 'Bureau 203',
         employees: [
           { im: 'MIN.006', CIN: '101234567895', nom: 'RABE', prenom: 'Michel', sexe: 'masculin', fonction: 'Responsable Maintenance', email: 'm.rabe@ministere.gov.mg', phone: '+261 20 22 123 50' },
-          { im: 'MIN.007', CIN: '101234567896', nom: 'RAKOTONIRINA', prenom: 'Lova', sexe: 'masculin', fonction: 'Technicien Maintenance', email: 'l.rakotonirina@ministere.gov.mg', phone: '+261 20 22 123 51' },
+          { im: 'MIN.007', CIN: '101234567896', nom: 'RAKOTONIRINA', prenom: 'Lova', sexe: 'féminin', fonction: 'Technicien Maintenance', email: 'l.rakotonirina@ministere.gov.mg', phone: '+261 20 22 123 51' },
         ],
       },
     ],
@@ -115,7 +115,7 @@ const SEED_DIRECTIONS = [
         description: 'Support technique aux utilisateurs',
         responsable: 'Mme RAHARISOA Noro',
         responsable_email: 'n.raharisoa@ministere.gov.mg',
-        localisation: 'Bureau IT-03',
+        localisation: 'Bâtiment IT-03',
         employees: [
           { im: 'MIN.014', CIN: '301234567893', nom: 'RAHARISOA', prenom: 'Noro', sexe: 'féminin', fonction: 'Responsable Support', email: 'n.raharisoa@ministere.gov.mg', phone: '+261 20 22 345 48' },
           { im: 'MIN.015', CIN: '301234567894', nom: 'RAZANAMPARANY', prenom: 'Ravo', sexe: 'masculin', fonction: 'Technicien Support', email: 'r.razanamarany@ministere.gov.mg', phone: '+261 20 22 345 49' },
@@ -197,16 +197,17 @@ const APP_ROLES = [
 
 // Rôle réel de l'utilisateur connecté (GET /api/session/role). Accordé à TOUS
 // les rôles métiers + au rôle `authenticated` : c'est la seule donnée dont
-// l'interface a besoin pour ne plus afficher une identité codée en dur qui
+// l'interface a besoin pour ne plus afficher une identité codé en dur qui
 // contredirait le jeton. Sans elle, la route répond 403 et le frontend retombe
 // sur son repli de démonstration.
-//
+//*
 // ⚠️ Le périmètre d'une route Content API est construit par Strapi à partir
 // du NOM DU DOSSIER de l'API, pas de l'uid du content type
-// (`createRouteScopeGenerator('api::' + apiName)`) : le dossier doit donc
+// (`createRouteScopeGenerator('api:' + apiName)`) : le dossier doit donc
 // s'appeler `session-role` pour que l'action soit bien
 // `api::session-role.session-role.role`. Un dossier `session` produirait
 // `api::session.session-role.role` — et un 403 pour tout le monde.
+// */
 const SESSION_ROLE_ACTION = 'api::session-role.session-role.role';
 
 const DEMAND_ACTIONS = [
@@ -321,7 +322,7 @@ const ROLES_RAPPORTS = ['depositaire', 'comptable', 'logistique'];
 // volontairement authentifiées (le sanitizer Content-API ne peuplerait
 // `lignes` / `fournisseur` que si l'utilisateur est résolu), l'absence de
 // permission se traduisait par un 403 pour tout profil Demandeur.
-// L'ISOLEMENT EST ASSURÉ CÔTÉ CONTRÔLEUR : `entree.find` / `entree.findOne`
+// L'ISOLATION EST ASSURÉE CÔTÉ CONTRÔLEUR : `entree.find` / `entree.findOne`
 // sont surchargés pour ne renvoyer que les entrées créées par l'utilisateur
 // connecté (voir api/entree/controllers/entree.js).
 // ---------------------------------------------------------------------------
@@ -342,6 +343,96 @@ const DEMANDEUR_ENTREE_ACTIONS = [
   'api::service.service.find',
   'api::mouvement.mouvement.find',
 ];
+
+// ---------------------------------------------------------------------------
+// Sorties : permissions de LECTURE du circuit (étape 1 : lecture seule).
+//
+// Les routes find / findOne de /api/sorties sont désormais AUTHENTIFIÉES
+// (elles ne déclarent plus `auth: false`) : sans permission, tout profil
+// recevrait 403. Les listes des ENTRÉES (ENTREE_SIGN_ACTIONS /
+// DEMANDEUR_ENTREE_ACTIONS) restent inchangées — voici leur équivalent
+// dédié aux sorties.
+//
+// Les lectures de `sortie-ligne`, `material`, `category`, `direction`,
+// `service` et `demande` sont nécessaires pour que le sanitizer Content-API
+// conserve les relations de la réponse (`lignes`, `direction`, `service`,
+// `demande`) demandées par fetchSorties(). Seules les permissions MANQUANTES
+// sont réellement créées : l'accordement est recalculé à chaque exécution du
+// bloc (voir 2septies) pour ne jamais dupliquer une permission déjà ouverte
+// par DEMAND_ACTIONS ou les listes d'entrées.
+//
+// ⚠️ `demande.demandeur` N'EST PAS ouvert ici : le sanitizer ne conserverait
+// ce champ (utilisateur) que si le rôle pouvait lire
+// `plugin::users-permissions.user`, ce qui ouvrirait la liste de TOUS les
+// utilisateurs. La relation `demandeur` sera donc retirée des réponses —
+// signalé dans le rapport d'étape. Le filtrage « demandeur », lui, ne passe
+// PAS par le sanitizer (il est appliqué via le document service).
+// ---------------------------------------------------------------------------
+const SORTIE_READ_ACTIONS = [
+  'api::sortie.sortie.find',
+  'api::sortie.sortie.findOne',
+  // Lecture des lignes : sans elles le sanitizer ne peuplerait pas `lignes`
+  // (les sorties seraient affichées sans articles).
+  'api::sortie-ligne.sortie-ligne.find',
+  'api::sortie-ligne.sortie-ligne.findOne',
+  // Données de référence peuplées par fetchSorties().
+  'api::material.material.find',
+  'api::material.material.findOne',
+  'api::category.category.find',
+  'api::direction.direction.find',
+  'api::service.service.find',
+  'api::demande.demande.find',
+  'api::demande.demande.findOne',
+];
+
+// Tous les profils métier lisent aujourd'hui les sorties (les routes étaient
+// publiques) : le Demandeur, lui, ne voit plus que SES sorties — isolation
+// assuré côté contrôleur (api/sortie/controllers/sortie.js).
+const ROLES_LECTURE_SORTIE = [
+  'demandeur',
+  'depositaire',
+  'magasinier',
+  'logistique',
+  'comptable',
+];
+
+// ---------------------------------------------------------------------------
+// Sorties (étape 2) : création d'un ordre de sortie via POST
+// /api/sorties/create-complete.
+//
+// Le contrôleur le restreint SEUL au profil « dépositaire » (getRoleCode).
+// L'accordement ne concerne donc QUE les rôles qui voyagent sur les routes de
+// signature des entrées (qui sont eux-mêmes les seuls à se connecter sur ces
+// opérations) : dépositaire, magasinier, logistique et comptable. Le Demandeur
+// ne reçoit JAMAIS `createComplete`. Les listes d'ENTRÉES (ENTREE_SIGN_ACTIONS
+// / DEMANDEUR_ENTREE_ACTIONS) sont conservées telles quelles : voici leur
+// équivalent dédié aux sorties.
+//
+// `createComplete` est ajouté aux rôles qui possèdent déjà l'accès aux routes
+// de signature (ENTREE_SIGN_ACTIONS) — les mêmes, pas de nouveau périmètre.
+// ---------------------------------------------------------------------------
+const SORTIE_CREATE_ACTIONS = [
+  'api::sortie.sortie.createComplete',
+];
+
+// ---------------------------------------------------------------------------
+// Sorties (étape 3) : signatures (magasinier, dépositaire) et rejet —
+// POST /api/sorties/:documentId/sign et /api/sorties/:documentId/reject.
+//
+// Accordées UNIQUEMENT aux rôles du circuit de signature : magasinier,
+// dépositaire et logistique — ni le Demandeur (qui n'a jamais le droit de
+// valider ni de rejeter), ni le Comptable. La signature proprement dite est
+// de toute façon contrôlée par rôle dans le contrôleur ; ici on n'accorde
+// que l'accès aux routes. À l'étape 4, la signature logistique et la baisse
+// atomique du stock sont en place — sans toucher aux listes d'ENTRÉES.
+// ---------------------------------------------------------------------------
+const SORTIE_SIGN_ACTIONS = [
+  'api::sortie.sortie.sign',
+  'api::sortie.sortie.reject',
+];
+
+const ROLES_SIGNATURE_SORTIE = ['magasinier', 'depositaire', 'logistique'];
+
 
 const DEMO_DEMANDEUR = {
   username: 'Randriamampionona Tolotra',
@@ -405,15 +496,17 @@ async function ensureAuthSetup(strapi) {
     ...(authenticated ? [authenticated] : []),
   ];
   const existing = await permQuery.findMany({ populate: ['role'] });
-  const granted = new Set(
+  const accordees = new Set(
     existing.map(
       (p) => `${p.role ? p.role.type || p.role.code : ''}:${p.action}`
     )
   );
   for (const role of targetRoles) {
     for (const action of DEMAND_ACTIONS) {
-      if (granted.has(`${role.type}:${action}`)) continue;
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
     }
   }
 
@@ -423,8 +516,10 @@ async function ensureAuthSetup(strapi) {
     const role = roles[type];
     if (!role) continue;
     for (const action of ENTREE_SIGN_ACTIONS) {
-      if (granted.has(`${role.type}:${action}`)) continue;
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
     }
   }
   // 2ter) Le Demandeur peut enregistrer une entrée (statut « En attente »
@@ -433,8 +528,10 @@ async function ensureAuthSetup(strapi) {
   const roleDemandeur = roles['demandeur'];
   if (roleDemandeur) {
     for (const action of DEMANDEUR_ENTREE_ACTIONS) {
-      if (granted.has(`${roleDemandeur.type}:${action}`)) continue;
+      const cle = `${roleDemandeur.type}:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: roleDemandeur.id } });
+      accordees.add(cle);
     }
   }
   // 2quater) Permissions « Affectations » : routes custom de la validation à
@@ -449,14 +546,18 @@ async function ensureAuthSetup(strapi) {
     const role = roles[type];
     if (!role) continue;
     for (const action of AFFECTATION_ACTIONS) {
-      if (granted.has(`${role.type}:${action}`)) continue;
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
     }
   }
   if (roleDemandeur) {
     for (const action of DEMANDEUR_AFFECTATION_ACTIONS) {
-      if (granted.has(`${roleDemandeur.type}:${action}`)) continue;
+      const cle = `${roleDemandeur.type}:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: roleDemandeur.id } });
+      accordees.add(cle);
     }
   }
 
@@ -468,14 +569,18 @@ async function ensureAuthSetup(strapi) {
     const role = roles[type];
     if (!role) continue;
     for (const action of UPLOAD_ACTIONS) {
-      if (granted.has(`${role.type}:${action}`)) continue;
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
     }
   }
   if (authenticated) {
     for (const action of UPLOAD_ACTIONS) {
-      if (granted.has(`authenticated:${action}`)) continue;
+      const cle = `authenticated:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: authenticated.id } });
+      accordees.add(cle);
     }
   }
   // Lecture SEULE des fichiers téléversés pour TOUS les rôles métier (y
@@ -488,8 +593,10 @@ async function ensureAuthSetup(strapi) {
     const role = roles[def.type];
     if (!role) continue;
     const action = 'plugin::upload.content-api.find';
-    if (granted.has(`${def.type}:${action}`)) continue;
+    const cle = `${def.type}:${action}`;
+    if (accordees.has(cle)) continue;
     await permQuery.create({ data: { action, role: role.id } });
+    accordees.add(cle);
   }
 
   // 2sexies) Permissions « Reddition de compte » : rapports (lecture) et
@@ -499,14 +606,18 @@ async function ensureAuthSetup(strapi) {
     const role = roles[type];
     if (!role) continue;
     for (const action of [...RAPPORT_ACTIONS, ...OUVERTURE_ACTIONS]) {
-      if (granted.has(`${role.type}:${action}`)) continue;
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
     }
   }
   if (authenticated) {
     for (const action of [...RAPPORT_ACTIONS, ...OUVERTURE_ACTIONS]) {
-      if (granted.has(`authenticated:${action}`)) continue;
+      const cle = `authenticated:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: authenticated.id } });
+      accordees.add(cle);
     }
   }
 
@@ -514,8 +625,54 @@ async function ensureAuthSetup(strapi) {
   // l'interface d'administration ; on lui accorde aussi les routes custom.
   if (authenticated) {
     for (const action of [...ENTREE_SIGN_ACTIONS, ...AFFECTATION_ACTIONS]) {
-      if (granted.has(`authenticated:${action}`)) continue;
+      const cle = `authenticated:${action}`;
+      if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: authenticated.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2septies) Permissions « Sorties » (étape 1 : LECTURE SEULE). Accordées
+  // à tous les rôles métier — dont le Demandeur, dont la vue est restreinte à
+  // SES sorties côté contrôleur (api/sortie/controllers/sortie.js). La liste
+  // ne contient AUCUNE action d'écriture.
+  for (const type of ROLES_LECTURE_SORTIE) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of SORTIE_READ_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2octies) Création d'un ordre de sortie (étape 2) : les rôles qui
+  // possèdent déjà l'accès aux routes de signature des entrées — même
+  // périmètre, aucune nouvelle liste de rôles.
+  for (const type of ROLES_SIGNATAIRES) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of SORTIE_CREATE_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2nonies) Signatures et rejet d'une sortie (étape 3) : accordées
+  // UNIQUEMENT aux rôles magasinier / dépositaire / logistique — ni le
+  // Demandeur, ni le Comptable (le Demandeur ne peut jamais signer ni
+  // rejeter ; c'est en outre vérifié dans le contrôleur).
+  for (const type of ROLES_SIGNATURE_SORTIE) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of SORTIE_SIGN_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
     }
   }
 

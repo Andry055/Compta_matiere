@@ -33,6 +33,18 @@
     },
     "observations": {
       "type": "string"
+    },
+    "etat": {
+      "type": "enumeration",
+      "enum": [
+        "neuf",
+        "bon",
+        "moyen",
+        "defaillant"
+      ]
+    },
+    "numero_logistique": {
+      "type": "text"
     }
   }
 }

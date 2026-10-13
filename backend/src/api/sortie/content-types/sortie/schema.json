@@ -69,6 +69,52 @@
       "relation": "oneToMany",
       "target": "api::mouvement.mouvement",
       "mappedBy": "sortie"
+    },
+    "magasinier_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "depositaire_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "logistique_signed": {
+      "type": "boolean",
+      "default": false
+    },
+    "signataire_magasinier": {
+      "type": "text"
+    },
+    "signataire_depositaire": {
+      "type": "text"
+    },
+    "signataire_logistique": {
+      "type": "text"
+    },
+    "date_signature_magasinier": {
+      "type": "text"
+    },
+    "date_signature_depositaire": {
+      "type": "text"
+    },
+    "date_signature_logistique": {
+      "type": "text"
+    },
+    "stock_impacte": {
+      "type": "boolean",
+      "default": false
+    },
+    "motif_rejet": {
+      "type": "text"
+    },
+    "detenteur_nom": {
+      "type": "text"
+    },
+    "detenteur_fonction": {
+      "type": "text"
+    },
+    "date_remise": {
+      "type": "text"
     }
   }
 }

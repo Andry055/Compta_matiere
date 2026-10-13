@@ -1102,6 +1102,7 @@ export interface ApiSortieLigneSortieLigne extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    etat: Schema.Attribute.Enumeration<['neuf', 'bon', 'moyen', 'defaillant']>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -1109,6 +1110,7 @@ export interface ApiSortieLigneSortieLigne extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     materiel: Schema.Attribute.Relation<'manyToOne', 'api::material.material'>;
+    numero_logistique: Schema.Attribute.Text;
     observations: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     quantite: Schema.Attribute.Integer &
@@ -1137,8 +1139,16 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    date_remise: Schema.Attribute.Text;
+    date_signature_depositaire: Schema.Attribute.Text;
+    date_signature_logistique: Schema.Attribute.Text;
+    date_signature_magasinier: Schema.Attribute.Text;
     date_sortie: Schema.Attribute.Date & Schema.Attribute.Required;
     demande: Schema.Attribute.Relation<'manyToOne', 'api::demande.demande'>;
+    depositaire_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    detenteur_fonction: Schema.Attribute.Text;
+    detenteur_nom: Schema.Attribute.Text;
     direction: Schema.Attribute.Relation<
       'manyToOne',
       'api::direction.direction'
@@ -1154,6 +1164,10 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
       'api::sortie.sortie'
     > &
       Schema.Attribute.Private;
+    logistique_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    magasinier_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
     mouvements: Schema.Attribute.Relation<
       'oneToMany',
       'api::mouvement.mouvement'
@@ -1163,10 +1177,14 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
     reference: Schema.Attribute.String & Schema.Attribute.Unique;
     responsable: Schema.Attribute.String;
     service: Schema.Attribute.Relation<'manyToOne', 'api::service.service'>;
+    signataire_depositaire: Schema.Attribute.Text;
+    signataire_logistique: Schema.Attribute.Text;
+    signataire_magasinier: Schema.Attribute.Text;
     statut: Schema.Attribute.Enumeration<
       ['demandee', 'en_preparation', 'validee', 'sortie_effectuee', 'annulee']
     > &
       Schema.Attribute.DefaultTo<'demandee'>;
+    stock_impacte: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<false>;
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;

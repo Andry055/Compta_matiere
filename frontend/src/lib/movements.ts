@@ -218,6 +218,10 @@ export interface SortieRecord {
   beneficiaire: string;
   responsable: string;
   statut: StatutSortie;
+  /** Circuit à 3 signatures : true uniquement si la signature est enregistrée. */
+  magasinier_signed?: boolean;
+  depositaire_signed?: boolean;
+  logistique_signed?: boolean;
   justificatif: string;
   documents: DocumentRef[];
   /** true = mouvement issu de « Mes Mouvements » donc dans le périmètre du Demandeur */

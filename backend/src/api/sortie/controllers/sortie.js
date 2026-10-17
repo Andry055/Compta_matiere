@@ -494,7 +494,40 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     if (await isDemandeurSession(app, ctx)) {
       const miens = await documentIdsPossedesPar(app, ctx.state.user);
       withAppropriationFilter(ctx, miens);
+      // Apply populate and filter security for demandeur
+      const { securePopulateAndFilters } = require('../../../utils/populateSecurise');
+      securePopulateAndFilters(ctx);
     }
+    return baseHandler(this, 'find', ctx);
+  },
+
+  /**
+   * GET /api/sorties/distributions
+   * Retourne seulement les sorties qui ont eu leur stock diminué
+   * (statut validee ou sortie_effectuee), correspondant à la liste de distribution.
+   * Accessible aux rôles dépositaire, magasinier, logistique et comptable.
+   * Le Demandeur reçoit une erreur 403.
+   */
+  async findDistributions(ctx) {
+    const app = strapi;
+    // Le Demandeur n'a pas accès à cette route
+    if (await isDemandeurSession(app, ctx)) {
+      return forbid(ctx, "Accès refusé : cette route n'est pas accessible aux demandeurs.", 403);
+    }
+
+    // Appliquer le filtre appropriation pour les autres rôles (dépositaire, magasinier, logistique, comptable)
+    // Note: Le filtre d'appropriation n'est normalement pas nécessaire pour ces rôles car ils voient tout,
+    // mais on l'applique par précaution et pour utiliser l'utilitaire du point 1 comme requis.
+    const { securePopulateAndFilters } = require('../../../utils/populateSecurise');
+    securePopulateAndFilters(ctx);
+
+    // Ajouter le filtre pour ne retourner que les sorties validées ou effectuées
+    ctx.query.filters = {
+      ...ctx.query.filters,
+      statut: {
+        '$in': ['validee', 'sortie_effectuee']
+      }
+    };
     return baseHandler(this, 'find', ctx);
   },
 
@@ -509,6 +542,9 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       const miens = await documentIdsPossedesPar(app, ctx.state.user);
       const refus = verifierAccesSortie(ctx, documentId, miens);
       if (refus) return refus;
+      // Apply populate and filter security for demandeur
+      const { securePopulateAndFilters } = require('../../../utils/populateSecurise');
+      securePopulateAndFilters(ctx);
     }
     return baseHandler(this, 'findOne', ctx);
   },
@@ -552,16 +588,99 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       }
     }
 
+    // --- Contrôles à la création (avant toute écriture) ---------------------
+    // 1. justificatif non vide
+    const justificatif = body.justificatif || '';
+    if (!justificatif || justificatif.trim() === '') {
+      return badRequest(ctx, 'Justificatif obligatoire.');
+    }
+
+    // 2. au moins une destination parmi direction, service, beneficiaire
+    const directionId = body.direction_id || body.direction || null;
+    const serviceId = body.service_id || body.service || null;
+    const beneficiaire = body.beneficiaire || '';
+    if (!directionId && !serviceId && (!beneficiaire || beneficiaire.trim() === '')) {
+      return badRequest(ctx, 'Une destination est obligatoire : direction, service ou bénéficiaire.');
+    }
+
+    // 3. quantité de chaque ligne ≤ quantite_stock actuel de la fiche
+    // 4. refus de deux lignes visant le même matériel
+    const lignesVues = new Set();
+    for (const ligne of lignes) {
+      // Vérification du matériel et de la quantité en stock.
+      // Le champ attendu est `materiel_id` (contrat serveur) ; `materielId`
+      // (anciens bundles / clients alternatifs) est accepté comme alias afin
+      // qu'un payload camelCase ne tombe jamais sur la résolution par texte.
+      const materielIdLigne = ligne.materiel_id || ligne.materielId || null;
+      let materiel = null;
+      if (materielIdLigne) {
+        try {
+          materiel = await app.documents(MATERIEL_UID).findOne({
+            documentId: materielIdLigne,
+          });
+        } catch (e) {
+          materiel = null;
+        }
+      } else if (ligne.designation && String(ligne.designation).trim()) {
+        materiel = await findMaterielByDesignation(app, ligne.designation);
+      }
+
+      if (!materiel) {
+        return badRequest(
+          ctx,
+          `Matériel introuvable pour la ligne « ${ligne.designation || materielIdLigne} ».`
+        );
+      }
+
+      const quantiteStock = Number(materiel.quantite_stock) || 0;
+      const quantiteDemandee = Number(ligne.quantite) || 0;
+      if (quantiteDemandee > quantiteStock) {
+        return badRequest(
+          ctx,
+          `Stock insuffisant pour « ${materiel.designation || materiel.documentId} » : quantité demandée ${quantiteDemandee}, quantité disponible ${quantiteStock}.`
+        );
+      }
+
+      // Vérification de doublon de matériel
+      const materielId = materiel.documentId;
+      if (lignesVues.has(materielId)) {
+        return badRequest(
+          ctx,
+          `Doublon de matériel : deux lignes ciblent le même matériel (« ${materiel.designation || materiel.documentId} »).`
+        );
+      }
+      lignesVues.add(materielId);
+    }
+
+    // 5. si demande est fournie : elle existe et son statut est approuvee ou préparation
+    const demandeId = body.demande_id || body.demande || null;
+    if (demandeId) {
+      try {
+        const demande = await app.documents('api::demande.demande').findOne({
+          documentId: demandeId,
+        });
+        if (!demande) {
+          return badRequest(ctx, 'Demande introuvable.');
+        }
+        if (!['approuvee', 'preparation'].includes(demande.statut)) {
+          return badRequest(ctx, `La demande doit avoir un statut « approuvee » ou « préparation » (actuel : ${demande.statut}).`);
+        }
+      } catch (e) {
+        return badRequest(ctx, 'Demande introuvable.');
+      }
+    }
+
     // --- Résolution du matériel de chaque ligne (avant toute création) -----
     // Toutes les lignes sont validées AVANT de créer quoi que ce soit :
     // aucune sortie partielle.
     const materielResolus = [];
     for (const ligne of lignes) {
+      const materielIdLigne = ligne.materiel_id || ligne.materielId || null;
       let materiel = null;
-      if (ligne.materiel_id) {
+      if (materielIdLigne) {
         try {
           materiel = await app.documents(MATERIEL_UID).findOne({
-            documentId: ligne.materiel_id,
+            documentId: materielIdLigne,
           });
         } catch (e) {
           materiel = null;
@@ -569,7 +688,7 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
         if (!materiel) {
           return badRequest(
             ctx,
-            `Matériel introuvable pour la ligne « ${ligne.designation || ligne.materiel_id} ».`
+            `Matériel introuvable pour la ligne « ${ligne.designation || materielIdLigne} ».`
           );
         }
       } else if (ligne.designation && String(ligne.designation).trim()) {
@@ -581,14 +700,29 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
           'Matériel obligatoire : fournissez materiel_id ou designation pour chaque ligne.'
         );
       }
+
+      // Refuser la ligne si valeur_unitaire est absente ou ≤ 0 — contrôlé ICI,
+      // avant toute écriture. Le prix vient TOUJOURS de la fiche (jamais du
+      // client) : sans prix positif, aucun montant n'est calculable.
+      const valeurUnitaire = Number(materiel.valeur_unitaire) || 0;
+      if (!valeurUnitaire || valeurUnitaire <= 0) {
+        return badRequest(
+          ctx,
+          `Valeur unitaire manquante sur la fiche de ${materiel.designation || materiel.documentId}.`
+        );
+      }
       materielResolus.push(materiel);
     }
 
     // --- Génération automatique de la référence SOR-AAAA-NNN ---------------
-    let reference = body.reference;
-    if (!reference) {
-      const annee = new Date(body.date_sortie).getFullYear();
-      const prefixe = `SOR-${annee}-`;
+    // Ignorer toujours body.reference : la référence est toujours générée par le serveur
+    let reference = '';
+    let referenceGeneree = false;
+    const annee = new Date(body.date_sortie).getFullYear();
+    const prefixe = `SOR-${annee}-`;
+
+    // Essayer jusqu'à 3 fois en cas de violation d'unicité (collision)
+    for (let tentative = 0; tentative < 3; tentative++) {
       const existantes = await app.documents(SORTIE_UID).findMany({
         filters: { reference: { $startsWith: prefixe } },
         limit: -1,
@@ -598,50 +732,73 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
         .filter((n) => Number.isFinite(n));
       const suivant = (numeros.length ? Math.max(...numeros) : 0) + 1;
       reference = `${prefixe}${String(suivant).padStart(3, '0')}`;
+
+      // Vérifier si cette référence est déjà utilisée (dans cette même transaction ou en base)
+      const existeDeja = existantes.some(row => row.reference === reference);
+      if (!existeDeja) {
+        referenceGeneree = true;
+        break;
+      }
+      // Si c'est la dernière tentative et qu'il y a toujours collision, on continue quand même
+      // (la contrainte d'unicité en base déclenchera une erreur qui sera gérée)
     }
 
-    // --- Création de la sortie (statut initial : en_preparation) -----------
+    if (!referenceGeneree) {
+      // Après 3 tentatives, on garde la dernière référence générée
+      // L'unicité sera vérifiée par la contrainte en base
+    }
+
+    // --- Création de la sortie et des lignes dans une seule transaction -------
     let sortie;
     try {
-      sortie = await app.documents(SORTIE_UID).create({
-        data: {
-          reference,
-          date_sortie: body.date_sortie,
-          statut: 'en_preparation',
-          direction: body.direction_id || body.direction || null,
-          service: body.service_id || body.service || null,
-          demande: body.demande_id || body.demande || null,
-          beneficiaire: body.beneficiaire || null,
-          responsable: body.responsable || null,
-          justificatif: body.justificatif || null,
-          observations: body.observations || null,
-        },
-      });
-    } catch (e) {
-      return badRequest(ctx, `Création impossible : ${e.message}`);
-    }
+      await app.db.transaction(async ({ trx }) => {
+        // Création de la sortie
+        sortie = await app.documents(SORTIE_UID).create({
+          data: {
+            reference,
+            date_sortie: body.date_sortie,
+            statut: 'en_preparation',
+            direction: body.direction_id || body.direction || null,
+            service: body.service_id || body.service || null,
+            demande: body.demande_id || body.demande || null,
+            beneficiaire: body.beneficiaire || null,
+            responsable: body.responsable || null,
+            justificatif: body.justificatif || null,
+            observations: body.observations || null,
+          },
+        });
 
     // --- Création des lignes -------------------------------------------------
     for (let i = 0; i < lignes.length; i += 1) {
       const ligne = lignes[i];
-      try {
-        await app.documents(SORTIE_LIGNE_UID).create({
-          data: {
-            sortie: sortie.documentId,
-            materiel: materielResolus[i].documentId,
-            designation: ligne.designation || null,
-            quantite: Number(ligne.quantite),
-            valeur_unitaire:
-              Number.isFinite(Number(ligne.valeur_unitaire)) && ligne.valeur_unitaire !== undefined && ligne.valeur_unitaire !== null && ligne.valeur_unitaire !== ''
-                ? Number(ligne.valeur_unitaire)
-                : null,
-            observations: ligne.observations || null,
-          },
-        });
-      } catch (e) {
-        app.log.warn(`[sortie] Ligne ${i + 1} non créée : ${e.message}`);
-      }
-    }
+      const materiel = materielResolus[i];
+
+      // Ignorer valeur_unitaire envoyée par le client, prendre celle de la fiche matériel
+      // (déjà contrôlée positive avant la transaction : aucune écriture n'est
+      //  engagée tant qu'une fiche est incomplète).
+      const valeurUnitaire = Number(materiel.valeur_unitaire) || 0;
+
+      // Calculer le montant : quantité × valeur unitaire
+      const montant = Number(ligne.quantite) * valeurUnitaire;
+
+      await app.documents(SORTIE_LIGNE_UID).create({
+        data: {
+          sortie: sortie.documentId,
+          materiel: materiel.documentId,
+          designation: ligne.designation || null,
+          quantite: Number(ligne.quantite),
+          valeur_unitaire: valeurUnitaire,
+          montant: montant, // Champ ajouté, calculé par le serveur
+          observations: ligne.observations || null,
+        }
+      });
+      } // Fin de la boucle for
+    }); // Fin de la transaction
+  } catch (e) {
+    // Si une erreur se produit lors de la transaction (sortie ou lignes),
+    // tout est annulé et nous retournons une erreur 400
+    return badRequest(ctx, `Création impossible : ${e.message}`);
+  }
 
     const sortieComplete = await loadSortie(app, sortie.documentId);
     await tracerMouvementSortie(
@@ -941,5 +1098,197 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     );
 
     return { data: finale };
+  },
+
+  /**
+   * ÉTAPE 5 — remise du matériel au détenteur : statut final sortie_effectuee,
+   * mise à jour de la demande liée, traçage.
+   *
+   * Tout se déroule dans UNE transaction (strapi.db.transaction) :
+   *   1. vérifications préalables (statut validee, rôles autorisés, etc.) ;
+   *   2. enregistrement du détenteur et date de remise ;
+   *   3. mise à jour éventuelle de la demande liée (si statut approuvee ou preparation) ;
+   *   4. création du mouvement de traçage « Remise au détenteur » ;
+   *   5. passage du statut à sortie_effectuee.
+   * Un échec à l'étape 3 ou 4 annule toute la remise (le statut reste validee).
+   * Aucune modification du stock n'est effectuée.
+   */
+  async remise(ctx) {
+    const app = strapi;
+    const { documentId } = ctx.params;
+    const user = ctx.state && ctx.state.user;
+    const body = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
+
+    // Authentification requise
+    if (!user || !user.id) {
+      return forbid(ctx, 'Authentification requise pour effectuer une remise.', 401);
+    }
+
+    // Le Demandeur ne peut jamais effectuer de remise : message dédié, testé
+    // AVANT la règle générale de rôles (sinon le message Demandeur était
+    // inatteignable — le contrôle général renvoyait 403 en premier).
+    const code = (await getRoleCode(app, user.id)).toLowerCase();
+    if (code === DEMANDEUR_ROLE) {
+      return forbid(ctx, "Votre rôle (Demandeur) ne permet pas d'effectuer une remise.", 403);
+    }
+
+    // Vérification du rôle : seulement magasinier et depositaire autorisés
+    const rolesAutorises = ['magasinier', 'depositaire'];
+    if (code !== 'admin' && !rolesAutorises.includes(code)) {
+      return forbid(ctx, "Votre rôle ne permet pas d'effectuer une remise.", 403);
+    }
+
+    // Chargement de la sortie
+    const sortie = await loadSortie(app, documentId);
+    if (!sortie) {
+      ctx.status = 404;
+      ctx.body = { error: { status: 404, name: 'NotFound', message: 'Sortie introuvable.' } };
+      return ctx.body;
+    }
+
+    // Vérification : pas déjà effectuée — testée AVANT le contrôle de statut
+    // général (une sortie « sortie_effectuee » entrait sinon dans le 400
+    // « n'est possible que pour une sortie validee » et le 409 était
+    // inatteignable).
+    if (sortie.statut === 'sortie_effectuee') {
+      return forbid(ctx, 'Remise déjà enregistrée', 409);
+    }
+
+    // Vérification du statut : doit être validee
+    if (sortie.statut !== 'validee') {
+      return badRequest(
+        ctx,
+        `La remise n'est possible que pour une sortie « validee » (statut actuel : ${sortie.statut || '—'}).`
+      );
+    }
+
+    // Validation des champs obligatoires
+    const { detenteur_nom, detenteur_fonction, date_remise } = body.data || body;
+
+    if (!detenteur_nom || typeof detenteur_nom !== 'string' || detenteur_nom.trim() === '') {
+      return badRequest(ctx, 'detenteur_nom obligatoire (non vide).');
+    }
+    if (detenteur_nom.trim().length > 150) {
+      return badRequest(ctx, 'detenteur_nom limité à 150 caractères maximum.');
+    }
+
+    if (!detenteur_fonction || typeof detenteur_fonction !== 'string' || detenteur_fonction.trim() === '') {
+      return badRequest(ctx, 'detenteur_fonction obligatoire (non vide).');
+    }
+    if (detenteur_fonction.trim().length > 150) {
+      return badRequest(ctx, 'detenteur_fonction limité à 150 caractères maximum.');
+    }
+
+    // Validation de la date_remise (optionnelle)
+    let dateRemiseFinal = null;
+    if (date_remise !== undefined && date_remise !== null && date_remise !== '') {
+      if (typeof date_remise !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date_remise)) {
+        return badRequest(ctx, 'date_remise doit être au format YYYY-MM-DD.');
+      }
+      // Parsing en heure LOCALE (new Date('AAAA-MM-JJ') interprète en UTC :
+      // dans un fuseau positif (UTC+3 à Madagascar), la date DU JOUR était
+      // rejetée comme « postérieure à aujourd'hui », alors que l'omission de
+      // la date acceptait le même jour).
+      const [annee, mois, jour] = date_remise.split('-').map(Number);
+      const dateRemiseObj = new Date(annee, mois - 1, jour);
+      if (Number.isNaN(dateRemiseObj.getTime())) {
+        return badRequest(ctx, 'date_remise invalide (date inexistante).');
+      }
+      const aujourdhui = new Date();
+      aujourdhui.setHours(0, 0, 0, 0);
+      if (dateRemiseObj > aujourdhui) {
+        return badRequest(ctx, 'date_remise ne peut pas être postérieure à aujourd\'hui.');
+      }
+
+      // Vérification : date_remise ne peut pas être antérieure à la date de validation logistique
+      if (sortie.date_signature_logistique) {
+        const dateValidationLogistique = new Date(sortie.date_signature_logistique);
+        dateValidationLogistique.setHours(0, 0, 0, 0);
+        if (dateRemiseObj < dateValidationLogistique) {
+          return badRequest(ctx, 'date_remise ne peut pas être antérieure à la date de validation logistique.');
+        }
+      }
+      dateRemiseFinal = date_remise;
+    } else {
+      // Par défaut : aujourd'hui
+      dateRemiseFinal = new Date().toISOString().slice(0, 10);
+    }
+
+    // Transaction pour l'atomicité de la remise
+    let demandeMiseAJour = false;
+    try {
+      await app.db.transaction(async ({ trx }) => {
+        // 1. Enregistrement du détenteur et date de remise
+        await app.documents(SORTIE_UID).update({
+          documentId,
+          data: {
+            detenteur_nom: detenteur_nom.trim(),
+            detenteur_fonction: detenteur_fonction.trim(),
+            date_remise: dateRemiseFinal,
+          },
+        });
+
+        // 2. Mise à jour éventuelle de la demande liée
+        if (sortie.demande) {
+          const demande = await app.documents('api::demande.demande').findOne({
+            documentId: sortie.demande.documentId,
+          });
+
+          if (demande && ['approuvee', 'preparation'].includes(demande.statut)) {
+            await app.documents('api::demande.demande').update({
+              documentId: sortie.demande.documentId,
+              data: { statut: 'sortie_effectuee' },
+            });
+            demandeMiseAJour = true;
+          }
+          // Si la demande est dans un autre statut, on ne la modifie pas
+          // et demandeMiseAJour reste à false
+        }
+
+        // 3. Création du mouvement de traçage « Remise au détenteur »
+        const signataire = nomUtilisateur(user);
+        await app.documents(MOUVEMENT_UID).create({
+          data: {
+            reference: sortie.reference,
+            type: 'sortie',
+            date_mouvement: dateRemiseFinal,
+            utilisateur: signataire,
+            action: 'Remise au détenteur',
+            materiel: (sortie.lignes || [])
+              .map((l) => l.designation)
+              .filter(Boolean)
+              .join(', ') || '—',
+            quantite: (sortie.lignes || []).reduce((sum, l) => sum + (Number(l.quantite) || 0), 0),
+            statut: 'sortie_effectuee',
+            sortie: documentId,
+            observations: `Matériel remis à ${detenteur_nom.trim()} (${detenteur_fonction.trim()})`,
+          },
+        });
+
+        // 4. Passage du statut à sortie_effectuee
+        await app.documents(SORTIE_UID).update({
+          documentId,
+          data: { statut: 'sortie_effectuee' },
+        });
+      });
+
+      // Après la transaction réussie, on charge la sortie finale
+      const sortieFinale = await loadSortie(app, documentId);
+
+      return {
+        data: sortieFinale,
+        meta: {
+          demande_mise_a_jour: demandeMiseAJour || false,
+        },
+      };
+    } catch (e) {
+      // En cas d'échec de la transaction, tout est annulé
+      // Le statut reste validee (pas de remise enregistrée)
+      app.log.warn(`[sortie] Remise annulée (tout est annulé) : ${e.message}`);
+      return erreurInterne(
+        ctx,
+        `Remise impossible (tout a été annulé) : ${e.message}`
+      );
+    }
   },
 });

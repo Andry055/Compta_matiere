@@ -135,27 +135,31 @@ test('sortie-ligne : etat (neuf/bon/moyen/defaillant) et numero_logistique', () 
 
 /* ───── 3. Routeur : lecture GET + endpoints custom du circuit (étapes 2-3) ───── */
 
-test('le routeur déclare la lecture GET et les 3 endpoints custom (create-complete, sign, reject)', () => {
+test('le routeur déclare les lectures GET (liste, distributions, détail) et les 4 endpoints custom', () => {
   const mod = require(ROUTES);
   const routes = mod.routes;
 
   assert.ok(Array.isArray(routes), 'module.exports.routes attendu');
-  assert.strictEqual(routes.length, 5, '2 lectures GET + 3 POST du circuit');
+  assert.strictEqual(routes.length, 7, '3 lectures GET + 4 POST du circuit');
 
   const signatures = routes.map((r) => `${r.method} ${r.path}`).sort();
   assert.deepStrictEqual(signatures, [
     'GET /sorties',
     'GET /sorties/:id',
+    'GET /sorties/distributions',
     'POST /sorties/:documentId/reject',
+    'POST /sorties/:documentId/remise',
     'POST /sorties/:documentId/sign',
     'POST /sorties/create-complete',
   ]);
 
   assert.strictEqual(routes.find((r) => r.path === '/sorties').handler, 'sortie.find');
+  assert.strictEqual(routes.find((r) => r.path === '/sorties/distributions').handler, 'sortie.findDistributions');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/:id').handler, 'sortie.findOne');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/create-complete').handler, 'sortie.createComplete');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/:documentId/sign').handler, 'sortie.sign');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/:documentId/reject').handler, 'sortie.reject');
+  assert.strictEqual(routes.find((r) => r.path === '/sorties/:documentId/remise').handler, 'sortie.remise');
 
   // Lecture AUTHENTIFIÉE : sans session résolue, le sanitizer Strapi retire
   // les relations (lignes, direction, service, demande) de la réponse.
@@ -323,6 +327,7 @@ test('le contrôleur applique le filtre dans la requête, avant pagination', () 
 const SORTIE_ACTIONS_ATTENDUES = [
   'api::sortie.sortie.find',
   'api::sortie.sortie.findOne',
+  'api::sortie.sortie.findDistributions',
   'api::sortie-ligne.sortie-ligne.find',
   'api::sortie-ligne.sortie-ligne.findOne',
   'api::material.material.find',

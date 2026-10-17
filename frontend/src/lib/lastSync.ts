@@ -120,3 +120,62 @@ export function useDerniereSync(): Date | null {
   }, []);
   return date;
 }
+
+// Horodatage RÉEL de la dernière synchronisation réussie des sorties.
+const CLE_SORTIE = "derniere-sync-sortie";
+
+let dernierSortie: Date | null = null;
+try {
+  const brut = sessionStorage.getItem(CLE_SORTIE);
+  if (brut) {
+    const date = new Date(brut);
+    if (!Number.isNaN(date.getTime())) dernierSortie = date;
+  }
+} catch {
+  /* mode privé : on repart sans historique */
+}
+
+/**
+ * Date de la dernière synchronisation réussie des sorties, ou null si l'écran n'a jamais
+ * réussi à joindre le serveur depuis l'ouverture de cet onglet. */
+export function getDerniereSyncSortie(): Date | null {
+  return dernierSortie;
+}
+
+/**
+ * À appeler après chaque lecture serveur RÉUSSIE des sorties (jamais sur un échec). */
+export function marquerSyncSortie(date: Date = new Date()): void {
+  dernierSortie = date;
+  try {
+    sessionStorage.setItem(CLE_SORTIE, date.toISOString());
+  } catch {
+    /* non critique */
+  }
+  // Note: Nous ne déclenchons pas d'événement personnalisé ici pour éviter les conflits
+  // avec l'événement "derniere-sync-change" utilisé par les autres types de données.
+  // Si nécessaire, un événement spécifique pourrait être ajouté.
+}
+
+/** S'abonner aux changements d'horodatage des sorties. Retourne la fonction de retrait. */
+export function abonnerSyncSortie(abonne: Abonne): () => void {
+  abonnes.add(abonne);
+  return () => {
+    abonnes.delete(abonne);
+  };
+}
+
+/** Abonnement React à l'horodatage des sorties. Se ré-abonne à chaque changement ET
+ *  rafraîchit périodiquement : le libellé doit vieillir même en l'absence de
+ *  nouvelle synchronisation (sinon « il y a 0 min » resterait figé). */
+export function useDerniereSyncSortie(): Date | null {
+  const [date, setDate] = useState<Date | null>(dernierSortie);
+  useEffect(() => abonnerSyncSortie(() => setDate(getDerniereSyncSortie())), []);
+  useEffect(() => {
+    const minuteur = setInterval(
+      () => setDate((precedent) => (precedent ? new Date(precedent) : precedent)),
+      30000
+    );
+    return () => clearInterval(minuteur);
+  }, []);
+  return date;
+}

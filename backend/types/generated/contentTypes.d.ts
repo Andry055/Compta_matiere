@@ -1110,6 +1110,7 @@ export interface ApiSortieLigneSortieLigne extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     materiel: Schema.Attribute.Relation<'manyToOne', 'api::material.material'>;
+    montant: Schema.Attribute.Decimal;
     numero_logistique: Schema.Attribute.Text;
     observations: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
@@ -1168,6 +1169,7 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<false>;
     magasinier_signed: Schema.Attribute.Boolean &
       Schema.Attribute.DefaultTo<false>;
+    motif_rejet: Schema.Attribute.Text;
     mouvements: Schema.Attribute.Relation<
       'oneToMany',
       'api::mouvement.mouvement'

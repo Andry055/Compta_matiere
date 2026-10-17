@@ -444,7 +444,32 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
       let materielId = ligne.materiel_id || null;
       if (!materielId && ligne.designation) {
         const existant = await findMaterielByDesignation(app, ligne.designation);
-        materielId = existant ? existant.documentId : null;
+        if (existant) {
+          materielId = existant.documentId;
+        } else {
+          // Aucune fiche : on la CRÉE avec la désignation EXACTE saisie (pas de
+          // rapprochement approché — le serveur ne devine jamais). Sans fiche,
+          // la ligne serait orpheline et son stock ne serait JAMAIS impacté à
+          // la 3ᵉ signature : appliquerImpactStock saute les lignes sans
+          // matériel, d'où un inventaire inférieur au stock réel.
+          try {
+            const prix = Number(ligne.valeur_unitaire);
+            const fiche = await app.documents(MATERIEL_UID).create({
+              data: {
+                designation: ligne.designation.trim(),
+                nomenclature: ligne.nomenclature || null,
+                valeur_unitaire: Number.isFinite(prix) ? prix : null,
+                quantite_stock: 0,
+                statut: 'en_stock',
+              },
+            });
+            materielId = fiche.documentId;
+          } catch (e) {
+            app.log.warn(
+              `[entree] Fiche non créée pour « ${ligne.designation} » : ${e.message}`
+            );
+          }
+        }
       }
       try {
         await app.documents(LIGNE_UID).create({

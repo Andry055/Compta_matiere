@@ -1,6 +1,7 @@
 # Données et documents personnels du ministère
 Data compta-matière/
 Data compta-matière.rar
+prompts/*.md
 
 # Exports de conversation Freebuff
 freebuff-chat-*.md

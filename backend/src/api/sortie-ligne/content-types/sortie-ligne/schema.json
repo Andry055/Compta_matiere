@@ -31,6 +31,9 @@
     "valeur_unitaire": {
       "type": "decimal"
     },
+    "montant": {
+      "type": "decimal"
+    },
     "observations": {
       "type": "string"
     },

@@ -310,6 +310,7 @@ const OUVERTURE_ACTIONS = [
 ];
 
 const ROLES_RAPPORTS = ['depositaire', 'comptable', 'logistique'];
+const ROLES_SORTIE_DISTRIBUTION = ['depositaire', 'magasinier', 'logistique', 'comptable'];
 
 // ---------------------------------------------------------------------------
 // Demandeur : il peut ENREGISTRER une entrée (elle démarre « En attente »,
@@ -371,6 +372,12 @@ const DEMANDEUR_ENTREE_ACTIONS = [
 const SORTIE_READ_ACTIONS = [
   'api::sortie.sortie.find',
   'api::sortie.sortie.findOne',
+  // Distribution (GET /sorties/distributions) : la liste des sorties dont le
+  // stock est DÉJÀ débité (statut validee / sortie_effectuee) qui alimente
+  // l'écran Distribution. Sans cette action, la route existante renvoyait
+  // 403 à TOUS les rôles (route morte) — accordée en lecture seule, comme le
+  // reste de la liste.
+  'api::sortie.sortie.findDistributions',
   // Lecture des lignes : sans elles le sanitizer ne peuplerait pas `lignes`
   // (les sorties seraient affichées sans articles).
   'api::sortie-ligne.sortie-ligne.find',
@@ -394,6 +401,23 @@ const ROLES_LECTURE_SORTIE = [
   'magasinier',
   'logistique',
   'comptable',
+];
+
+// ---------------------------------------------------------------------------
+// Organigramme (lecture seule) : employés.
+//
+// L'écran Distribution (formulaire « Distribuer un équipement ») doit
+// afficher les VRAIS employés de la base pour choisir le bénéficiaire, et
+// l'écran Départements peuple `services.employees` via
+// GET /api/directions?populate[services][populate]=employees. Le sanitizer
+// Content-API retire ce peuplement tant que le rôle ne possède pas
+// `api::employee.employee.find` : sans cette permission, la liste des
+// employés était vide (403) pour tous les profils métier.
+// Lecture STRICTE : aucune action d'écriture sur les employés.
+// ---------------------------------------------------------------------------
+const ORGANIGRAMME_READ_ACTIONS = [
+  'api::employee.employee.find',
+  'api::employee.employee.findOne',
 ];
 
 // ---------------------------------------------------------------------------
@@ -432,6 +456,20 @@ const SORTIE_SIGN_ACTIONS = [
 ];
 
 const ROLES_SIGNATURE_SORTIE = ['magasinier', 'depositaire', 'logistique'];
+
+// ---------------------------------------------------------------------------
+// Sorties (étape 5) : remise au détenteur —
+// POST /api/sorties/:documentId/remise.
+//
+// Accordée UNIQUEMENT aux rôles magasinier et dépositaire — ni le
+// Demandeur, ni le Comptable, ni le logistique. La remise proprement dite est
+// contrôlée par rôle dans le contrôleur ; ici on n'accorde que l'accès à la route.
+// ---------------------------------------------------------------------------
+const SORTIE_REMISE_ACTIONS = [
+  'api::sortie.sortie.remise',
+];
+
+const ROLES_REMISE_SORTIE = ['magasinier', 'depositaire'];
 
 
 const DEMO_DEMANDEUR = {
@@ -647,6 +685,43 @@ async function ensureAuthSetup(strapi) {
     }
   }
 
+  // 2septies bis) Permissions « Sorties distributions » (liste de distribution) :
+  // Accordées aux rôles dépositaire, magasinier, logistique et comptable.
+  // Le Demandeur n'a pas accès (retourne 403, géré dans le contrôleur).
+  for (const type of ROLES_SORTIE_DISTRIBUTION) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of ['api::sortie.sortie.findDistributions']) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2septies bis) Organigramme en LECTURE (employés) : mêmes rôles que la
+  // lecture des sorties + le rôle « authenticated ». Indispensable au
+  // formulaire de distribution (choix du bénéficiaire réel) et au peuplement
+  // `services.employees` de l'écran Départements.
+  for (const type of ROLES_LECTURE_SORTIE) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of ORGANIGRAMME_READ_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+  if (authenticated) {
+    for (const action of ORGANIGRAMME_READ_ACTIONS) {
+      const cle = `authenticated:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: authenticated.id } });
+      accordees.add(cle);
+    }
+  }
+
   // 2octies) Création d'un ordre de sortie (étape 2) : les rôles qui
   // possèdent déjà l'accès aux routes de signature des entrées — même
   // périmètre, aucune nouvelle liste de rôles.
@@ -669,6 +744,21 @@ async function ensureAuthSetup(strapi) {
     const role = roles[type];
     if (!role) continue;
     for (const action of SORTIE_SIGN_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2douzaines) Remise d'une sortie (étape 5) : accordée
+  // UNIQUEMENT aux rôles magasinier / dépositaire — ni le Demandeur,
+  // ni le Comptable, ni le logistique (le Demandeur ne peut jamais effectuer
+  // de remise ; c'est en outre vérifié dans le contrôleur).
+  for (const type of ROLES_REMISE_SORTIE) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of SORTIE_REMISE_ACTIONS) {
       const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
@@ -759,6 +849,38 @@ async function seedOrganisation(strapi) {
 
 const { seedReddition } = require('./utils/seedReddition');
 
+// Simple materials for distribution functionality
+const SEED_MATERIELS = [
+  { designation: 'Tapis de souris', nomenclature: '03', valeur_unitaire: 5000, quantite_stock: 10, statut: 'en_stock' },
+  { designation: 'Clavier compact', nomenclature: '03', valeur_unitaire: 25000, quantite_stock: 5, statut: 'en_stock' },
+  { designation: 'Casque audio', nomenclature: '03', valeur_unitaire: 15000, quantite_stock: 8, statut: 'en_stock' },
+  { designation: 'Webcam HD', nomenclature: '03', valeur_unitaire: 30000, quantite_stock: 12, statut: 'en_stock' },
+];
+
+async function seedMaterials(strapi) {
+  const existing = await strapi
+    .documents('api::material.material')
+    .count();
+
+  if (existing > 0) {
+    strapi.log.info('[seed-materiels] Matériels déjà présents : seed ignoré.');
+    return;
+  }
+
+  strapi.log.info('[seed-materiels] Insertion des matériels de base...');
+  let count = 0;
+
+  for (const materielData of SEED_MATERIELS) {
+    await strapi.documents('api::material.material').create({
+      data: materielData,
+      status: 'published',
+    });
+    count++;
+  }
+
+  strapi.log.info(`[seed-materiels] Terminé : ${count} matériels insérés.`);
+}
+
 module.exports = {
   /**
    * An asynchronous register function that runs before
@@ -800,6 +922,11 @@ module.exports = {
       await seedReddition(strapi);
     } catch (err) {
       strapi.log.error(`[seed-reddition] Échec : ${err.message}`);
+    }
+    try {
+      await seedMaterials(strapi);
+    } catch (err) {
+      strapi.log.error(`[seed-materiels] Échec : ${err.message}`);
     }
   },
 };

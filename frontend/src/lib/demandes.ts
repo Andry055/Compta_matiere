@@ -734,3 +734,41 @@ export async function fetchDemandes(): Promise<DemandeRecord[] | null> {
     return null;
   }
 }
+
+/**
+ * Demandes rattachables à un ordre de sortie (champ texte « Demande liée »).
+ *
+ * Différence CLÉ avec fetchDemandes : `[]` signifie « aucune demande en base »
+ * et `null` « serveur injoignable / jeton absent ». La distinction permet
+ * d'afficher « aucune demande en base » côté formulaire au lieu de laisser le
+ * serveur renvoyer un 400 « Demande introuvable. » dont la raison n'apparaît
+ * jamais dans la console (voir apparierDemande, sortieBrouillon.ts).
+ */
+export async function fetchDemandesPourLiaison(): Promise<
+  Array<{ documentId: string; reference: string; statut: string }> | null
+> {
+  try {
+    const { api, getStrapiJwt } = await import("./api");
+    if (!getStrapiJwt()) return null; // sans jeton : contrôle impossible
+    const { data } = await api.get("/api/demandes", {
+      timeout: 5000,
+      params: { "pagination[pageSize]": 100, sort: "date_demande:desc" },
+    });
+    const rows = data?.data ?? [];
+    return rows
+      .filter((row: { documentId?: unknown }) => !!row.documentId)
+      .map(
+        (row: {
+          documentId: string;
+          reference?: string | null;
+          statut?: string | null;
+        }) => ({
+          documentId: String(row.documentId),
+          reference: String(row.reference || ""),
+          statut: String(row.statut || ""),
+        })
+      );
+  } catch {
+    return null;
+  }
+}

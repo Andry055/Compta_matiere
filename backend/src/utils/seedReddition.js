@@ -236,10 +236,18 @@ async function seedReddition(strapi) {
           piece_justificative: def.facture,
         },
       });
-      // Impact stock (matérialise le flux)
+      // Impact stock (matérialise le flux).
+      // On RELIT la fiche à chaque ligne : l'objet `materiel` du cache est
+      // figé à sa création (quantite_stock 0) — sans cette relecture, chaque
+      // ligne ÉCRASAIT les précédentes (« dernière ligne gagne »), d'où des
+      // stocks fantaisistes type Routeur = 150 au lieu du cumul réel.
+      const actuel = await strapi.db.query(MATERIEL_UID).findOne({ where: { id: materiel.id } });
       await strapi.db.query(MATERIEL_UID).update({
         where: { id: materiel.id },
-        data: { quantite_stock: (materiel.quantite_stock || 0) + Math.max(1, Math.round(l.quantite)) },
+        data: {
+          quantite_stock:
+            ((actuel && actuel.quantite_stock) || 0) + Math.max(1, Math.round(l.quantite)),
+        },
       });
     }
   }
@@ -256,6 +264,9 @@ async function seedReddition(strapi) {
         reference,
         date_sortie: s.date,
         statut: 'sortie_effectuee',
+        // Garde-fou du circuit : la sortie est déjà comptée comme décomptée
+        // (le recalcul et la 3ᵉ signature ne la décompteront jamais deux fois).
+        stock_impacte: true,
         beneficiaire: 'Direction Informatique',
         responsable: 'Rakotomalala Hery',
         justificatif: 'Affectation de service',
@@ -270,6 +281,19 @@ async function seedReddition(strapi) {
           materiel: materiel.id,
           quantite: l.quantite,
           valeur_unitaire: 0,
+        },
+      });
+      // Décompte du stock pour une sortie DÉJÀ effectuée — même règle que le
+      // circuit métier : le stock baisse quand la sortie est finale. Sans
+      // cela le seed affichait un stock supérieur au stock réel.
+      const actuel = await strapi.db.query(MATERIEL_UID).findOne({ where: { id: materiel.id } });
+      await strapi.db.query(MATERIEL_UID).update({
+        where: { id: materiel.id },
+        data: {
+          quantite_stock: Math.max(
+            0,
+            ((actuel && actuel.quantite_stock) || 0) - (Number(l.quantite) || 0)
+          ),
         },
       });
     }

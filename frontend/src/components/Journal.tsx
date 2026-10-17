@@ -203,6 +203,11 @@ export async function photoPourEntreeJournal(
   return null;
 }
 
+/** Radix <Select> interdit `value=""` (valeur réservée au placeholder) : un
+ *  <SelectItem value=""> fait planter le rendu de la page entière. On utilise
+ *  une sentinel, réinterprétée en `undefined` (« toutes les origines »). */
+const ORIGINE_TOUTES = "__toutes__";
+
 export function Journal() {
   // ---- État de chargement et d'erreur ----
   const [chargement, setChargement] = useState(true);
@@ -664,11 +669,11 @@ export function Journal() {
                         Origine
                       </label>
                       <Select
-                        value={filtres.origine || ""}
+                        value={filtres.origine || ORIGINE_TOUTES}
                         onValueChange={(value) =>
                           setFiltres((prev) => ({
                             ...prev,
-                            origine: value || undefined,
+                            origine: value === ORIGINE_TOUTES ? undefined : value,
                           }))
                         }
                       >
@@ -676,7 +681,7 @@ export function Journal() {
                           <SelectValue placeholder="Toutes" />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="">Toutes</SelectItem>
+                          <SelectItem value={ORIGINE_TOUTES}>Toutes</SelectItem>
                           <SelectItem value="fournisseur">Fournisseur</SelectItem>
                           <SelectItem value="donation">Donation</SelectItem>
                           <SelectItem value="retour">Retour</SelectItem>

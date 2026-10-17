@@ -23,6 +23,11 @@ module.exports = {
     },
     {
       method: 'GET',
+      path: '/sorties/distributions',
+      handler: 'sortie.findDistributions',
+    },
+    {
+      method: 'GET',
       path: '/sorties/:id',
       handler: 'sortie.findOne',
     },
@@ -40,6 +45,11 @@ module.exports = {
       method: 'POST',
       path: '/sorties/:documentId/reject',
       handler: 'sortie.reject',
+    },
+    {
+      method: 'POST',
+      path: '/sorties/:documentId/remise',
+      handler: 'sortie.remise',
     },
   ],
 };

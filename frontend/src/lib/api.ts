@@ -193,6 +193,10 @@ interface StrapiEntity {
   date_sortie?: string | null;
   numero_facture?: string | null;
   statut?: string | null;
+  /** Circuit à 3 signatures d'une sortie. */
+  magasinier_signed?: boolean | null;
+  depositaire_signed?: boolean | null;
+  logistique_signed?: boolean | null;
   responsable?: string | null;
   beneficiaire?: string | null;
   justificatif?: string | null;
@@ -436,6 +440,11 @@ function mapSortie(row: StrapiEntity): SortieRecord {
     beneficiaire: row.beneficiaire || "—",
     responsable: row.responsable || "—",
     statut: STATUTS_SORTIE_API[row.statut || ""] || "Demandée",
+    // Circuit à 3 signatures : ces drapeaux n'étaient jamais mappés, la carte
+    // affichait donc toujours « ○ » (jamais de ✓) quel que soit l'état réel.
+    magasinier_signed: row.magasinier_signed === true,
+    depositaire_signed: row.depositaire_signed === true,
+    logistique_signed: row.logistique_signed === true,
     justificatif: row.justificatif || "—",
     documents: row.justificatif
       ? [{ nom: row.justificatif, type: "Justificatif de sortie" }]
@@ -574,10 +583,82 @@ export interface NouvelleEntreePayload {
   declaration_date?: string;
 }
 
+
 /** Création complète d'une entrée (entête administrative + lignes). */
 export async function creerEntree(payload: NouvelleEntreePayload): Promise<EntreeRecord> {
   const { data } = await api.post("/api/entrees/create-complete", { data: payload });
   return mapEntree(data.data);
+}
+
+/** Payload de POST /api/sorties/create-complete (entête + lignes).
+ *  Les valeurs vides sont écartées côté client par `construirePayloadSortie` ;
+ *  le serveur reste l'autorité pour le prix et le montant final. */
+export interface NouvelleSortiePayload {
+  date_sortie: string;
+  justificatif: string;
+  /** Non envoyé en entête (spécification) — le champ est volontairement absent. */
+  observations?: undefined;
+  direction_id?: string;
+  service_id?: string;
+  beneficiaire?: string;
+  demande_id?: string;
+  lignes: Array<{
+    /** documentId de la fiche matériel — nom exact attendu par le serveur
+     *  (`materiel_id`) : le serveur ignore tout autre libellé et retomberait
+     *  sur la résolution par texte, qui exige une désignation identique. */
+    materiel_id?: string;
+    designation?: string;
+    quantite: number;
+    observations?: string;
+  }>;
+}
+
+/** Contrôle physique d'une ligne de sortie, groupé à la signature magasinier
+ *  (voir lib/sortieControle.ts → construirePayloadSignatureSortie). */
+export interface ControleSortieLignePayload {
+  /** documentId de la ligne de sortie contrôlée. */
+  ligne: string;
+  etat: "neuf" | "bon" | "moyen" | "defaillant";
+  observations?: string;
+}
+
+/** Création complète d'une sortie (entête + lignes). */
+export async function creerSortie(payload: NouvelleSortiePayload): Promise<SortieRecord> {
+  const { data } = await api.post("/api/sorties/create-complete", { data: payload });
+  return mapSortie(data.data);
+}
+
+/** Signature d'une sortie (rôle contrôlé côté serveur). */
+export async function signerSortie(
+  documentId: string,
+  role: 'magasinier' | 'depositaire' | 'logistique',
+  controles?: ControleSortieLignePayload[]
+): Promise<SortieRecord> {
+  const { data } = await api.post(`/api/sorties/${documentId}/sign`, {
+    data: { role, ...(controles ? { controles } : {}) },
+  });
+  return mapSortie(data.data);
+}
+
+/** Rejet d'une sortie par un responsable habilité. */
+export async function rejeterSortie(documentId: string, motif: string): Promise<SortieRecord> {
+  const { data } = await api.post(`/api/sorties/${documentId}/reject`, {
+    data: { motif },
+  });
+  return mapSortie(data.data);
+}
+
+/**
+ * Signature dépositaire (étape 2/3 du circuit de sortie).
+ * Appelait auparavant `/prepare` (route inexistante) — redirigé vers
+ * `/sign` avec `role: 'depositaire'`. Le backend ignore `controles` pour
+ * le dépositaire ; il n'est conservé en signature que pour compatibilité.
+ */
+export async function preparerSortie(documentId: string, _controles: ControleSortieLignePayload[]): Promise<SortieRecord> {
+  const { data } = await api.post(`/api/sorties/${documentId}/sign`, {
+    data: { role: 'depositaire' },
+  });
+  return mapSortie(data.data);
 }
 
 /** Détail du contrôle physique d'une ligne, envoyé groupé avec la signature

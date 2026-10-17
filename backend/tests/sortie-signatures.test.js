@@ -137,6 +137,23 @@ function documents(uid) {
 const appSimule = {
   documents,
   db: {
+    /** Transaction à annulation : snapshot à l'entrée, restauration intégrale
+     *  si le callback lève. Sans elle, createComplete échouerait aussitôt
+     *  (« Création impossible : app.db.transaction is not a function »). */
+    async transaction(cb) {
+      const instantane = Object.fromEntries(
+        Object.entries(CONTENEURS).map(([uid, rows]) => [uid, rows.map((r) => ({ ...r }))])
+      );
+      try {
+        return await cb({ trx: {} });
+      } catch (e) {
+        for (const [uid, rows] of Object.entries(instantane)) {
+          CONTENEURS[uid].length = 0;
+          CONTENEURS[uid].push(...rows);
+        }
+        throw e;
+      }
+    },
     query(uid) {
       if (uid !== 'plugin::users-permissions.user') {
         throw new Error(`db.query non simulé pour : ${uid}`);
@@ -174,6 +191,8 @@ function fauxCreateCoreController(uid, setup) {
   const customs = setup({ strapi: appSimule });
   const objet = Object.create(base);
   Object.assign(objet, customs);
+  // Reproduire l'accès global à strapi comme en production
+  global.strapi = appSimule;
   return objet;
 }
 
@@ -202,8 +221,10 @@ function reinitialiser() {
   for (const stock of Object.values(CONTENEURS)) stock.length = 0;
 
   CONTENEURS['api::material.material'].push(
-    { documentId: 'm1', designation: 'Tapis de souris', quantite_stock: 10 },
-    { documentId: 'm2', designation: 'Clavier compact', quantite_stock: 5 }
+    // valeur_unitaire POSITIVE exigée par createComplete (le prix vient de la
+    // fiche, jamais du client) : les fixtures doivent satisfaire le contrat.
+    { documentId: 'm1', designation: 'Tapis de souris', quantite_stock: 10, valeur_unitaire: 5000 },
+    { documentId: 'm2', designation: 'Clavier compact', quantite_stock: 5, valeur_unitaire: 3000 }
   );
 
   CONTENEURS['api::sortie-ligne.sortie-ligne'].push(
@@ -261,6 +282,7 @@ test('createComplete : sortie créée en en_preparation, lignes reliées, stock 
   reinitialiser();
   const ctx = contexteAppel(undefined, {
     date_sortie: '2026-10-13',
+    justificatif: 'Bon n° 41',
     beneficiaire: 'Service Formation',
     lignes: [
       { designation: 'Tapis de souris', quantite: 2, valeur_unitaire: 5000 },
@@ -658,4 +680,98 @@ test('permissions : sign et reject accordées à magasinier/dépositaire/logisti
     );
     assert.doesNotMatch(bloc, /sortie\.sortie\.(sign|reject)/);
   }
+});
+
+/* ───── Contrat du payload frontend : la ligne est identifiée par ID ──────── */
+
+test('createComplete : payload frontend (materiel_id + designation canonique) crée tout', async () => {
+  reinitialiser();
+
+  // Exactement ce que `construirePayloadSortie` envoie après correction.
+  const ctx = contexteAppel(undefined, {
+    date_sortie: '2026-10-16',
+    justificatif: 'Bon n° 42',
+    beneficiaire: 'Service Formation',
+    lignes: [
+      { materiel_id: 'm1', designation: 'Tapis de souris', quantite: 2, observations: '  Neuf  ' },
+      { materiel_id: 'm2', designation: 'Clavier compact', quantite: 1 },
+    ],
+  }, 'depositaire');
+
+  const reponse = await controleur.createComplete(ctx);
+  assert.strictEqual(ctx.status, 201, `création acceptée (statut ${ctx.status} : ${ctx.body && ctx.body.error && ctx.body.error.message})`);
+
+  const lignes = CONTENEURS['api::sortie-ligne.sortie-ligne']
+    .filter((l) => l.sortie === reponse.data.documentId);
+  assert.strictEqual(lignes.length, 2, 'les deux lignes sont créées');
+  assert.strictEqual(lignes[0].materiel, 'm1', 'ligne 1 reliée à la fiche');
+  // Le montant vient de la FICHE (prix du client ignoré).
+  assert.strictEqual(lignes[0].valeur_unitaire, 5000, 'prix de la fiche');
+  assert.strictEqual(lignes[0].montant, 10000, 'montant = quantité × prix de la fiche');
+  assert.strictEqual(materielEnBase('m1').quantite_stock, 10, 'stock intact à la création');
+});
+
+test('createComplete : l alias `materielId` (ancien bundle) résout la fiche', async () => {
+  reinitialiser();
+
+  const ctx = contexteAppel(undefined, {
+    date_sortie: '2026-10-16',
+    justificatif: 'Bon n° 43',
+    beneficiaire: 'Service Formation',
+    // Payload camelCase : SANS designation de repli, seule la clé compte.
+    lignes: [{ materielId: 'm2', quantite: 1 }],
+  }, 'depositaire');
+
+  const reponse = await controleur.createComplete(ctx);
+  assert.strictEqual(
+    ctx.status,
+    201,
+    `alias accepté (statut ${ctx.status} : ${ctx.body && ctx.body.error && ctx.body.error.message})`
+  );
+  const lignes = CONTENEURS['api::sortie-ligne.sortie-ligne']
+    .filter((l) => l.sortie === reponse.data.documentId);
+  assert.strictEqual(lignes[0].materiel, 'm2', 'résolu par materielId, pas par texte');
+});
+
+test('createComplete : designation partielle seule reste refusée (400, rien créé)', async () => {
+  reinitialiser();
+  const nbSorties = CONTENEURS['api::sortie.sortie'].length;
+
+  // Recherche tapée à la main, non appariée à une fiche : le serveur ne fait
+  // QUE de lappariement exact, il refuse donc la ligne.
+  const ctx = contexteAppel(undefined, {
+    date_sortie: '2026-10-16',
+    justificatif: 'Bon n° 44',
+    beneficiaire: 'Service Formation',
+    lignes: [{ designation: 'Tapis', quantite: 1 }],
+  }, 'depositaire');
+
+  await controleur.createComplete(ctx);
+  assert.strictEqual(ctx.status, 400);
+  assert.match(ctx.body.error.message, /Matériel introuvable/);
+  assert.strictEqual(CONTENEURS['api::sortie.sortie'].length, nbSorties, 'aucune sortie créée');
+});
+
+test('createComplete : fiche sans valeur unitaire → 400 AVANT toute écriture', async () => {
+  reinitialiser();
+  CONTENEURS['api::material.material'].push(
+    { documentId: 'm3', designation: 'Lampe sans prix', quantite_stock: 5 }
+  );
+  const nbSorties = CONTENEURS['api::sortie.sortie'].length;
+  const nbLignes = CONTENEURS['api::sortie-ligne.sortie-ligne'].length;
+  const nbMouvements = CONTENEURS['api::mouvement.mouvement'].length;
+
+  const ctx = contexteAppel(undefined, {
+    date_sortie: '2026-10-16',
+    justificatif: 'Bon n° 45',
+    beneficiaire: 'Service Formation',
+    lignes: [{ materiel_id: 'm3', designation: 'Lampe sans prix', quantite: 1 }],
+  }, 'depositaire');
+
+  await controleur.createComplete(ctx);
+  assert.strictEqual(ctx.status, 400, 'refus explicite plutôt quune ligne muette');
+  assert.match(ctx.body.error.message, /Valeur unitaire manquante/);
+  assert.strictEqual(CONTENEURS['api::sortie.sortie'].length, nbSorties, 'aucune sortie créée');
+  assert.strictEqual(CONTENEURS['api::sortie-ligne.sortie-ligne'].length, nbLignes, 'aucune ligne créée');
+  assert.strictEqual(CONTENEURS['api::mouvement.mouvement'].length, nbMouvements, 'aucun mouvement tracé');
 });

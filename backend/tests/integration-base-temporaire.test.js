@@ -37,9 +37,11 @@ process.env.DATABASE_FILENAME = path.join('.tmp', 'integration-etape-4.db');
 
 const { createStrapi } = require('@strapi/strapi');
 const CONTROLEUR = path.join(RACINE_BACKEND, 'src', 'api', 'sortie', 'controllers', 'sortie.js');
+const CONTROLEUR_RAPPORT = path.join(RACINE_BACKEND, 'src', 'api', 'rapport', 'controllers', 'rapport.js');
 
 let strapi = null;
 let controleur = null;
+let controleurRapport = null;
 
 test.before(async () => {
   strapi = createStrapi({
@@ -61,6 +63,13 @@ test.before(async () => {
   if (typeof controleur.sign !== 'function') {
     throw new Error(
       `controleur.sign attendu, obtenu : ${Object.keys(controleur).join(', ')}`
+    );
+  }
+  // Contrôleur RÉEL des rapports de reddition (grand livre / fiche de stock).
+  controleurRapport = require(CONTROLEUR_RAPPORT)({ strapi });
+  if (typeof controleurRapport.grandLivre !== 'function') {
+    throw new Error(
+      `controleurRapport.grandLivre attendu, obtenu : ${Object.keys(controleurRapport).join(', ')}`
     );
   }
 });
@@ -177,6 +186,21 @@ async function stockReel(documentId) {
   return (await strapi.db.connection('materials')
     .where('document_id', documentId)
     .first('quantite_stock')).quantite_stock;
+}
+
+/** GET /api/rapports/grand-livre rappelé PAR LE CONTRÔLEUR RÉEL, en se
+ *  connectant comme le dépositaire (profil qui tient le grand livre). */
+async function grandLivreReel(materielDocumentId, utilisateur) {
+  const ctx = {
+    params: {},
+    query: { materiel: materielDocumentId },
+    state: { user: utilisateur },
+    status: 200,
+    body: null,
+  };
+  await controleurRapport.grandLivre(ctx);
+  assert.strictEqual(ctx.status, 200, JSON.stringify(ctx.body && ctx.body.error));
+  return ctx.body.data;
 }
 
 /* ═══════════════════════════ Les scénarios réels ═══════════════════════ */
@@ -309,6 +333,77 @@ test('integration : deux signatures CONCURRENTES (Promise.all) — un seul débi
     limit: -1,
   });
   assert.strictEqual(mouvements.length, 2);
+});
+
+test('integration : validation logistique -> stock debité, grand livre du depositaire mis a jour a la remise', async () => {
+  const logistique = await utilisateurDuRole('logistique');
+  const depositaire = await utilisateurDuRole('depositaire');
+  const magasinier = await utilisateurDuRole('magasinier');
+
+  // 10 unités reçues (entrée validée) : c'est l'écriture d'ouverture du
+  // grand livre du matériel.
+  const materiel = await materielDeTest('Ordinateur portable integration', 10);
+  const entree = await strapi.documents('api::entree.entree').create({
+    data: {
+      reference: `ENT-GL-${Date.now()}`,
+      date_entree: '2026-01-05',
+      statut: 'validee',
+    },
+  });
+  await strapi.documents('api::entree-ligne.entree-ligne').create({
+    data: {
+      entree: entree.documentId,
+      materiel: materiel.documentId,
+      designation: materiel.designation,
+      numero_ordre: 1,
+      quantite: 10,
+      valeur_unitaire: 1000,
+      montant: 10000,
+    },
+  });
+
+  // Ordre de sortie de 2 unités, signatures 1 et 2 posées.
+  const { sortie } = await sortieDeTest(materiel, 2, 'SOR-INT-007');
+  await poserSignatures1et2(sortie.documentId);
+
+  // ── Validation par le chef logistique (étape 4) ──────────────────────────
+  const avant = await grandLivreReel(materiel.documentId, depositaire);
+  assert.strictEqual(avant.totalEntreesQ, 10);
+  assert.strictEqual(avant.totalSortiesQ, 0);
+  assert.strictEqual(avant.quantiteFinale, 10);
+
+  const ctx = contexte(sortie.documentId, { role: 'logistique' }, logistique);
+  await controleur.sign(ctx);
+  assert.strictEqual(ctx.status, 200, JSON.stringify(ctx.body && ctx.body.error));
+
+  // ✧ PREUVE CHIFFRÉE : le stock PHYSIQUE est débité immédiatement (10-2=8).
+  assert.strictEqual(await stockReel(materiel.documentId), 8);
+
+  // Le grand livre (fiche de stock) ne comptabilise QUE les sorties
+  // EFFECTUÉES : la sortie « validée » n'y figure pas encore.
+  const apresValidation = await grandLivreReel(materiel.documentId, depositaire);
+  assert.strictEqual(apresValidation.totalSortiesQ, 0, 'sortie « validée » non encore comptabilisée');
+  assert.strictEqual(apresValidation.quantiteFinale, 10);
+
+  // ── Remise au détenteur (étape 5) → sortie_effectuee ────────────────────
+  const ctxRemise = contexte(sortie.documentId, {
+    data: {
+      detenteur_nom: 'Rakoto Hery',
+      detenteur_fonction: 'Agent administratif',
+    },
+  }, magasinier);
+  await controleur.remise(ctxRemise);
+  assert.strictEqual(ctxRemise.status, 200, JSON.stringify(ctxRemise.body && ctxRemise.body.error));
+
+  // ✧ Le stock PHYSIQUE n'est PAS redébité par la remise (déjà fait à l'étape 4).
+  assert.strictEqual(await stockReel(materiel.documentId), 8);
+
+  // ✧ Le grand livre du dépositaire est DÉSORMÀS mis à jour : 10 - 2 = 8.
+  const apresRemise = await grandLivreReel(materiel.documentId, depositaire);
+  assert.strictEqual(apresRemise.mouvements.length, 2, 'entrée + sortie');
+  assert.strictEqual(apresRemise.totalEntreesQ, 10);
+  assert.strictEqual(apresRemise.totalSortiesQ, 2, 'sortie comptabilisée après remise');
+  assert.strictEqual(apresRemise.quantiteFinale, 8, 'grand livre raccord avec le stock physique (8)');
 });
 
 test('integration : deux sorties disputent UN stock insuffisant — une seule réussit', async () => {

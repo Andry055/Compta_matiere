@@ -247,6 +247,27 @@ test('Grand-livre : cumul chronologique', () => {
   assert.strictEqual(gl.quantiteFinale, 1);
 });
 
+test('Grand-livre : une sortie n\'y figure qu\'après la remise (sortie_effectuee), PAS dès la validation logistique (validee)', () => {
+  // La 3ᵉ signature (chef logistique) passe la sortie en « validee » et débite
+  // le stock, mais le grand livre ne comptabilise QUE les sorties effectuées
+  // (après remise au détenteur, étape 5) — cf. STATUT_SORTIE_EFFECTUEE.
+  const base = ligneSortie({ date: '2017-02-01', nomenclature: '03', montant: 500, reference: 'S1', materiel: 'M1' });
+  const enValidation = {
+    ...base,
+    statut: 'validee',
+    sortie: { ...base.sortie, statut: 'validee' },
+  };
+
+  const glValide = calculs.calculerGrandLivre({ materielId: 'M1', entrees: [], sorties: [enValidation] });
+  assert.strictEqual(glValide.mouvements.length, 0, 'sortie « validée » absente du grand livre');
+  assert.strictEqual(glValide.totalSortiesQ, 0);
+  assert.strictEqual(glValide.quantiteFinale, 0);
+
+  const glRemise = calculs.calculerGrandLivre({ materielId: 'M1', entrees: [], sorties: [base] });
+  assert.strictEqual(glRemise.mouvements.length, 1, 'sortie « effectuée » comptabilisée');
+  assert.strictEqual(glRemise.totalSortiesQ, 1);
+});
+
 test('Inventaire : sections par nomenclature avec totaux', () => {
   const entrees = [
     ligneEntree({ date: '2017-02-01', nomenclature: '03', montant: 30000, reference: 'E1', materiel: 'MA', facture: 'F1' }),

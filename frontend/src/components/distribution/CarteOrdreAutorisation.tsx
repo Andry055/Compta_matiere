@@ -56,14 +56,16 @@ export function CarteOrdreAutorisation({
         {lectureSeule ? (
           <>
             {sortie.statut === "Validée" && (
-              <span className="msa-badge msa-badge--attente">Validée, en attente de remise</span>
+              <span className="msa-badge msa-badge--attente">
+                <span>Validée</span> — <span>en attente de remise</span>
+              </span>
             )}
             {sortie.statut === "Sortie effectuée" && (
               <span className="msa-badge msa-badge--success">Sortie effectuée</span>
             )}
           </>
         ) : (
-          <span className="msa-badge msa-badge--attente">En attente — signature 3</span>
+          <span className="msa-badge msa-badge--attente">Signatures 1 et 2 posées</span>
         )}
       </div>
 
@@ -101,13 +103,13 @@ export function CarteOrdreAutorisation({
         <div className="msa-champ">
           <p className="msa-champ-cle">Signataire magasinier :</p>
           <p className="msa-champ-valeur">
-            {sortie.signataire_magasinier || "—"}
+            {sortie.signataireMagasinier || "—"}
           </p>
         </div>
         <div className="msa-champ">
           <p className="msa-champ-cle">Signataire dépositaire :</p>
           <p className="msa-champ-valeur">
-            {sortie.signataire_depositaire || "—"}
+            {sortie.signataireDepositaire || "—"}
           </p>
         </div>
       </div>
@@ -133,6 +135,28 @@ export function CarteOrdreAutorisation({
 
       {lectureSeule && (
         <div className="msa-champs">
+          {sortie.statut === "Validée" && (
+            <div className="msa-champ">
+              <p className="msa-champ-cle">Validée le :</p>
+              <p className="msa-champ-valeur">
+                {sortie.dateSignatureLogistique
+                  ? formatDate(sortie.dateSignatureLogistique)
+                  : "—"}
+              </p>
+            </div>
+          )}
+          {sortie.statut === "En préparation" && (
+            <div className="msa-champ">
+              <p className="msa-champ-cle">Étape en attente :</p>
+              <p className="msa-champ-valeur">
+                {!sortie.magasinier_signed
+                  ? "Signature 1 : magasinier"
+                  : !sortie.depositaire_signed
+                  ? "Signature 2 : dépositaire"
+                  : "Signature 3 : chef logistique"}
+              </p>
+            </div>
+          )}
           <div className="msa-champ">
             <p className="msa-champ-cle">Progression des signatures :</p>
           </div>

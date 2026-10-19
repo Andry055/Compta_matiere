@@ -16,7 +16,7 @@ import {
 import {
   Textarea
 } from "@/components/ui/textarea";
-import { SortieRecord } from "@/lib/api";
+import { SortieRecord, fetchSortiesAvecOptions, signerSortie } from "@/lib/api";
 import {
   ordresAAutoriser,
   stockApres,
@@ -24,8 +24,7 @@ import {
   calculerTotal,
   construirePayloadSignatureLogistique
 } from "@/lib/sortieControle";
-import { signerSortie } from "@/lib/api";
-import { useMaterialsLive, MaterialOption } from "@/lib/useMaterialsLive";
+import { useMaterialsLive } from "@/lib/useMaterialsLive";
 import { toast } from "sonner";
 
 interface AutorisationOrdreSortieProps {
@@ -49,9 +48,22 @@ export function AutorisationOrdreSortie({
   const [checkedAutorise, setCheckedAutorise] = useState<boolean>(false);
   const [checkedDefaillant, setCheckedDefaillant] = useState<boolean>(false);
   const [isConfirmationOpen, setIsConfirmationOpen] = useState<boolean>(false);
+  /** Message du SERVEUR affiché tel quel (400/403/409) — jamais deviné. */
+  const [erreur, setErreur] = useState<string | null>(null);
+  /** Signature envoyée mais résultat inconnu : on VÉRIFIE l'état réel. */
+  const [verificationEnCours, setVerificationEnCours] = useState<boolean>(false);
+  /** Écran « Sortie validée » : données du SERVEUR + stock avant → après. */
+  const [resultat, setResultat] = useState<{
+    sortie: SortieRecord;
+    stockAvant: Record<string, number>;
+  } | null>(null);
 
   // Get current stock levels from useMaterialsLive hook
-  const { materials: materialsLive, isLoading: isLoadingMaterials } = useMaterialsLive();
+  const {
+    materials: materialsLive,
+    isLoading: isLoadingMaterials,
+    refresh: refreshStock,
+  } = useMaterialsLive();
 
   // Create a map of current stock levels by material documentId for quick lookup
   const stocksActuels: Record<string, number> = {};
@@ -99,8 +111,82 @@ export function AutorisationOrdreSortie({
     });
   };
 
+  /**
+   * Fin normale : la sortie est VALIDÉE côté serveur (données SERVEUR, jamais
+   * devinées). L'événement « stock-mis-a-jour » est émis pour que TOUT le
+   * monde (useMaterialsLive : inventaire, écrans de contrôle) recharge son
+   * stock immédiatement, puis le résultat est affiché (stock avant → après).
+   */
+  const confirmerValidation = async (
+    sortieServeur: SortieRecord,
+    stockAvant: Record<string, number>
+  ) => {
+    // Événement global : rechargement immédiat du stock par tous les écrans.
+    window.dispatchEvent(new CustomEvent("stock-mis-a-jour"));
+    await refreshStock();
+
+    setIsLoading(false);
+    setVerificationEnCours(false);
+    onLoadingChange?.(false);
+
+    const lignes = sortieServeur.lignes ?? [];
+    const resume = lignes
+      .map((ligne) => {
+        const materielId = ligne.materiel?.documentId || "";
+        const avant = stockAvant[materielId];
+        const apres = stocksActuels[materielId];
+        if (avant === undefined || apres === undefined) return null;
+        return `${ligne.materiel?.designation || ligne.designation} : ${avant} → ${apres}`;
+      })
+      .filter(Boolean)
+      .join(" ; ");
+
+    setResultat({ sortie: sortieServeur, stockAvant });
+    onSuccess(sortieServeur);
+    toast.success("Sortie autorisée", {
+      description: resume
+        ? `Référence : ${sortieServeur.reference} — Stock débité (${resume})`
+        : `Référence : ${sortieServeur.reference} — Stock débité`,
+    });
+  };
+
+  /**
+   * Résultat INCONNU (timeout / panne réseau / signature déjà posée) :
+   * on VÉRIFIE l'état RÉEL côté serveur au lieu de conclure à un échec.
+   * Aucun renvoi automatique de la signature.
+   */
+  const verifierEtatReel = async (motifIncertitude: string) => {
+    setVerificationEnCours(true);
+    try {
+      const liste = await fetchSortiesAvecOptions({});
+      const reel = (liste ?? []).find((s) => s.id === sortie.id);
+      if (reel && reel.logistique_signed === true) {
+        // La signature a bien été enregistrée : résultat normal (serveur).
+        await confirmerValidation(reel, {});
+        return;
+      }
+      // Vérification conclut : rien n'a été enregistré.
+      setIsLoading(false);
+      setVerificationEnCours(false);
+      onLoadingChange?.(false);
+      const message = `Signature non enregistrée : ${motifIncertitude}`;
+      setErreur(message);
+      onError(message);
+    } catch {
+      setIsLoading(false);
+      setVerificationEnCours(false);
+      onLoadingChange?.(false);
+      const message = `Signature non enregistrée : ${motifIncertitude}`;
+      setErreur(message);
+      onError(message);
+    }
+  };
+
   // Handle signer action
   const handleSigner = async () => {
+    // Règle « double clic » : une SEULE requête, jamais deux.
+    if (isLoading || verificationEnCours) return;
+
     // Check if all required checkboxes are checked
     if (!checkedSignatures1et2 || !checkedAutorise || (hasDefectueuxLines && !checkedDefaillant)) {
       setError("Vous devez cocher toutes les cases requises avant de signer.");
@@ -117,6 +203,10 @@ export function AutorisationOrdreSortie({
     setIsLoading(true);
     onLoadingChange?.(true);
     setError(null);
+    setErreur(null);
+
+    // Stock AVANT capturé à la confirmation (pour afficher « 10 → 8 »).
+    const stockAvant: Record<string, number> = { ...stocksActuels };
 
     try {
       // Build the payload
@@ -136,51 +226,132 @@ export function AutorisationOrdreSortie({
         payload.numeros_logistiques
       );
 
-      // Success
-      setIsLoading(false);
-      onLoadingChange?.(false);
-      onSuccess(signedSortie);
-      toast.success("Sortie autorisée", {
-        description: `Référence : ${signedSortie.reference} - Stock débité`
-      });
+      // Success — données du SERVEUR, stock rechargé, événement émis.
+      await confirmerValidation(signedSortie, stockAvant);
     } catch (err: any) {
+      const status = err.response?.status;
+      const messageServeur: string =
+        err.response?.data?.error?.message || err.message || "Erreur inconnue";
+
+      // 409 « déjà enregistrée » : la sortie est peut-être VALIDÉE (un autre
+      // onglet, une reprise) — on vérifie l'état réel au lieu de deviner.
+      if (status === 409 && messageServeur.includes("déjà")) {
+        await verifierEtatReel(messageServeur);
+        return;
+      }
+
+      // Timeout / panne réseau : le serveur a pu valider — on VÉRIFIE l'état
+      // réel (aucun renvoi automatique).
+      if (err.code === "ECONNABORTED" || err.message === "Network Error") {
+        await verifierEtatReel(
+          err.code === "ECONNABORTED"
+            ? "délai de vérification dépassé, résultat inconnu"
+            : "connexion interrompue, résultat inconnu"
+        );
+        return;
+      }
+
+      // Erreurs 400/403/409 : le message FRANÇAIS du serveur est affiché tel
+      // quel (jamais remplacé par une formule générique devinée).
       setIsLoading(false);
       onLoadingChange?.(false);
-      // Handle API error
-      if (err.response?.status === 403) {
-        setError("Vous n'avez pas la permission d'autoriser cette sortie");
-      } else if (err.response?.status === 409) {
-        if (err.response?.data?.error?.message?.includes("Stock insuffisant")) {
-          // Extract the insufficient stock message from the server
-          const message = err.response.data.error.message;
-          setError(message);
-        } else if (err.response?.data?.error?.message?.includes("déjà été validée")) {
-          setError("Cette sortie a déjà été validée");
-        } else {
-          setError("Erreur lors de l'autorisation de la sortie");
-        }
-      } else {
-        setError("Erreur lors de l'autorisation de la sortie");
-      }
-      const msgErreur =
-        err.response?.data?.error?.message ||
-        err.message ||
-        "Erreur inconnue";
+      setErreur(messageServeur);
+      onError(messageServeur);
       toast.error("Erreur d'autorisation", {
-        description: msgErreur
+        description: messageServeur,
       });
-      // Keep error state so user can see what went wrong
     }
   };
 
-  // Handle reject action (reuse existing reject component logic)
-  const handleReject = async (motif: string) => {
-    // In a real implementation, this would call the reject API
-    // For now, we'll just show a toast
-    toast.info("Sortie rejetée", {
-      description: `Motif : ${motif}`
-    });
-  };
+  // ── Écran « Sortie validée » : données du SERVEUR + stock avant → après ──
+  if (resultat) {
+    const s = resultat.sortie;
+    return (
+      <Card className="w-full">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-medium">
+            Sortie validée #{s.reference}
+          </CardTitle>
+          <CardDescription>
+            Validation enregistrée par le serveur — le stock a été débité une
+            seule fois.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+            <div>
+              <span className="font-medium">Statut : </span>
+              <span>Validée</span>
+            </div>
+            <div>
+              <span className="font-medium">Validée le : </span>
+              <span>
+                {s.dateSignatureLogistique
+                  ? new Date(s.dateSignatureLogistique).toLocaleString("fr-FR")
+                  : "—"}
+              </span>
+            </div>
+            <div>
+              <span className="font-medium">Signataire : </span>
+              <span>{s.signataireLogistique || "—"}</span>
+            </div>
+            <div>
+              <span className="font-medium">Stock : </span>
+              <span aria-label="Stock avant puis après validation">
+                {(s.lignes ?? []).map((ligne, i) => {
+                  const materielId = ligne.materiel?.documentId || "";
+                  const avant = resultat.stockAvant[materielId];
+                  const apres = stocksActuels[materielId];
+                  if (avant === undefined || apres === undefined) return null;
+                  return (
+                    <span key={ligne.documentId || i} className="mr-3">
+                      {ligne.materiel?.designation || ligne.designation} :{" "}
+                      {avant} → {apres}
+                    </span>
+                  );
+                })}
+              </span>
+            </div>
+          </div>
+
+          {(s.lignes ?? []).some((l) => l.numeroLogistique) && (
+            <div className="text-sm">
+              <span className="font-medium">Numéro(s) logistique(s) : </span>
+              {(s.lignes ?? [])
+                .filter((l) => l.numeroLogistique)
+                .map((l, i) => (
+                  <span key={l.documentId || i} className="mr-3">
+                    {l.numeroLogistique}
+                  </span>
+                ))}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // ── Résultat inconnu : on vérifie l'état RÉEL côté serveur ────────────────
+  if (verificationEnCours) {
+    return (
+      <Card className="w-full">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base font-medium">
+            Autorisation de la sortie #{sortie.reference}
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex min-h-[200px] flex-col items-center justify-center gap-3">
+          <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
+          <p>Vérification en cours…</p>
+          <p className="text-sm text-muted-foreground text-center">
+            Résultat de la signature inconnu (délai dépassé ou connexion
+            interrompue) : l'état réel de la sortie est vérifié côté serveur.
+            Aucune signature n'est renvoyée.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   if (isLoading) {
     return (
@@ -227,7 +398,7 @@ export function AutorisationOrdreSortie({
               <div>
                 <span className="font-medium">Destination :</span>
                 <span className="text-muted-foreground">
-                  {sortie.direction || ""} {sortie.service || ""} {sortie.beneficiaire || ""}
+                  {sortie.direction || ""} {sortie.serviceDemandeur || ""} {sortie.beneficiaire || ""}
                 </span>
               </div>
               <div>
@@ -347,6 +518,17 @@ export function AutorisationOrdreSortie({
             </div>
           )}
 
+          {/* Erreur serveur / client affichée telle quelle (jamais devinée) */}
+          {erreur && (
+            <div role="alert" className="bg-destructive/10 text-destructive rounded p-3">
+              <p className="font-medium">{erreur}</p>
+              <p className="mt-2">Rien n'a été modifié</p>
+            </div>
+          )}
+          {!erreur && error && (
+            <p role="alert" className="text-sm text-destructive">{error}</p>
+          )}
+
           {/* Vérifications obligatoires avant autorisation */}
           <div className="border rounded-lg p-4 space-y-3">
             <h3 className="font-medium">Vérifications avant autorisation</h3>
@@ -381,22 +563,15 @@ export function AutorisationOrdreSortie({
             )}
           </div>
 
-          {/* Action buttons */}
+          {/* Action buttons — le rejet réel vit sur la carte (RejeterOrdreDialog) :
+              pas de bouton « Rejeter » factice ici (il affichait un simple toast). */}
           <div className="flex justify-end space-x-3">
             <Button
-              variant="outline"
-              onClick={handleReject}
-              size="sm"
-            >
-              Rejeter
-            </Button>
-            <Button
               onClick={() => setIsConfirmationOpen(true)}
-              isLoading={isLoading}
               disabled={!checkedSignatures1et2 || !checkedAutorise || (hasDefectueuxLines && !checkedDefaillant) || !estAssezDeStock || isConfirmationOpen}
               size="sm"
             >
-              {isLoading ? "Autorisation en cours..." : "Autoriser la sortie (3/3)"}
+              Autoriser la sortie (3/3)
             </Button>
           </div>
         </CardContent>

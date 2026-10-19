@@ -11,7 +11,8 @@ import "./EspaceLogistiqueSorties.css";
 /**
  * Espace logistique dans Distribution — autorisation et SIGNATURE 3.
  *
- * Trois onglets : « À autoriser », « En amont », « Autorisées ».
+ * Trois onglets : « À autoriser », « En préparation chez les autres »,
+ * « Autorisées ».
  * Aucune création d'ordre, aucun accès à l'inventaire, aucun message d'accès refusé.
  * Les données viennent du sondage partagé existant (useSortiesLive) : AUCUN
  * nouveau sondage n'est créé ici.
@@ -38,7 +39,8 @@ export function EspaceLogistiqueSorties() {
     [sorties]
   );
 
-  // Onglet « En amont » : en_preparation avec au moins une des signatures 1 ou 2 absente.
+  // Onglet « En préparation chez les autres » : en_preparation avec au moins
+  // une des signatures 1 ou 2 absente.
   const enAmont = useMemo(
     () =>
       sorties.filter(
@@ -85,7 +87,7 @@ export function EspaceLogistiqueSorties() {
       <header>
         <h1 className="msa-titre">Autorisation des sorties</h1>
         <p className="msa-sous-titre">
-          Contrôlez le circuit, puis autorisez la sortie du matériel.
+          Contrôlez les signatures et le stock, puis autorisez la sortie.
         </p>
       </header>
 
@@ -98,7 +100,7 @@ export function EspaceLogistiqueSorties() {
         </div>
         <div className="msa-compteur">
           <span className="msa-compteur-valeur">
-            En amont ({enAmont.length})
+            En préparation chez les autres ({enAmont.length})
           </span>
         </div>
         <div className="msa-compteur">
@@ -130,7 +132,7 @@ export function EspaceLogistiqueSorties() {
           className={`msa-onglet${onglet === "en_amont" ? " msa-onglet--actif" : ""}`}
           onClick={() => setOnglet("en_amont")}
         >
-          En amont ({enAmont.length})
+          En préparation chez les autres ({enAmont.length})
         </button>
         <button
           type="button"
@@ -187,7 +189,7 @@ export function EspaceLogistiqueSorties() {
             {onglet === "a_autoriser"
               ? "Aucun ordre à autoriser pour le moment"
               : onglet === "en_amont"
-              ? "Aucun ordre en amont pour le moment"
+              ? "Aucun ordre en préparation chez les autres pour le moment"
               : "Aucune sortie autorisée pour le moment"}
           </p>
         </div>

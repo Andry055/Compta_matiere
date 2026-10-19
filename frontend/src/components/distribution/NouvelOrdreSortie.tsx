@@ -442,12 +442,11 @@ export function NouvelOrdreSortie({
     }
   };
 
-  // Check if user has permission to see this form
+  // Check if user has permission to see this form.
+  // Distribution n'affiche ce formulaire qu'au dépositaire ; pour tout autre
+  // rôle on ne rend AUCUN message (plus de « Accès réservé » en rouge).
   if (userRole !== "depositaire") {
-    return <div className="text-center py-8">
-      <p className="text-destructive">Accès réservé au rôle dépositaire</p>
-      <p className="text-sm">Votre rôle actuel : {userRole || 'inconnu'}</p>
-    </div>;
+    return null;
   }
 
   return (

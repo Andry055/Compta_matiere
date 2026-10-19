@@ -3,6 +3,20 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { Distribution } from "./Distribution";
 
+vi.mock("../lib/useSortiesLive", () => ({
+  useSortiesLive: () => ({
+    sorties: [],
+    isLoading: false,
+    isInitialError: false,
+    isRefreshing: false,
+    messageErreur: null,
+    derniereSync: new Date(),
+    totalEnPreparation: 0,
+    alertes: [],
+    refresh: vi.fn(),
+  }),
+}));
+
 vi.mock("../lib/useMaterialsLive", () => ({
   useMaterialsLive: () => ({
     materials: [

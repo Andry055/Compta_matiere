@@ -1,4 +1,5 @@
 import { DemandeMateriel, SortieMateriel } from '../types/accounting';
+import { toast } from "sonner";
 
 const DEMANDES_KEY = 'compta_demandes';
 const SORTIES_KEY = 'compta_sorties';
@@ -123,4 +124,21 @@ export const signSortie = (sortieId: string, role: 'depositaire' | 'magasinier' 
   }
 
   saveSorties(sorties);
+};
+
+export const deletePendingSorties = () => {
+  const sorties = getSorties();
+  const filtered = sorties.filter(s => s.statut !== 'en_attente_signatures');
+  const deletedCount = sorties.length - filtered.length;
+  saveSorties(filtered);
+  toast.success("Demandes en attente supprimées", {
+    description: `${deletedCount} demande(s) supprimée(s).`
+  });
+};
+
+export const clearAllSorties = () => {
+  saveSorties([]);
+  toast.success("Tous les ordres de sortie supprimés", {
+    description: "La liste a été vidée complètement."
+  });
 };

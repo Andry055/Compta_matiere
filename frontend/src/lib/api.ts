@@ -197,6 +197,16 @@ interface StrapiEntity {
   magasinier_signed?: boolean | null;
   depositaire_signed?: boolean | null;
   logistique_signed?: boolean | null;
+  signataire_magasinier?: string | null;
+  signataire_depositaire?: string | null;
+  signataire_logistique?: string | null;
+  date_signature_magasinier?: string | null;
+  date_signature_depositaire?: string | null;
+  date_signature_logistique?: string | null;
+  stock_impacte?: boolean | null;
+  date_remise?: string | null;
+  detenteur_nom?: string | null;
+  detenteur_fonction?: string | null;
   responsable?: string | null;
   beneficiaire?: string | null;
   justificatif?: string | null;
@@ -223,6 +233,10 @@ interface StrapiEntity {
     nomenclature?: string | null;
     piece_justificative?: string | null;
     observations?: string | null;
+    /** État constaté par le magasinier (signature 1). */
+    etat?: string | null;
+    /** N° logistique saisi à la signature 3 (texte tel que saisi). */
+    numero_logistique?: string | null;
     /** Champ media `photos` de entree-ligne, peuplé seulement si le client
      *  demande `populate[...][photos]` (ou `*`). */
     photos?: Array<{ url?: string | null; documentId?: string | null }> | null;
@@ -231,6 +245,10 @@ interface StrapiEntity {
        *  saisie après confirmation du rapprochement). */
       documentId?: string | null;
       designation?: string | null;
+      /** Stock courant de la fiche — affiché au magasinier avant signature. */
+      quantiteStock?: number | null;
+      /** Stock courant en snake_case (réponse REST Strapi standard). */
+      quantite_stock?: number | null;
       categorie?: { nom?: string | null } | null;
     } | null;
   }> | null;
@@ -445,10 +463,60 @@ function mapSortie(row: StrapiEntity): SortieRecord {
     magasinier_signed: row.magasinier_signed === true,
     depositaire_signed: row.depositaire_signed === true,
     logistique_signed: row.logistique_signed === true,
+    // Signataires et dates posés SEULS par le serveur (affichage du panneau
+    // d'autorisation et de l'onglet « Autorisées »).
+    signataireMagasinier: row.signataire_magasinier || undefined,
+    signataireDepositaire: row.signataire_depositaire || undefined,
+    signataireLogistique: row.signataire_logistique || undefined,
+    dateSignatureMagasinier: row.date_signature_magasinier || undefined,
+    dateSignatureDepositaire: row.date_signature_depositaire || undefined,
+    dateSignatureLogistique: row.date_signature_logistique || undefined,
+    dateRemise: row.date_remise || undefined,
+    detenteurNom: row.detenteur_nom || undefined,
+    stockImpacte: row.stock_impacte === true,
     justificatif: row.justificatif || "—",
     documents: row.justificatif
       ? [{ nom: row.justificatif, type: "Justificatif de sortie" }]
       : [],
+    // Lignes peuplées (fetchAllSortiesOrThrow) — nécessaires au panneau de
+    // vérification du magasinier (désignation, quantité demandée, stock).
+    // Les relevés légers ne peuplent pas : champ laissé absent.
+    ...(lignes.length > 0
+      ? {
+          lignes: lignes.map((ligne) => ({
+            documentId: ligne.documentId || String(ligne.id),
+            designation:
+              ligne.designation ||
+              ligne.materiel?.designation ||
+              `Ligne ${ligne.numero_ordre ?? ligne.id}`,
+            quantite: Number(ligne.quantite) || 0,
+            // Relevés de la signature 1 et valorisation (lecture seule).
+            etat: ligne.etat ?? null,
+            observations: ligne.observations ?? null,
+            valeurUnitaire:
+              ligne.valeur_unitaire != null
+                ? Number(ligne.valeur_unitaire) || 0
+                : undefined,
+            montant:
+              ligne.montant != null ? Number(ligne.montant) || 0 : undefined,
+            numeroLogistique: ligne.numero_logistique ?? null,
+            ...(ligne.materiel?.documentId || ligne.materiel?.designation
+              ? {
+                  materiel: {
+                    documentId: ligne.materiel?.documentId || undefined,
+                    designation: ligne.materiel?.designation || undefined,
+                    // Strapi renvoie quantite_stock (snake_case) ; quantiteStock
+                    // est conservé pour les réponses déjà camelCase.
+                    quantiteStock:
+                      (ligne.materiel as any)?.quantite_stock ??
+                      ligne.materiel?.quantiteStock ??
+                      undefined,
+                  },
+                }
+              : {}),
+          })),
+        }
+      : {}),
   };
 }
 
@@ -628,16 +696,28 @@ export async function creerSortie(payload: NouvelleSortiePayload): Promise<Sorti
   return mapSortie(data.data);
 }
 
-/** Signature d'une sortie (rôle contrôlé côté serveur). */
+/** Signature d'une sortie (rôle contrôlé côté serveur).
+ *  Étape 3 (logistique) : seuls le rôle et, si non vides, les N° logistiques
+ *  par ligne sont envoyés — jamais de statut, date, signataire ni stock. */
 export async function signerSortie(
   documentId: string,
   role: 'magasinier' | 'depositaire' | 'logistique',
-  controles?: ControleSortieLignePayload[]
+  controles?: ControleSortieLignePayload[],
+  numerosLogistiques?: Array<{ ligne: string; numero_logistique: string }>
 ): Promise<SortieRecord> {
-  const { data } = await api.post(`/api/sorties/${documentId}/sign`, {
-    data: { role, ...(controles ? { controles } : {}) },
-  });
-  return mapSortie(data.data);
+  const data: Record<string, unknown> = { role };
+  if (controles && controles.length > 0) data.controles = controles;
+  if (numerosLogistiques && numerosLogistiques.length > 0) {
+    data.numeros_logistiques = numerosLogistiques;
+  }
+  // Transaction serveur (validation + débit de stock) : délai généreux, la
+  // valeur par défaut de l'instance (8 s) tronquerait la requête.
+  const { data: reponse } = await api.post(
+    `/api/sorties/${documentId}/sign`,
+    { data },
+    { timeout: 30000 }
+  );
+  return mapSortie(reponse.data);
 }
 
 /** Rejet d'une sortie par un responsable habilité. */
@@ -1142,8 +1222,304 @@ export async function fetchSorties(): Promise<SortieRecord[] | null> {
     return null;
   }
 }
+export async function fetchSortiesAvecOptions(options: {
+  pageSize?: number;
+  sort?: string;
+  populate?: any;
+} = {}): Promise<SortieRecord[] | null> {
+  try {
+    const { data } = await api.get("/api/sorties", {
+      timeout: 5000,
+      params: {
+        sort: options.sort ?? "date_sortie:desc",
+        "pagination[pageSize]": options.pageSize ?? 100,
+        populate: options.populate ?? {
+          direction: true,
+          service: true,
+          demande: { populate: ["demandeur"] },
+          lignes: {
+            populate: { materiel: { populate: ["categorie"] } },
+          },
+        },
+      },
+    });
 
-// ---------------------------------------------------------------------------
+    const rows: StrapiEntity[] = data?.data ?? [];
+    return rows.map(mapSortie);
+  } catch {
+    return null;
+  }
+}
+/**
+ * Récupère les sorties qui attendent la préparation du magasinier.
+ * Utilise une pagination correcte pour récupérer toutes les données correspondantes,
+ * même quand Strapi limite la taille de page.
+ * @returns Les sorties en attente de préparation, ou null en cas d'erreur
+ */
+export async function fetchSortiesEnAttente(): Promise<SortieRecord[] | null> {
+  try {
+    const pageSize = 100; // Utiliser la taille maximale autorisée par Strapi
+    let page = 1;
+    let pageCount = 1;
+    const sortiesEnAttente: SortieRecord[] = [];
+
+    do {
+      const { data } = await api.get("/api/sorties", {
+        timeout: 5000,
+        params: {
+          // ⚠️ Valeur de l'ÉNUM SERVEUR (`en_preparation`), jamais le libellé
+          // affiché « En préparation » : le second ne matche AUCUNE ligne.
+          "filters[statut][$eq]": "en_preparation",
+          "filters[magasinier_signed][$eq]": false,
+          "sort": "date_sortie:desc",
+          "pagination[page]": page,
+          "pagination[pageSize]": pageSize,
+          populate: {
+            direction: true,
+            service: true,
+            demande: { populate: ["demandeur"] },
+            lignes: {
+              populate: { materiel: { populate: ["categorie"] } },
+            },
+          },
+        },
+      });
+
+      const rows = (data?.data ?? []).map((row: StrapiEntity) =>
+        mapSortie(row)
+      );
+      sortiesEnAttente.push(...rows);
+
+      const pagination = data?.meta?.pagination;
+      if (pagination && typeof pagination.pageCount === "number") {
+        pageCount = pagination.pageCount;
+      } else if (
+        pagination &&
+        typeof pagination.total === "number" &&
+        typeof pagination.pageSize === "number" &&
+        pagination.pageSize > 0
+      ) {
+        pageCount = Math.ceil(pagination.total / pagination.pageSize);
+      } else {
+        pageCount = 1;
+      }
+
+      page++;
+    } while (page <= pageCount);
+
+    return sortiesEnAttente;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Récupère toutes les sorties en gérant correctement la pagination.
+ * Similaire à fetchMaterialsOrThrow, cette fonction boucle sur toutes les pages
+ * en utilisant meta.pagination.pageCount pour récupérer toutes les données,
+ * même quand Strapi limite la taille de page.
+ * @returns Toutes les sorties, ou null en cas d'erreur
+ */
+/**
+ * Liste LÉGÈRE des ordres en attente de signature magasinier (statut
+ * `en_preparation`, signature 1 absente), servie à la cloche et au badge.
+ *
+ * Contrairement à fetchAllSortiesOrThrow, AUCUN `populate` : la requête ne
+ * charge jamais le détail (lignes, matériel, direction) — celui-ci n'est
+ * demandé que par l'onglet Distribution. Les colonnes lues sont limitées à
+ * celles dont la cloche a besoin.
+ */
+export async function fetchOrdresPourAlertes(): Promise<SortieRecord[] | null> {
+  const pageSize = 100;
+  let page = 1;
+  let pageCount = 1;
+  const ordres: SortieRecord[] = [];
+
+  try {
+    do {
+      const { data } = await api.get("/api/sorties", {
+        timeout: 5000,
+        params: {
+          "filters[statut][$eq]": "en_preparation",
+          "filters[magasinier_signed][$eq]": false,
+          "sort": "date_sortie:desc",
+          "pagination[page]": page,
+          "pagination[pageSize]": pageSize,
+          fields: ["documentId", "reference", "date_sortie", "statut", "magasinier_signed"],
+        },
+      });
+
+      const rows: StrapiEntity[] = data?.data ?? [];
+      ordres.push(...rows.map(mapSortie));
+
+      const pagination = data?.meta?.pagination;
+      pageCount =
+        pagination && typeof pagination.pageCount === "number"
+          ? pagination.pageCount
+          : 1;
+      page++;
+    } while (page <= pageCount);
+
+    return ordres;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchAllSortiesOrThrow(): Promise<SortieRecord[]> {
+  const pageSize = 100; // Utiliser la taille maximale autorisée par Strapi
+  let page = 1;
+  let pageCount = 1;
+  const toutesLesSorties: SortieRecord[] = [];
+
+  do {
+    const { data } = await api.get("/api/sorties", {
+      timeout: 5000,
+      params: {
+        sort: "date_sortie:desc",
+        "pagination[page]": page,
+        "pagination[pageSize]": pageSize,
+        populate: {
+          direction: true,
+          service: true,
+          demande: { populate: ["demandeur"] },
+          lignes: {
+            populate: { materiel: { populate: ["categorie"] } },
+          },
+        },
+      },
+    });
+
+    const rows = (data?.data ?? []).map((row: StrapiEntity) =>
+      mapSortie(row)
+    );
+    toutesLesSorties.push(...rows);
+
+    const pagination = data?.meta?.pagination;
+    if (pagination && typeof pagination.pageCount === "number") {
+      pageCount = pagination.pageCount;
+    } else if (
+      pagination &&
+      typeof pagination.total === "number" &&
+      typeof pagination.pageSize === "number" &&
+      pagination.pageSize > 0
+    ) {
+      pageCount = Math.ceil(pagination.total / pagination.pageSize);
+    } else {
+      pageCount = 1;
+    }
+
+    page++;
+  } while (page <= pageCount);
+
+  return toutesLesSorties;
+}
+
+/**
+ * Compte les sorties qui attendent la signature du magasinier.
+ * Utilise les filtres serveur et pagination avec compte pour récupérer uniquement le total.
+ * @returns Le nombre de sorties en attente de préparation, ou null en cas d'erreur
+ */
+export async function countSortiesPourPreparation(): Promise<number | null> {
+  try {
+    const { data } = await api.get("/api/sorties", {
+      timeout: 5000,
+      params: {
+        // Filtre côté serveur sur l'ÉNUM brute — « En préparation » ne
+        // correspond à aucune valeur stockée (schéma : demandee,
+        // en_preparation, validee, sortie_effectuee, annulee) et retournait
+        // toujours 0.
+        "filters[statut][$eq]": "en_preparation",
+        "filters[magasinier_signed][$eq]": false,
+        // pageSize=1 : on ne veut QUE le total, jamais le détail.
+        "pagination[pageSize]": 1,
+        "pagination[withCount]": true,
+      },
+    });
+
+    // Avec pagination[withCount]=true, la réponse contient un objet meta.pagination
+    // avec le compte total
+    return data?.meta?.pagination?.total ?? 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Compte les ordres à AUTORISER par le chef logistique : statut en_preparation,
+ * signatures 1 et 2 posées, signature 3 absente. Filtre SERVEUR + pageSize=1 :
+ * on ne veut QUE le total (badge du menu), jamais le détail.
+ */
+export async function countSortiesAAutoriser(): Promise<number | null> {
+  try {
+    const { data } = await api.get("/api/sorties", {
+      timeout: 5000,
+      params: {
+        "filters[statut][$eq]": "en_preparation",
+        "filters[magasinier_signed][$eq]": true,
+        "filters[depositaire_signed][$eq]": true,
+        "filters[logistique_signed][$eq]": false,
+        // pageSize=1 : seul le total compte.
+        "pagination[pageSize]": 1,
+        "pagination[withCount]": true,
+      },
+    });
+    return data?.meta?.pagination?.total ?? 0;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Liste LÉGÈRE des ordres à autoriser (mêmes filtres serveur, AUCUN populate) :
+ * alimente l'alerte « Nouvel ordre à autoriser » sans jamais charger le détail.
+ */
+export async function fetchOrdresAAutoriser(): Promise<SortieRecord[] | null> {
+  const pageSize = 100;
+  let page = 1;
+  let pageCount = 1;
+  const ordres: SortieRecord[] = [];
+
+  try {
+    do {
+      const { data } = await api.get("/api/sorties", {
+        timeout: 5000,
+        params: {
+          "filters[statut][$eq]": "en_preparation",
+          "filters[magasinier_signed][$eq]": true,
+          "filters[depositaire_signed][$eq]": true,
+          "filters[logistique_signed][$eq]": false,
+          "sort": "date_sortie:desc",
+          "pagination[page]": page,
+          "pagination[pageSize]": pageSize,
+          fields: [
+            "documentId",
+            "reference",
+            "date_sortie",
+            "statut",
+            "magasinier_signed",
+            "depositaire_signed",
+            "logistique_signed",
+          ],
+        },
+      });
+
+      const rows: StrapiEntity[] = data?.data ?? [];
+      ordres.push(...rows.map(mapSortie));
+
+      const pagination = data?.meta?.pagination;
+      pageCount =
+        pagination && typeof pagination.pageCount === "number"
+          ? pagination.pageCount
+          : 1;
+      page++;
+    } while (page <= pageCount);
+
+    return ordres;
+  } catch {
+    return null;
+  }
+}// ---------------------------------------------------------------------------
 // Types exposés au frontend (structure attendue par les composants)
 // ---------------------------------------------------------------------------
 export interface OrgEmployee {

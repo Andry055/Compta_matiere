@@ -203,6 +203,33 @@ export interface EntreeRecord {
   rejetee?: boolean;
 }
 
+/** Ligne matérielle d'une sortie, utile au magasinier pour la vérification
+ *  physique avant la signature 1 (désignation, quantité demandée, stock), et
+ *  au chef logistique pour le contrôle avant la signature 3 (état constaté,
+ *  remarque, valorisation, N° logistique). */
+export interface SortieLigne {
+  /** documentId de la ligne de sortie — identifiant attendu par le serveur. */
+  documentId: string;
+  designation: string;
+  quantite: number;
+  /** État constaté par le magasinier (signature 1) : neuf | bon | moyen | defaillant. */
+  etat?: string | null;
+  /** Remarque du magasinier sur cette ligne (null si aucune). */
+  observations?: string | null;
+  /** Valeur unitaire figée sur l'ordre (FCFA). */
+  valeurUnitaire?: number;
+  /** Montant de la ligne : quantité × valeur unitaire (FCFA). */
+  montant?: number;
+  /** N° logistique saisi à la signature 3 (jamais généré par l'application). */
+  numeroLogistique?: string | null;
+  /** Fiche matériel rattachée (vide si non rattachée). */
+  materiel?: {
+    documentId?: string;
+    designation?: string;
+    quantiteStock?: number;
+  };
+}
+
 export interface SortieRecord {
   id: string;
   reference: string;
@@ -222,8 +249,23 @@ export interface SortieRecord {
   magasinier_signed?: boolean;
   depositaire_signed?: boolean;
   logistique_signed?: boolean;
+  /** Signataires et dates HEURE posés par le serveur (jamais par le client). */
+  signataireMagasinier?: string;
+  signataireDepositaire?: string;
+  signataireLogistique?: string;
+  dateSignatureMagasinier?: string;
+  dateSignatureDepositaire?: string;
+  dateSignatureLogistique?: string;
+  /** Date de remise au détenteur (après validation) et détenteur concerné. */
+  dateRemise?: string;
+  detenteurNom?: string;
+  /** true quand le stock a bien été débité (une seule fois, côté serveur). */
+  stockImpacte?: boolean;
   justificatif: string;
   documents: DocumentRef[];
+  /** Lignes de l'ordre — présentes uniquement quand le serveur les peuple
+   *  (fetchAllSortiesOrThrow). Absentes pour les relevés légers. */
+  lignes?: SortieLigne[];
   /** true = mouvement issu de « Mes Mouvements » donc dans le périmètre du Demandeur */
   dansMonPerimetre?: boolean;
 }

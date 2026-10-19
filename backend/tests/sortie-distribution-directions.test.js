@@ -842,6 +842,26 @@ test('flux de distribution avec une autre direction : vérification de l\'isolat
   assert.strictEqual(sortieInitialeS2.service.nom_service, 'Service Gestion Personnel');
   assert.strictEqual(sortieInitialeS2.service.direction.nom_direction, 'Direction des Ressources Humaines');
 
+  // --- s1 (Direction Logistique) valide AVANT s2 : les deux directions
+  // partagent les mêmes stocks — chacune doit débiter la sienne, une seule fois.
+  const ctx1S1 = contexteAppel('s1', {
+    role: 'magasinier',
+    controles: [
+      { ligne: 'l1', etat: 'neuf' },
+      { ligne: 'l2', etat: 'bon' },
+    ],
+  }, 'magasinier');
+  await controleur.sign(ctx1S1);
+  assert.strictEqual(ctx1S1.status, 200, 'signature magasinier acceptée pour s1');
+
+  const ctx2S1 = contexteAppel('s1', { role: 'depositaire' }, 'depositaire');
+  await controleur.sign(ctx2S1);
+  assert.strictEqual(ctx2S1.status, 200, 'signature dépositaire acceptée pour s1');
+
+  const ctx3S1 = contexteAppel('s1', { role: 'logistique' }, 'logistique');
+  await controleur.sign(ctx3S1);
+  assert.strictEqual(ctx3S1.status, 200, 'signature logistique acceptée pour s1');
+
   // Faire suivre le circuit de signature complet pour cette sortie
   const controlesMagasinierS2 = [
     { ligne: 'l3', etat: 'neuf' },
@@ -876,7 +896,10 @@ test('flux de distribution avec une autre direction : vérification de l\'isolat
     data: {
       detenteur_nom: 'Sophie Dubois',
       detenteur_fonction: 'Chargée de RH',
-      date_remise: '2026-10-16'
+      // Date du jour : la remise refuse une date antérieure à la validation
+      // logistique (posée « maintenant »), et une date figée finirait par
+      // devenir future — même règle que pour s1 plus haut.
+      date_remise: AUJOURDHUI
     }
   }, 'magasinier');
 

@@ -9,16 +9,15 @@ import {
   Button
 } from "@/components/ui/button";
 import {
-  Select
-} from "@/components/ui/select";
-import {
   Textarea
 } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { RefreshCw } from "lucide-react";
 import { SortieRecord } from "@/lib/api";
 import { ControleSortieLignePayload } from "@/lib/sortieControle";
-import { preparerSortie } from "@/lib/api";
+// Signature 1 : rôle `magasinier` + contrôles des lignes (payload inchangé).
+import { signerSortie } from "@/lib/api";
+import "./EspaceMagasinierSorties.css";
 
 interface PreparationOrdreSortieProps {
   sortie: SortieRecord;
@@ -32,6 +31,9 @@ export function PreparationOrdreSortie({
   onError
 }: PreparationOrdreSortieProps) {
   const [controles, setControles] = useState<ControleSortieLignePayload[]>([]);
+  // Aide à l'écran UNIQUEMENT (jamais envoyée au serveur) : chaque ligne doit
+  // être explicitement confirmée présente avant de signer.
+  const [verifiees, setVerifiees] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -40,10 +42,12 @@ export function PreparationOrdreSortie({
     if (sortie.lignes?.length) {
       const initialControles = sortie.lignes.map((ligne, index) => ({
         ligne: ligne.documentId || String(index + 1),
-        etat: "neuf", // default value
+        // Aucun état imposé : le magasinier doit CONSTATER l'état réel.
+        etat: "",
         observations: "",
       }));
       setControles(initialControles);
+      setVerifiees({});
     }
   }, [sortie]);
 
@@ -69,24 +73,54 @@ export function PreparationOrdreSortie({
     );
   };
 
-  // Handle préparer action
+  // Handle verification checkbox change (écran seul, hors payload)
+  const handleVerificationChange = (ligneId: string, cochee: boolean) => {
+    setVerifiees(prev => ({ ...prev, [ligneId]: cochee }));
+  };
+
+  // Toutes les lignes ont un état, sont confirmées, et un défaut est motivé ?
+  const controleComplet = controles.length > 0 && controles.every(controle => {
+    const etatRenseigne = !!controle.etat && controle.etat.trim() !== "";
+    const cochee = verifiees[controle.ligne] === true;
+    const remarqueSiDefaillant =
+      controle.etat !== "defaillant" ||
+      (controle.observations ?? "").trim() !== "";
+    return etatRenseigne && cochee && remarqueSiDefaillant;
+  });
+
+  // Handle signature 1
   const handlePreparer = async () => {
     // Vérifier que toutes les lignes ont un état défini
     const allLinesHaveEtat = controles.every(controle => controle.etat && controle.etat.trim() !== "");
 
     if (!allLinesHaveEtat) {
-      setError("Veuillez spécifier l'état pour toutes les lignes avant de préparer la sortie");
+      setError("Veuillez spécifier l'état pour toutes les lignes avant de signer");
+      return;
+    }
+
+    if (!controles.every(controle => verifiees[controle.ligne] === true)) {
+      setError("Confirmez que le matériel est présent et la quantité vérifiée pour chaque ligne");
+      return;
+    }
+
+    const lignesDefaillantes = controles.filter(
+      controle => controle.etat === "defaillant" && !(controle.observations ?? "").trim()
+    );
+    if (lignesDefaillantes.length > 0) {
+      setError("Une ligne déclarée « Défaillant » exige une remarque");
       return;
     }
 
     setIsLoading(true);
     setError(null);
     try {
-      // Call the preparerSortie API to save the contrôles
-      const preparedSortie = await preparerSortie(sortie.documentId, controles);
+      // Signature 1/3 : rôle magasinier + contrôles des lignes. La case de
+      // vérification reste hors payload (aide d'écran uniquement).
+      // SortieRecord.id EST le documentId servi par mapSortie.
+      const preparedSortie = await signerSortie(sortie.id, "magasinier", controles);
       setIsLoading(false);
       onSuccess(preparedSortie);
-      toast.success("Sortie préparée", {
+      toast.success("Signature 1/3 enregistrée", {
         description: `Référence : ${preparedSortie.reference}`
       });
     } catch (err: any) {
@@ -127,55 +161,100 @@ export function PreparationOrdreSortie({
         <CardTitle className="text-base font-medium">Préparation de la sortie #{sortie.reference}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        <p className="msa-aide">
+          Si le matériel ou la quantité ne correspond pas, rejetez l'ordre en
+          indiquant le motif.
+        </p>
         <div className="space-y-4">
-          {controles.map((controle, index) => (
-            <div key={controle.ligne} className="border rounded-lg p-4">
-              <div className="flex items-center justify-between mb-2">
-                <h3 className="font-medium">Ligne {index + 1}</h3>
-                <span className="text-xs text-muted-foreground">
-                  ID: {controle.ligne}
-                </span>
-              </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium mb-1">État:</label>
-                  <Select
-                    value={controle.etat}
-                    onValueChange={(value) => handleEtatChange(controle.ligne, value)}
-                  >
-                    <SelectTrigger>
-                      <SelectValue>{controle.etat || "Sélectionner un état"}</SelectValue>
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="neuf">Neuf</SelectItem>
-                      <SelectItem value="bon">Bon</SelectItem>
-                      <SelectItem value="moyen">Moyen</SelectItem>
-                      <SelectItem value="defaillant">Défaillant</SelectItem>
-                    </SelectContent>
-                  </Select>
+          {controles.map((controle, index) => {
+            const ligne = sortie.lignes?.[index];
+            const cochee = verifiees[controle.ligne] === true;
+            const manqueRemarque =
+              controle.etat === "defaillant" && !(controle.observations ?? "").trim();
+            return (
+              <div key={controle.ligne} className="msa-panneau-ligne">
+                <div className="msa-carte-entete">
+                  <h3 className="msa-ref">Ligne {index + 1}</h3>
+                  {ligne?.designation && (
+                    <span className="msa-badge">{ligne.designation}</span>
+                  )}
                 </div>
-                <div>
-                  <label className="block text-sm font-medium mb-1">Observations:</label>
+
+                <div className="msa-champs">
+                  <div className="msa-champ">
+                    <p className="msa-champ-cle">Quantité demandée :</p>
+                    <p className="msa-champ-valeur">{ligne?.quantite ?? sortie.quantite}</p>
+                  </div>
+                  <div className="msa-champ">
+                    <p className="msa-champ-cle">Stock actuel :</p>
+                    <p className="msa-champ-valeur">
+                      {ligne?.materiel?.quantiteStock ?? "—"}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="msa-panneau-champ">
+                  <label className="msa-panneau-libelle" htmlFor={`etat-${controle.ligne}`}>
+                    État à constater :
+                  </label>
+                  {/* Liste native : le CSS du projet est figé, les styles
+                      viennent de EspaceMagasinierSorties.css (msa-select). */}
+                  <select
+                    id={`etat-${controle.ligne}`}
+                    className="msa-select"
+                    value={controle.etat}
+                    onChange={(e) => handleEtatChange(controle.ligne, e.target.value)}
+                    disabled={isLoading}
+                  >
+                    <option value="">Sélectionner un état</option>
+                    <option value="neuf">Neuf</option>
+                    <option value="bon">Bon</option>
+                    <option value="moyen">Moyen</option>
+                    <option value="defaillant">Défaillant</option>
+                  </select>
+                </div>
+
+                <div className="msa-panneau-champ">
+                  <label className="msa-panneau-libelle" htmlFor={`obs-${controle.ligne}`}>
+                    Remarque :
+                  </label>
                   <Textarea
+                    id={`obs-${controle.ligne}`}
                     value={controle.observations || ""}
                     onChange={(e) => handleObservationsChange(controle.ligne, e.target.value)}
-                    placeholder="Observations sur l'état du matériel..."
-                    className="h-20"
+                    placeholder={
+                      controle.etat === "defaillant"
+                        ? "Remarque obligatoire (ligne défaillante)…"
+                        : "Remarque éventuelle…"
+                    }
+                    className="msa-textarea h-20"
                   />
+                  {manqueRemarque && (
+                    <p className="msa-erreur">Une ligne « Défaillant » exige une remarque.</p>
+                  )}
                 </div>
+
+                <label className="msa-case">
+                  <input
+                    type="checkbox"
+                    checked={cochee}
+                    onChange={(e) => handleVerificationChange(controle.ligne, e.target.checked)}
+                  />
+                  <span>Matériel présent et quantité vérifiée</span>
+                </label>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
-        <div className="flex justify-end space-x-3">
-          <Button
-            variant="outline"
+        <div className="msa-actions">
+          <button
+            type="button"
+            className="msa-bouton msa-bouton--primaire"
             onClick={handlePreparer}
-            size="sm"
-            isLoading={isLoading}
+            disabled={isLoading || !controleComplet}
           >
-            {isLoading ? "Préparation en cours..." : "Préparer"}
-          </Button>
+            {isLoading ? "Signature en cours..." : "Signer (1/3)"}
+          </button>
         </div>
       </CardContent>
     </Card>

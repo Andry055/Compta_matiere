@@ -88,6 +88,16 @@ export function estSignable(sortie: SortieRecord): boolean {
 }
 
 /**
+ * Filtre MAGASINIER, fonction pure : l'ordre apparaît dans « À préparer »
+ * ssi il est « en_preparation » ET que la signature 1 est ABSENTE.
+ * Jamais de comparaison sur le statut affiché « Demandée » : un ordre
+ * demandé n'est pas encore préparable, il ne doit pas polluer l'onglet.
+ */
+export function estAPreparerPourMagasinier(sortie: SortieRecord): boolean {
+  return estSignable(sortie) && !sortie.magasinier_signed;
+}
+
+/**
  * Détermine si une sortie peut être rejetée par le magasinier.
  * Une sortie peut être rejetée si son statut est 'en_preparation' (ou équivalent).
  * @param sortie - enregistrement de sortie
@@ -201,10 +211,26 @@ export function construirePayloadSignatureLogistique(
       ligne: ligneId,
       numero_logistique: numeroLimite
     });
-  }
-
-  return {
+  }  return {
     role: 'logistique',
     numeros_logistiques: numerosValides
   };
+}
+
+/**
+ * Total valorisé d'un ordre en FCFA, calculé SUR LES LIGNES : montant serveur
+ * s'il existe, sinon quantité × valeur unitaire.
+ * (`calculerTotal` lit materiel.valeurUnitaire, jamais peuplé — il reste intact
+ * pour ExitsPage ; ce total sert au panneau d'autorisation et à la confirmation.)
+ * @param commande - ordre de sortie dont les lignes sont peuplées
+ * @returns le total en FCFA (0 si aucune ligne)
+ */
+export function totalValorise(commande: SortieRecord): number {
+  return (commande.lignes || []).reduce((total, ligne) => {
+    if (ligne.montant != null && ligne.montant !== 0) {
+      return total + (Number(ligne.montant) || 0);
+    }
+    const unitaire = Number(ligne.valeurUnitaire) || 0;
+    return total + (Number(ligne.quantite) || 0) * unitaire;
+  }, 0);
 }

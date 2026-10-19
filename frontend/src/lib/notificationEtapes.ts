@@ -15,8 +15,9 @@
 //                  pas la sienne, PLUS ses brouillons non finalisés (étape 1
 //                  laissée en cours — repérés par statut brouillon).
 
-import type { EntreeRecord } from "./movements";
+import type { EntreeRecord, SortieRecord } from "./movements";
 import { AppRole } from "../types/roles";
+import { estAPreparerPourMagasinier } from "./sortieControle";
 
 export interface NotificationEtape {
   /** Clé stable de la ligne (pour React key). */
@@ -32,7 +33,7 @@ export interface NotificationEtape {
   /** Date affichée (création ou dernière signature connue). */
   date: string;
   /** Catégorie pour l'icône (même rendu que l'ancien panneau). */
-  type: "enregistrement" | "reception_confirmee" | "ecart";
+  type: "enregistrement" | "reception_confirmee" | "ecart" | "sortie";
 }
 
 /** Vrai si l'entrée peut encore progresser dans le workflow (ni validée, ni rejetée). */
@@ -116,4 +117,33 @@ export function notificationsPourRole(
  *  de « lu » : le badge montre simplement le nombre d'actions courantes. */
 export function compterNotifications(role: AppRole, entrees: EntreeRecord[]): number {
   return notificationsPourRole(role, entrees).length;
+}
+
+/** Calcule les actions en attente du circuit de SORTIE pour le rôle donné,
+ *  à partir des sorties serveur. Pur et déterministe : une seule entrée par
+ *  ordre réellement préparable (fonction pure partagée avec la liste
+ *  « À préparer » et avec le store live). */
+export function notificationsPourRoleSortie(
+  role: AppRole,
+  sorties: SortieRecord[]
+): NotificationEtape[] {
+  if (role !== "magasinier") return [];
+
+  return sorties.filter(estAPreparerPourMagasinier).map((sortie) => ({
+    id: `sortie-mag-${sortie.id}`,
+    entreeId: sortie.id,
+    reference: sortie.reference,
+    title: "Sortie à préparer",
+    body: `La sortie ${sortie.reference} attend votre signature de préparation.`,
+    date: sortie.dateSortie,
+    type: "sortie",
+  }));
+}
+
+/** Compteur d'actions en attente pour les sorties (badge). */
+export function compterNotificationsSortie(
+  role: AppRole,
+  sorties: SortieRecord[]
+): number {
+  return notificationsPourRoleSortie(role, sorties).length;
 }

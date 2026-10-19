@@ -8,6 +8,15 @@ import type { User } from "../App";
 
 vi.mock("../lib/api", () => ({
   fetchEntrees: vi.fn(async () => [] as EntreeRecord[]),
+  // Le store partagé (sondage unique) lit aussi le compteur filtré et la
+  // liste légère des ordres ; sans ces exports le mock lève une exception
+  // asynchrone (« No export defined ») qui pollue le fichier de test.
+  countSortiesPourPreparation: vi.fn(async () => 0),
+  fetchOrdresPourAlertes: vi.fn(async () => []),
+  // Flux DU CHEF LOGISTIQUE (badge/cloche) — requis par le store partagé.
+  countSortiesAAutoriser: vi.fn(async () => 0),
+  fetchOrdresAAutoriser: vi.fn(async () => []),
+  fetchAllSortiesOrThrow: vi.fn(async () => []),
 }));
 
 afterEach(cleanup);

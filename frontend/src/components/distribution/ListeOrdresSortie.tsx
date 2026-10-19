@@ -21,14 +21,18 @@ import {
   User
 } from "lucide-react";
 import { useSortiesLive } from "@/lib/useSortiesLive";
-import { fetchSessionRole } from "@/lib/api";
+import { fetchSessionRole, SortieRecord } from "@/lib/api";
 import { mapStrapiUser } from "@/lib/session";
 import { preparerSortie } from "@/lib/api";
+import { estAPreparerPourMagasinier, ordresAAutoriser } from "@/lib/sortieControle";
 import { toast } from "sonner";
+import { DepositaireOrdreSortie } from "./DepositaireOrdreSortie";
 
 interface ListeOrdresSortieProps {
   /** Fonction appelée lorsqu'une sortie est sélectionnée (optionnel) */
   onSortieSelect?: (reference: string) => void;
+  /** Fonction appelée lorsqu'un dépositaire signe une sortie (optionnel) */
+  onDepositaireSign?: (sortie: SortieRecord) => void;
   /** Filtre actif ou imposé (ex: "en_preparation" ou versionné { statut: "en_preparation", version: 1 }) */
   filtreStatut?: string | { statut: string; version: number };
 }
@@ -41,6 +45,18 @@ export function ListeOrdresSortie({
   const [isLoadingRole, setIsLoadingRole] = useState<boolean>(true);
   const statutInitial = typeof filtreStatut === "object" ? filtreStatut?.statut : filtreStatut;
   const [activeTab, setActiveTab] = useState<string>(statutInitial || "toutes");
+  const [depositaireOuvert, setDepositaireOuvert] = useState<string | null>(null);
+  const handleDepositaireOpen = (sortie: SortieRecord) => {
+    setDepositaireOuvert(sortie.id);
+  };
+
+  const handleDepositaireSuccess = () => {
+    setDepositaireOuvert(null);
+  };
+
+  const handleDepositaireError = () => {
+    setDepositaireOuvert(null);
+  };
 
   useEffect(() => {
     if (filtreStatut) {
@@ -55,7 +71,14 @@ export function ListeOrdresSortie({
     const loadUserRole = async () => {
       setIsLoadingRole(true);
       try {
-        setUserRole(mapStrapiUser(await fetchSessionRole())?.role ?? null);
+        const user = await fetchSessionRole();
+        const userRoleFromUser = mapStrapiUser(user)?.role ?? null;
+        setUserRole(userRoleFromUser);
+        // If no filtreStatut is provided, set the default tab based on the user role
+        if (!filtreStatut) {
+          const defaultTab = userRoleFromUser === "magasinier" ? "a_preparer" : "toutes";
+          setActiveTab(defaultTab);
+        }
       } catch (error) {
         console.error("Failed to fetch user role:", error);
         setUserRole(null);
@@ -65,28 +88,47 @@ export function ListeOrdresSortie({
     };
 
     loadUserRole();
-  }, []);
+  }, [filtreStatut]);
 
   const {
     sorties: sortiesLive,
     isLoading,
     isInitialError,
     isRefreshing,
-    messageErreur
+    messageErreur,
+    totalEnPreparation
   } = useSortiesLive();
+  // Badge « À préparer (n) » : TOTAL SERVEUR FILTRÉ (statut = en_preparation,
+  // magasinier_signed = false, requête pageSize=1 + withCount=true), transmis
+  // par le store partagé. Aucun intervalle local, aucun recalcul client : la
+  // carte ne déclenche donc que le sondage partagé, pas une requête de plus.
+  const magasinerAPreparedCount = totalEnPreparation ?? 0;
+  const isLoadingCount = totalEnPreparation === null;
 
-  const sortiesFiltrees = sortiesLive.filter(sortie => {
+  const sortiesFiltrees = sortiesLive.filter((sortie) => {
+    // Magasinier : fonction pure (en_preparation ET signature 1 absente).
+    // Jamais de test sur le statut « Demandée ».
     if (userRole === "magasinier") {
-      return sortie.statut === "Demandée";
+      return estAPreparerPourMagasinier(sortie);
     }
 
-    if (activeTab === "toutes") return true;
-    if (activeTab === "demandees" && sortie.statut === "Demandée") return true;
-    if (activeTab === "en_preparation" && sortie.statut === "En préparation") return true;
-    if (activeTab === "validees" && sortie.statut === "Validée") return true;
-    if (activeTab === "a_autoriser" && userRole === "logistique" && sortiesLive.filter(s => s.statut === "Validée").length > 0) return true;
-    if (activeTab === "en_preparation_chez_autres" && userRole === "logistique" && sortie.statut === "En préparation") return true;
-    return false;
+    switch (activeTab) {
+      case "toutes":
+        return true;
+      case "demandees":
+        return sortie.statut === "Demandée";
+      case "en_preparation":
+        return sortie.statut === "En préparation";
+      case "validees":
+        return sortie.statut === "Validée";
+      case "a_autoriser":
+        // Logistique : règle pure partagée (sig. 1 + 2 posées, 3e absente).
+        return userRole === "logistique" && ordresAAutoriser([sortie]).length === 1;
+      case "en_preparation_chez_autres":
+        return userRole === "logistique" && sortie.statut === "En préparation";
+      default:
+        return false;
+    }
   });
 
   if (isLoadingRole) {
@@ -169,11 +211,12 @@ export function ListeOrdresSortie({
             {userRole === "magasinier" && (
               <>
                 <TabsTrigger
-                  value="demandees"
+                  value="a_preparer"
                   className="flex items-center justify-center px-3 py-2"
                   style={{ flex: "1 1 auto", minWidth: "120px" }}
                 >
-                  <User className="h-3 w-3 mr-2" /> Demandées
+                  À préparer ({magasinerAPreparedCount})
+                  {isLoadingCount && <span className="animate-pulse">…</span>}
                 </TabsTrigger>
               </>
             )}
@@ -310,7 +353,7 @@ export function ListeOrdresSortie({
                           variant="outline"
                           onClick={(e) => {
                             e.stopPropagation();
-                            onSortieSelect?.(sortie.reference);
+                            handleDepositaireOpen(sortie);
                           }}
                         >
                           Signer
@@ -323,6 +366,13 @@ export function ListeOrdresSortie({
             </div>
           )}
         </div>
+        {depositaireOuvert && (
+          <DepositaireOrdreSortie
+            sortie={sortiesLive.find(s => s.id === depositaireOuvert) ?? null}
+            onSuccess={handleDepositaireSuccess}
+            onError={handleDepositaireError}
+          />
+        )}
       </CardContent>
     </Card>
   );

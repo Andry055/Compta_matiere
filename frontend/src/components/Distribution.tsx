@@ -41,6 +41,9 @@ import { toast } from "sonner"
 import { DistributionRequests } from "./DistributionRequests"
 import { NouvelOrdreSortie } from "./distribution/NouvelOrdreSortie"
 import { ListeOrdresSortie } from "./distribution/ListeOrdresSortie"
+import { EspaceMagasinierSorties } from "./distribution/EspaceMagasinierSorties"
+import { EspaceLogistiqueSorties } from "./distribution/EspaceLogistiqueSorties"
+import { DepositaireOrdreSortie } from "./distribution/DepositaireOrdreSortie"
 
 export function Distribution() {
   const {
@@ -133,6 +136,30 @@ export function Distribution() {
       description: message
     });
   };
+
+  // ── Aiguillage par rôle ──────────────────────────────────────────────
+  // Le magasinier dispose de SON espace : préparation + signature 1, sans
+  // inventaire, sans création, sans message d'accès refusé. Les autres rôles
+  // conservent la page à onglets à l'identique.
+  if (userRole === "logistique") {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        <div className="flex-1 p-4 sm:p-6 overflow-auto">
+          <EspaceLogistiqueSorties />
+        </div>
+      </div>
+    );
+  }
+
+  if (userRole === "magasinier") {
+    return (
+      <div className="flex flex-col h-full bg-background">
+        <div className="flex-1 p-4 sm:p-6 overflow-auto">
+          <EspaceMagasinierSorties />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-background">
@@ -412,13 +439,17 @@ export function Distribution() {
 
           {/* Ordres de sortie Tab */}
           <TabsContent value="ordres" className="space-y-6">
-            {/* Nouvel ordre de sortie form (depositor only) */}
-            <NouvelOrdreSortie
-              onSuccess={handleNouvelOrdreSuccess}
-              onError={handleNouvelOrdreError}
-              userRole={userRole ?? ''}
-              initialMaterial={selectedMaterialForNouvelOrdre}
-            />
+            {/* Formulaire de création : réservé au dépositaire. Un rôle sans
+                droit de création ne voit simplement pas le formulaire (plus de
+                message « Accès réservé »). */}
+            {userRole === "depositaire" && (
+              <NouvelOrdreSortie
+                onSuccess={handleNouvelOrdreSuccess}
+                onError={handleNouvelOrdreError}
+                userRole={userRole ?? ''}
+                initialMaterial={selectedMaterialForNouvelOrdre}
+              />
+            )}
 
             {/* Divider */}
             {showNouvelOrdre || nouvelOrdreReference || nouvelOrdreError ? (

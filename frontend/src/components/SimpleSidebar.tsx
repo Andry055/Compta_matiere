@@ -1,7 +1,8 @@
-import { 
-  LayoutDashboard, 
+import { useState, useEffect } from "react";
+import {
+  LayoutDashboard,
   ArrowDown,
-  ArrowUpDown, 
+  ArrowUpDown,
   Package,
   Building,
   Clipboard,
@@ -17,6 +18,7 @@ import {
 } from "lucide-react"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
+import { sortiesActionsStore } from "@/lib/sortiesActionsStore"
 
 const navItems = [
   {
@@ -123,6 +125,37 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
 
   const roleLabel = ROLES_CONFIG[userRole]?.label || (user?.role === 'admin' ? 'Administrateur Système' : 'Personnel')
 
+  // Badge « Distribution » : total SERVEUR filtré (en_preparation +
+  // signature 1 absente), lu dans le store partagé — le SEUL sondage de
+  // l'app. Aucun intervalle local, aucun chargement du détail des ordres :
+  // le menu tourne donc aussi quand l'onglet Distribution est fermé.
+  const [sortiesCount, setSortiesCount] = useState(0)
+  const [isLoadingCount, setIsLoadingCount] = useState(false)
+  // Badge « Distribution » du CHEF LOGISTIQUE : total SERVEUR filtré
+  // (signatures 1 et 2 posées, 3 absente) — requête dédiée du sondage partagé,
+  // déclenchée uniquement quand ce rôle est monté.
+  const [countAAutoriser, setCountAAutoriser] = useState<number | null>(null)
+  const estLogistique = userRole === "logistique"
+
+  useEffect(() => {
+    if (!user) {
+      setSortiesCount(0)
+      setIsLoadingCount(false)
+      setCountAAutoriser(null)
+      return
+    }
+    const unsubscribe = sortiesActionsStore.subscribe((state) => {
+      setSortiesCount(state.totalEnPreparation ?? 0)
+      setIsLoadingCount(state.totalEnPreparation === null && !state.error)
+      setCountAAutoriser(state.totalAAutoriser)
+    })
+    const libererSon = sortiesActionsStore.acquire({ autorisation: estLogistique })
+    return () => {
+      unsubscribe()
+      libererSon()
+    }
+  }, [user, estLogistique])
+
   return (
     <div className={`${isMobile ? 'w-80' : 'w-72'} bg-sidebar border-r border-sidebar-border flex flex-col h-full`}>
       {/* Header */}
@@ -155,25 +188,46 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
           {visibleItems.map((item) => {
             const IconComponent = item.icon
             const isActive = activeSection === item.key
+            // Libellé propre au magasinier (une seule ligne de plus).
+            const titreAffiche =
+              item.key === "distribution" && userRole === "magasinier"
+                ? "Préparation sorties"
+                : item.key === "distribution" && userRole === "logistique"
+                  ? "Autorisation sorties"
+                  : item.title
             return (
               <button
                 key={item.key}
                 onClick={() => onSectionChange(item.key)}
                 className={`w-full flex items-start gap-3 px-3 py-3 rounded-lg text-sm transition-all duration-200 group ${
-                  isActive 
-                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm' 
+                  isActive
+                    ? 'bg-sidebar-accent text-sidebar-accent-foreground shadow-sm'
                     : 'text-sidebar-foreground hover:bg-sidebar-accent/50 hover:text-sidebar-accent-foreground'
                 }`}
               >
                 <IconComponent className="h-4 w-4 mt-0.5 flex-shrink-0" />
                 <div className="flex-1 min-w-0 text-left">
-                  <div className="truncate">{item.title}</div>
+                  <div className="truncate">{titreAffiche}</div>
                   {item.description && (
                     <div className="text-xs text-sidebar-foreground/50 mt-0.5 truncate hidden sm:block">
                       {item.key === "requests" && user?.role === "demandeur"
                         ? "Gestion de mes demandes"
                         : item.description}
                     </div>
+                  )}
+                  {/* Badge for Distribution menu item */}
+                  {item.key === "distribution" && (
+                    <span className="flex-shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs text-white ms-2">
+                      {estLogistique ? (
+                        countAAutoriser !== null && countAAutoriser > 0 ? (
+                          countAAutoriser
+                        ) : null
+                      ) : isLoadingCount ? (
+                        <span className="animate-pulse">…</span>
+                      ) : sortiesCount > 0 ? (
+                        sortiesCount
+                      ) : null}
+                    </span>
                   )}
                 </div>
               </button>

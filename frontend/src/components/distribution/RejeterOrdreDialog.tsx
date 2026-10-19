@@ -17,6 +17,7 @@ import {
 import { SortieRecord } from "@/lib/api";
 import { rejeterSortie } from "@/lib/api";
 import { toast } from "sonner";
+import { AlertTriangle } from "lucide-react";
 
 interface RejeterOrdreDialogProps {
   sortie: SortieRecord;
@@ -43,7 +44,8 @@ export function RejeterOrdreDialog({
     setIsLoading(true);
     setError(null);
     try {
-      const rejeteeSortie = await rejeterSortie(sortie.documentId, motif);
+      // SortieRecord.id EST le documentId servi par mapSortie.
+      const rejeteeSortie = await rejeterSortie(sortie.id, motif);
       onSortieRejectee(rejeteeSortie);
       onClose();
       toast.success("Sortie rejetée", {
@@ -59,7 +61,8 @@ export function RejeterOrdreDialog({
         setError("Erreur lors du rejet de la sortie");
       }
       toast.error("Erreur", {
-        description: setError || "Erreur inconnue"
+        description:
+          err.response?.data?.error?.message || err.message || "Erreur inconnue"
       });
     }
   };
@@ -67,35 +70,37 @@ export function RejeterOrdreDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline" size="sm">
-          <p className="flex items-center gap-2">
-            <AlertTriangle className="h-3 w-3" /> Rejeter
-          </p>
-        </Button>
+        <button type="button" className="msa-bouton msa-bouton--danger">
+          <AlertTriangle style={{ width: 14, height: 14 }} aria-hidden="true" /> Rejeter
+        </button>
       </DialogTrigger>
-      <DialogContent className="w-[400px]">
+      {/* Classe préfixée : centrage + défilement interne (voir EspaceMagasinierSorties.css). */}
+      <DialogContent className="msa-dialogue">
         <DialogHeader>
-          <DialogTitle>Rejeter la sortie #{sortie.reference}</DialogTitle>
-          <DialogDescription>
+          <DialogTitle className="msa-dialogue-titre">Rejeter la sortie #{sortie.reference}</DialogTitle>
+          <DialogDescription className="msa-dialogue-texte">
             Veuillez fournir un motif pour le rejet de cette sortie de stock.
           </DialogDescription>
         </DialogHeader>
         <DialogFooter>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <label className="block text-sm font-medium">Motif du rejet :</label>
+          <form onSubmit={handleSubmit} className="msa-dialogue-corps">
+            <div className="msa-panneau-champ">
+              <label className="msa-panneau-libelle" htmlFor={`motif-${sortie.id}`}>
+                Motif du rejet :
+              </label>
               <Textarea
+                id={`motif-${sortie.id}`}
                 value={motif}
                 onChange={(e) => setMotif(e.target.value)}
                 placeholder="Exemple : Matériel non conforme, adresse incorrecte..."
-                className="min-h-[80px]"
+                className="msa-textarea"
                 disabled={isLoading}
               />
               {error && (
-                <p className="text-destructive text-sm">{error}</p>
+                <p className="msa-erreur">{error}</p>
               )}
             </div>
-            <div className="flex justify-end space-x-3">
+            <div style={{ display: "flex", gap: "0.5rem", justifyContent: "flex-end", flexWrap: "wrap" }}>
               <Button
                 variant="outline"
                 onClick={onClose}
@@ -104,7 +109,7 @@ export function RejeterOrdreDialog({
                 Annuler
               </Button>
               <Button
-                onClick={handleSubmit}
+                onClick={(e) => { e.preventDefault(); handleSubmit(e); }}
                 isLoading={isLoading}
                 size="sm"
               >

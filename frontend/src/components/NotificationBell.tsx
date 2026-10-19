@@ -11,6 +11,7 @@ import {
   ArrowUpFromLine,
   CheckCircle2,
   Loader2,
+  Truck,
 } from "lucide-react";
 import { User } from "../App";
 import {
@@ -25,6 +26,8 @@ import {
   NotificationEtape,
   notificationsPourRole,
 } from "../lib/notificationEtapes";
+import { sortiesActionsStore } from "../lib/sortiesActionsStore";
+import type { AlerteSorties } from "../lib/sortieAlertes";
 import { AppRole, ROLES_CONFIG } from "../types/roles";
 
 function notifIcon(type: AppNotification["type"]) {
@@ -46,6 +49,8 @@ function etapeIcon(type: NotificationEtape["type"]) {
       return Lock;
     case "reception_confirmee":
       return CheckCircle2;
+    case "sortie":
+      return Truck; // Or maybe ArrowUpFromLine to match the notifIcon?
     default:
       return ClipboardCheck;
   }
@@ -59,6 +64,8 @@ function etapeIconColor(type: NotificationEtape["type"]) {
       return "bg-red-100 text-red-600 dark:bg-red-900/40 dark:text-red-400";
     case "reception_confirmee":
       return "bg-green-100 text-green-700 dark:bg-green-900/40 dark:text-green-400";
+    case "sortie":
+      return "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400";
     default:
       return "bg-blue-100 text-blue-600 dark:bg-blue-900/40 dark:text-blue-400";
   }
@@ -68,6 +75,49 @@ function etapeIconColor(type: NotificationEtape["type"]) {
  *  (signature, contrôle, validation). Pour les autres rôles, la section est
  *  simplement absente. */
 const ROLES_AVEC_ETAPES: AppRole[] = ["depositaire", "magasinier", "logistique"];
+
+/**
+ * Traduit les alertes du store (dérivées des données serveur) en lignes
+ * d'affichage. UN groupe d'ordres découverts ensemble = UNE seule alerte :
+ * plusieurs ordres arrivés en même temps ne gonflent pas le badge.
+ */
+function alertesSortiesEnEtapes(
+  alertes: AlerteSorties[],
+  variante: "preparer" | "autoriser" = "preparer"
+): NotificationEtape[] {
+  return alertes.map((alerte) => {
+    const plusieurs = alerte.references.length > 1;
+    const refs = alerte.references.join(", ");
+    if (variante === "autoriser") {
+      // MÊMES règles que le magasinier (groupe unique, disparition à la
+      // signature) mais libellé propre au rôle logistique.
+      return {
+        id: `sortie-autorisation-${alerte.ids.join("-")}`,
+        entreeId: alerte.ids[0],
+        reference: refs,
+        type: "sortie" as const,
+        title: plusieurs
+          ? `Nouveaux ordres à autoriser : ${refs}`
+          : `Nouvel ordre à autoriser : ${refs}`,
+        body: plusieurs
+          ? `${alerte.references.length} ordres attendent votre signature 3 : ${refs}.`
+          : `L'ordre ${alerte.references[0]} est prêt pour votre signature 3.`,
+        date: alerte.date,
+      };
+    }
+    return {
+      id: `sortie-alerte-${alerte.ids.join("-")}`,
+      entreeId: alerte.ids[0],
+      reference: refs,
+      type: "sortie" as const,
+      title: plusieurs ? "Nouvelles sorties à préparer" : "Nouvelle sortie à préparer",
+      body: plusieurs
+        ? `${alerte.references.length} nouveaux ordres attendent votre signature : ${refs}.`
+        : `La sortie ${alerte.references[0]} attend votre signature de préparation.`,
+      date: alerte.date,
+    };
+  });
+}
 
 interface NotificationBellProps {
   user?: User;
@@ -99,11 +149,16 @@ export function NotificationBell({
   const [items, setItems] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState<AppNotification[]>([]);
   const [etapes, setEtapes] = useState<NotificationEtape[]>([]);
+  const [etapesSortie, setEtapesSortie] = useState<NotificationEtape[]>([]);
   const [chargementEtapes, setChargementEtapes] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const role = (user?.role ?? null) as AppRole | null;
   const aDesEtapes = !!role && ROLES_AVEC_ETAPES.includes(role);
+  const aDesEtapesSortie = role === "magasinier"; // signature 1
+  // Chef logistique : alertes « nouvel ordre à autoriser » (signature 3),
+  // dérivées du MÊME sondage partagé (aucune requête supplémentaire locale).
+  const aDesAutorisations = role === "logistique";
 
   const refresh = () => {
     setItems(getNotifications(user));
@@ -114,16 +169,46 @@ export function NotificationBell({
   const chargerEtapes = useCallback(async () => {
     if (!role || !ROLES_AVEC_ETAPES.includes(role)) {
       setEtapes([]);
+      setEtapesSortie([]);
       return;
     }
     setChargementEtapes(true);
+
+    // Fetch entries for MaterialEntry module actions
     const entrees = await fetchEntrees();
     // null = backend injoignable / session expirée : on garde la liste
     // précédente plutôt que d'annoncer « aucune action en attente », qui
     // serait un faux rassurant.
     if (entrees) setEtapes(notificationsPourRole(role, entrees));
+
     setChargementEtapes(false);
   }, [role]);
+
+  // Ordres à préparer : alertes DÉRIVÉES des données serveur, lues dans le
+  // store partagé (un seul sondage). La cloche ne fetch JAMAIS le détail des
+  // ordres et n'écrit rien dans localStorage : une alerte existe tant qu'un
+  // de ses ordres n'est pas encore signé, et disparaît dès la signature.
+  useEffect(() => {
+    if (!aDesEtapesSortie && !aDesAutorisations) {
+      setEtapesSortie([]);
+      return;
+    }
+    const unsubscribe = sortiesActionsStore.subscribe((state) => {
+      setEtapesSortie(
+        alertesSortiesEnEtapes(
+          aDesAutorisations ? state.alertesAutorisation : state.alertes,
+          aDesAutorisations ? "autoriser" : "preparer"
+        )
+      );
+    });
+    const libererSon = sortiesActionsStore.acquire({
+      autorisation: aDesAutorisations,
+    });
+    return () => {
+      unsubscribe();
+      libererSon();
+    };
+  }, [aDesEtapesSortie, aDesAutorisations]);
 
   useEffect(() => {
     refresh();
@@ -169,11 +254,14 @@ export function NotificationBell({
 
   const handleOpenEtape = (etape: NotificationEtape) => {
     setOpen(false);
+    // For entrée notifications, open the entrée detail
+    // For sortie notifications, we could open sortie detail if callback existed
+    // For now, we use the same callback and let the caller handle the ID appropriately
     if (onOpenEntree) onOpenEntree(etape.entreeId);
   };
 
   const nbNonLues = unread.length;
-  const total = nbNonLues + etapes.length;
+  const total = nbNonLues + etapes.length + etapesSortie.length;
   const roleLabel = role ? ROLES_CONFIG[role].label : "";
 
   return (
@@ -219,6 +307,53 @@ export function NotificationBell({
                   En attente — {roleLabel}
                 </p>
                 {etapes.map((n) => {
+                  const Icon = etapeIcon(n.type);
+                  const ouvrable = !!onOpenEntree;
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => handleOpenEtape(n)}
+                      disabled={!ouvrable}
+                      title={ouvrable ? "Ouvrir cette pièce" : undefined}
+                      className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
+                        ouvrable ? "hover:bg-muted/40 cursor-pointer" : ""
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${etapeIconColor(
+                          n.type
+                        )}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium leading-snug text-card-foreground">
+                          {n.title}
+                        </span>
+                        <span className="block text-xs text-muted-foreground mt-0.5">
+                          {n.body}
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground mt-1">
+                          {new Date(n.date).toLocaleString("fr-FR")}
+                        </span>
+                      </span>
+                      {ouvrable && (
+                        <ChevronRight className="mt-1.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                  );
+                })}
+                <div className="h-px bg-border" />
+              </>
+            )}
+
+            {/* ── 1.bis) Actions en attente du rôle (circuit de préparation des sorties) ── */}
+            {(aDesEtapesSortie || aDesAutorisations) && etapesSortie.length > 0 && (
+              <>
+                <p className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  En attente — {roleLabel}
+                </p>
+                {etapesSortie.map((n) => {
                   const Icon = etapeIcon(n.type);
                   const ouvrable = !!onOpenEntree;
                   return (

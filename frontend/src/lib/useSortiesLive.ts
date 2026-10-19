@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { fetchSorties, SortieRecord } from "./api";
+import { sortiesActionsStore, type SortiesActionsStoreState } from "./sortiesActionsStore";
+import type { AlerteSorties } from "./sortieAlertes";
 import { getDerniereSyncSortie, marquerSyncSortie } from "./lastSync";
 
 export interface UseSortiesLiveResult {
@@ -9,25 +10,16 @@ export interface UseSortiesLiveResult {
   isRefreshing: boolean;
   messageErreur: string | null;
   derniereSync: Date | null;
+  /** Total serveur filtré (badge « À préparer (n) ») — jamais de liste détaillée. */
+  totalEnPreparation: number | null;
+  /** Alertes « nouvel ordre » dérivées des données serveur. */
+  alertes: AlerteSorties[];
   refresh: () => Promise<void>;
 }
 
 /**
  * Hook de lecture en quasi temps réel des sorties (GET /api/sorties).
- *
- * - Premier chargement : état « chargement ».
- * - Rafraîchissements silencieux ultérieurs (sans repasser par l'écran de chargement).
- * - Déclencheurs :
- *   1. Événement `sortie-mis-a-jour`
- *   2. Retour sur l'onglet (`visibilitychange` / `focus`)
- *   3. Reconnexion réseau (`online`)
- *   4. Sondage toutes les 20 secondes (en pause si onglet masqué ou hors-ligne)
- *   5. Bouton ou appel explicite `refresh()`
- * - Une seule requête à la fois (ignore tout déclencheur concurrent).
- * - Nettoyage complet des timers au démontage.
- * - Ne remplace les données que si elles ont changé.
- * - En cas d'échec réseau après un premier succès : conserve les données et affiche
- *   « Connexion indisponible, dernière synchro à HH:MM ».
+ * Utilise le store partagé pour éviter les requêtes duplicates.
  */
 export function useSortiesLive(): UseSortiesLiveResult {
   const [sorties, setSorties] = useState<SortieRecord[]>([]);
@@ -36,6 +28,8 @@ export function useSortiesLive(): UseSortiesLiveResult {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [messageErreur, setMessageErreur] = useState<string | null>(null);
   const [derniereSync, setDerniereSync] = useState<Date | null>(getDerniereSyncSortie());
+  const [totalEnPreparation, setTotalEnPreparation] = useState<number | null>(null);
+  const [alertes, setAlertes] = useState<AlerteSorties[]>([]);
 
   // Force un re-rendu chaque seconde : les libellés « dernière synchro il y a
   // Xs » (formatDelaiSyncExact) sont calculés au render, sans tick ils restent
@@ -50,154 +44,113 @@ export function useSortiesLive(): UseSortiesLiveResult {
 
   const hasLoadedOnceRef = useRef(false);
   const inProgressRef = useRef(false);
-  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Tick timer for updating the display every second
   const tickTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchSilently = useCallback(async () => {
-    if (inProgressRef.current) return;
-    inProgressRef.current = true;
-    setIsRefreshing(true);
+  // Subscribe to the store
+  useEffect(() => {
+    const handleStoreChange = (state: SortiesActionsStoreState) => {
+      // Update loading state
+      setIsLoading(state.loading);
+      setTotalEnPreparation(state.totalEnPreparation);
+      setAlertes(state.alertes);
 
-    try {
-      const rows = await fetchSorties();
-      if (rows === null) {
-        throw new Error("API returned null");
-      }
-      const now = new Date();
-      marquerSyncSortie(now);
-      setDerniereSync(now);
-      setMessageErreur(null);
-      setIsInitialError(false);
+      // Update sorties data if available
+      if (state.sorties !== null) {
+        sortiesRef.current = state.sorties;
+        setSorties(state.sorties);
 
-      const prev = sortiesRef.current;
-      if (!hasLoadedOnceRef.current) {
-        hasLoadedOnceRef.current = true;
-        sortiesRef.current = rows;
-        setSorties(rows);
-      } else {
-        // Simple comparison for sorties (could be enhanced like materials if needed)
-        const changed = JSON.stringify(prev) !== JSON.stringify(rows);
-        if (changed) {
-          sortiesRef.current = rows;
-          setSorties(rows);
+        // If we have data and it's not an error, update last sync and clear error
+        if (!state.error) {
+          const now = new Date();
+          marquerSyncSortie(now);
+          setDerniereSync(now);
+          setMessageErreur(null);
+          // If we had an error before, clear initial error flag if this is first load
+          if (!hasLoadedOnceRef.current) {
+            setIsInitialError(false);
+          }
+          hasLoadedOnceRef.current = true;
         }
       }
-    } catch {
-      if (!hasLoadedOnceRef.current) {
-        setIsInitialError(true);
-      } else {
-        const heure = derniereSyncRef.current
-          ? formatHeureSync(derniereSyncRef.current)
-          : formatHeureSync(new Date());
-        setMessageErreur(`Connexion indisponible, dernière synchro à ${heure}`);
+
+      // Handle error state
+      if (state.error && state.sorties === null) {
+        // If we never had successful data, set initial error
+        if (!hasLoadedOnceRef.current) {
+          setIsInitialError(true);
+        } else {
+          // If we had data before, show connection unavailable message
+          const heure = derniereSyncRef.current
+            ? formatHeureSync(derniereSyncRef.current)
+            : formatHeureSync(new Date());
+          setMessageErreur(`Connexion indisponible, dernière synchro à ${heure}`);
+        }
+        setIsLoading(false);
       }
-    } finally {
-      hasLoadedOnceRef.current = true;
-      setIsLoading(false);
-      inProgressRef.current = false;
-      setIsRefreshing(false);
-    }
-  }, []);
+    };
 
-  const startPolling = useCallback(() => {
-    if (pollTimerRef.current) clearInterval(pollTimerRef.current);
-    if (!isTabVisible() || !isOnline()) {
-      pollTimerRef.current = null;
-      return;
-    }
-    pollTimerRef.current = setInterval(() => {
-      if (isTabVisible() && isOnline()) {
-        void fetchSilently();
+    // Subscribe to store updates
+    const unsubscribe = sortiesActionsStore.subscribe(handleStoreChange);
+
+    // Rejoint le sondage PARTAGÉ du store — un seul intervalle pour l'app,
+    // actif même hors de l'onglet Distribution, en pause quand l'onglet est
+    // masqué (le store écoute visibilitychange lui-même). `detail: true` :
+    // Distribution est le SEUL consommateur du détail des ordres.
+    const libererSon = sortiesActionsStore.acquire({ detail: true });
+
+    // Start the ticker for UI updates
+    const startTicking = () => {
+      if (tickTimerRef.current) clearInterval(tickTimerRef.current);
+      if (typeof document !== "undefined" && document.visibilityState === "visible") {
+        tickTimerRef.current = setInterval(() => {
+          setTick((t) => (t + 1) % 100000);
+        }, 1000);
       }
-    }, 20000);
-  }, [fetchSilently]);
+    };
 
-  const stopPolling = useCallback(() => {
-    if (pollTimerRef.current) {
-      clearInterval(pollTimerRef.current);
-      pollTimerRef.current = null;
-    }
-  }, []);
+    const stopTicking = () => {
+      if (tickTimerRef.current) {
+        clearInterval(tickTimerRef.current);
+        tickTimerRef.current = null;
+      }
+    };
 
-  const startTicking = useCallback(() => {
-    if (tickTimerRef.current) clearInterval(tickTimerRef.current);
-    if (!isTabVisible()) {
-      tickTimerRef.current = null;
-      return;
-    }
-    tickTimerRef.current = setInterval(() => {
-      setTick((t) => (t + 1) % 100000);
-    }, 1000);
-  }, []);
-
-  const stopTicking = useCallback(() => {
-    if (tickTimerRef.current) {
-      clearInterval(tickTimerRef.current);
-      tickTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    // Premier chargement
-    void fetchSilently();
-    startPolling();
     startTicking();
 
-    const handleSortieUpdate = () => {
-      void fetchSilently();
-    };
-
     const handleVisibilityChange = () => {
-      if (isTabVisible()) {
-        startTicking();
-        if (isOnline()) {
-          void fetchSilently();
-          startPolling();
-        }
-      } else {
-        stopPolling();
-        stopTicking();
+      if (typeof document !== "undefined") {
+        if (document.visibilityState === "visible") startTicking();
+        else stopTicking();
       }
     };
 
-    const handleFocus = () => {
-      if (isTabVisible() && isOnline()) {
-        void fetchSilently();
-        startPolling();
-      }
-    };
-
-    const handleOnline = () => {
-      if (isTabVisible()) {
-        void fetchSilently();
-        startPolling();
-      }
-    };
-
-    const handleOffline = () => {
-      stopPolling();
-    };
-
-    window.addEventListener("sortie-mis-a-jour", handleSortieUpdate);
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("online", handleOnline);
-    window.addEventListener("offline", handleOffline);
     if (typeof document !== "undefined") {
       document.addEventListener("visibilitychange", handleVisibilityChange);
     }
 
+    // Cleanup
     return () => {
-      stopPolling();
+      unsubscribe();
+      libererSon();
       stopTicking();
-      window.removeEventListener("sortie-mis-a-jour", handleSortieUpdate);
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("online", handleOnline);
-      window.removeEventListener("offline", handleOffline);
       if (typeof document !== "undefined") {
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       }
     };
-  }, [fetchSilently, startPolling, stopPolling, startTicking, stopTicking]);
+  }, []); // Empty deps because we only want to subscribe once
+
+  // Refresh function to manually trigger a fetch
+  const refresh = useCallback(async () => {
+    setIsRefreshing(true);
+    try {
+      // Trigger a fetch in the store; the store will update its state and notify subscribers
+      await sortiesActionsStore.refresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, []);
 
   return {
     sorties,
@@ -206,7 +159,9 @@ export function useSortiesLive(): UseSortiesLiveResult {
     isRefreshing,
     messageErreur,
     derniereSync,
-    refresh: fetchSilently,
+    totalEnPreparation,
+    alertes,
+    refresh,
   };
 }
 
@@ -216,16 +171,4 @@ function formatHeureSync(date: Date | null): string {
   const hh = String(date.getHours()).padStart(2, "0");
   const mm = String(date.getMinutes()).padStart(2, "0");
   return `${hh}:${mm}`;
-}
-
-function isTabVisible(): boolean {
-  if (typeof document === "undefined") return true;
-  return document.visibilityState === "visible";
-}
-
-function isOnline(): boolean {
-  if (typeof navigator === "undefined" || typeof navigator.onLine !== "boolean") {
-    return true;
-  }
-  return navigator.onLine;
 }

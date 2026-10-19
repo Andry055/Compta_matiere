@@ -90,7 +90,7 @@ export function SignatureControleSortie({
       // In a real app, we would get the role from context or props
       const role: 'magasinier' | 'depositaire' | 'logistique' = 'magasinier';
 
-      const signedSortie = await signerSortie(sortie.documentId, role, controles);
+      const signedSortie = await signerSortie(sortie.id, role, controles);
       setIsLoading(false);
       onSuccess(signedSortie);
       toast.success("Sortie signée", {

@@ -374,7 +374,7 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-card border border-border rounded-xl w-full max-w-7xl h-[90vh] flex flex-col shadow-2xl">
+      <div className="cm-modal border bg-popover rounded-xl w-full max-w-7xl h-[90vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border">
           <div>

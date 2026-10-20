@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import {
   Card,
   CardContent,
@@ -48,6 +48,7 @@ import {
   apparierDemande
 } from "@/lib/sortieBrouillon";
 import { fetchDemandesPourLiaison } from "@/lib/demandes";
+import type { DemandeRecord } from "@/lib/demandes";
 import { toast } from "sonner";
 
 interface NouvelOrdreSortieProps {
@@ -59,6 +60,28 @@ interface NouvelOrdreSortieProps {
   userRole: string;
   /** Matériau pré-sélectionné pour pré-remplir le formulaire (optionnel) */
   initialMaterial?: MaterialOption;
+  /**
+   * Demande APPROUVÉE à transformer en ordre de sortie (étape 3). Quand elle
+   * est fournie, le formulaire se préremplit TOUT SEUL : direction, service,
+   * lignes (quantités approuvées), pièce justificative = référence de la
+   * demande et champ « Demande liée ». Le dépositaire n'a plus qu'à vérifier
+   * puis confirmer.
+   */
+  initialDemande?: DemandeRecord | null;
+  /** Notifie le parent que la demande a été appliquée (évite tout re-jeu). */
+  onDemandePreRemplie?: () => void;
+}
+
+/** Normalisation des noms d'organigramme pour apparier la demande aux listes
+ *  de référence (accents, casse, espaces : « Direction du Travail (DT) » vs
+ *  « Direction du Travail »). */
+function normaliserNom(valeur?: string): string {
+  return (valeur || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Radix <Select> INTERDIT `value=""` (c'est la valeur réservée au
@@ -71,7 +94,9 @@ export function NouvelOrdreSortie({
   onSuccess,
   onError,
   userRole,
-  initialMaterial
+  initialMaterial,
+  initialDemande,
+  onDemandePreRemplie
 }: NouvelOrdreSortieProps) {
   const {
     materials,
@@ -100,6 +125,14 @@ export function NouvelOrdreSortie({
   const [services, setServices] = useState<Array<{id: string; nom: string; directionId: string}>>([]);
   const [isLoadingDirections, setIsLoadingDirections] = useState<boolean>(false);
   const [isLoadingServices, setIsLoadingServices] = useState<boolean>(false);
+  // Les listes de référence sont encore VIDES au premier rendu : sans ce
+  // pavé, le préremplissage depuis une demande s'exécutait trop tôt (les
+  // noms de direction/service de la demande ne pouvaient pas être résolus en
+  // identifiants) puis était définitivement ignoré.
+  const [refsChargees, setRefsChargees] = useState<boolean>(false);
+
+  /** Demande déjà appliquée au formulaire : le préremplissage n'a lieu qu'UNE fois. */
+  const demandeAppliquee = useRef<string | null>(null);
 
   // States for form submission
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
@@ -145,6 +178,7 @@ export function NouvelOrdreSortie({
       } finally {
         setIsLoadingDirections(false);
         setIsLoadingServices(false);
+        setRefsChargees(true);
       }
     };
 
@@ -172,6 +206,106 @@ export function NouvelOrdreSortie({
       ignore = true;
     };
   }, []);
+
+  // ── ÉTAPE 3 : préremplissage à partir d'une demande approuvée ──────────
+  // Le dépositaire clique sur « Créer l'ordre de sortie » dans l'écran
+  // Décision : l'onglet « Ordres de sortie » s'ouvre et le formulaire se
+  // remplit TOUT SEUL avec la demande (mêmes règles que le préremplissage
+  // serveur de POST /api/demandes/:id/creer-ordre) :
+  //   - pièce justificative = RÉFÉRENCE de la demande ;
+  //   - direction et service APPARIÉS par nom sur les listes de référence ;
+  //   - lignes = lignes de la demande, quantités APPROUVÉES, fiches de stock
+  //     résolues par materielDocumentId ;
+  //   - champ « Demande liée » = référence de la demande (le serveur enforce
+  //     « une demande, un ordre » à la création).
+  // Le préremplissage attend la fin du chargement des listes de référence et
+  // du stock : effectué trop tôt, il laisserait direction/service/lignes vides
+  // et serait ensuite définitivement ignoré (demandeAppliquee).
+  useEffect(() => {
+    const demande = initialDemande ?? null;
+    const cible = demande?.documentId || null;
+    if (!cible || demandeAppliquee.current === cible) return;
+    if (!refsChargees || isLoadingDirections || isLoadingServices || isLoadingMaterials) return;
+
+    demandeAppliquee.current = cible;
+
+    const trouverParNom = (
+      nom: string | undefined,
+      options: Array<{ id: string; nom: string }>
+    ) => {
+      const attendu = normaliserNom(nom);
+      if (!attendu) return undefined;
+      return options.find((option) => {
+        const candidat = normaliserNom(option.nom);
+        if (!candidat) return false;
+        return (
+          candidat === attendu ||
+          attendu.includes(candidat) ||
+          candidat.includes(attendu)
+        );
+      });
+    };
+
+    const directionChoisie = trouverParNom(demande!.direction, directions);
+    // Le service est d'abord cherché dans la direction appariée (le champ est
+    // filtré par direction dans le formulaire) puis, à défaut, dans l'ensemble
+    // de l'organigramme : mieux vaut un service juste d'une autre direction
+    // qu'un service vide faute de correspondance de nom.
+    const servicesCandidats = directionChoisie
+      ? services.filter((service) => service.directionId === directionChoisie.id)
+      : services;
+    const serviceChoisi =
+      trouverParNom(demande!.service, servicesCandidats) ||
+      trouverParNom(demande!.service, services);
+
+    setDirectionId(directionChoisie?.id);
+    setServiceId(serviceChoisi?.id);
+    // Pièce justificative = référence de la demande (règle serveur).
+    setJustificatif(demande!.reference);
+    setDemandeId(demande!.reference);
+    // Si ni la direction ni le service de la demande n'ont pu être résolus
+    // dans l'organigramme, le bénéficiaire (le demandeur) garantit une
+    // destination valide plutôt qu'un blocage silencieux du formulaire.
+    if (
+      !directionChoisie &&
+      !serviceChoisi &&
+      demande!.demandeur &&
+      demande!.demandeur !== "—"
+    ) {
+      setBeneficiaire(demande!.demandeur);
+    }
+
+    const lignesDemande = (demande!.lignes || []).map((ligne) => {
+      const materiel = ligne.materielDocumentId
+        ? materials.find((m) => m.documentId === ligne.materielDocumentId)
+        : undefined;
+      return {
+        materielId: materiel?.documentId ?? ligne.materielDocumentId,
+        // Désignation CANONIQUE de la fiche résolue (sinon celle de la demande).
+        designation: materiel?.designation ?? ligne.materiel ?? "",
+        quantite: Math.max(1, Number(ligne.quantite) || 1),
+        materiel,
+        observations: ""
+      };
+    });
+    setLignes(lignesDemande);
+
+    toast.info("Demande pré-remplie", {
+      description: `La demande ${demande!.reference} a été reprise dans le formulaire : vérifiez puis confirmez la création.`
+    });
+
+    onDemandePreRemplie?.();
+  }, [
+    initialDemande,
+    refsChargees,
+    isLoadingDirections,
+    isLoadingServices,
+    isLoadingMaterials,
+    directions,
+    services,
+    materials,
+    onDemandePreRemplie
+  ]);
 
   // Function to add a new line
   const ajouterLigne = () => {

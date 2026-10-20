@@ -771,7 +771,7 @@ export function Departments() {
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Building2 className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -783,7 +783,7 @@ export function Departments() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Briefcase className="h-8 w-8 p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400" />
             <div>
@@ -797,7 +797,7 @@ export function Departments() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Users className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
@@ -811,7 +811,7 @@ export function Departments() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400 flex items-center justify-center text-xs">
               ✓

@@ -563,7 +563,7 @@ export function Equipment({ user }: { user?: UserType }) {
 
       {/* Statistics Cards */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <Package className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -577,7 +577,7 @@ export function Equipment({ user }: { user?: UserType }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400 flex items-center justify-center text-xs">
               {statusCounts["Disponible"] || 0}
@@ -593,7 +593,7 @@ export function Equipment({ user }: { user?: UserType }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400 flex items-center justify-center text-xs">
               {statusCounts["Maintenance"] || 0}
@@ -609,7 +609,7 @@ export function Equipment({ user }: { user?: UserType }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow col-span-2 lg:col-span-1">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4 col-span-2 lg:col-span-1">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400 flex items-center justify-center text-xs">
               Ar
@@ -627,7 +627,7 @@ export function Equipment({ user }: { user?: UserType }) {
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
         <div className="flex flex-col gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -668,7 +668,7 @@ export function Equipment({ user }: { user?: UserType }) {
       </div>
 
       {/* Equipment List */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-4 sm:p-6 border-b border-border">
           <div className="flex items-center justify-between">
             <h3 className="text-lg text-card-foreground">
@@ -1070,7 +1070,7 @@ export function Equipment({ user }: { user?: UserType }) {
       {/* Equipment Detail Modal */}
       {selectedItem && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="cm-modal border bg-popover p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg text-card-foreground">
                 Détails de l'équipement

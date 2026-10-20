@@ -281,7 +281,7 @@ export function StaffProfile({ user }: StaffProfileProps) {
         {/* Profile Information */}
         <div className="lg:col-span-2 space-y-6">
           {/* Basic Info */}
-          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-lg text-card-foreground mb-4 flex items-center gap-2">
               <UserIcon className="h-5 w-5" />
               Informations Professionnelles
@@ -489,7 +489,7 @@ export function StaffProfile({ user }: StaffProfileProps) {
           </div>
 
           {/* Employment Details */}
-          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-lg text-card-foreground mb-4 flex items-center gap-2">
               <Building className="h-5 w-5" />
               Informations Personnelles
@@ -596,7 +596,7 @@ export function StaffProfile({ user }: StaffProfileProps) {
           </div>
 
           {/* Permissions */}
-          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-lg text-card-foreground mb-4 flex items-center gap-2">
               <Shield className="h-5 w-5" />
               Permissions
@@ -642,7 +642,7 @@ export function StaffProfile({ user }: StaffProfileProps) {
         {/* Activity Stats */}
         <div className="space-y-6">
           {/* Current Session */}
-          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-lg text-card-foreground mb-4">
               Session Actuelle
             </h3>
@@ -669,7 +669,7 @@ export function StaffProfile({ user }: StaffProfileProps) {
           </div>
 
           {/* Activity Statistics */}
-          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-lg text-card-foreground mb-4">
               Statistiques d'Activité
             </h3>
@@ -714,7 +714,7 @@ export function StaffProfile({ user }: StaffProfileProps) {
           </div>
 
           {/* Quick Actions */}
-          <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-lg text-card-foreground mb-4">
               Actions Rapides
             </h3>

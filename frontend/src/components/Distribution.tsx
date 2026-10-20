@@ -44,8 +44,20 @@ import { ListeOrdresSortie } from "./distribution/ListeOrdresSortie"
 import { EspaceMagasinierSorties } from "./distribution/EspaceMagasinierSorties"
 import { EspaceLogistiqueSorties } from "./distribution/EspaceLogistiqueSorties"
 import { DepositaireOrdreSortie } from "./distribution/DepositaireOrdreSortie"
+import type { DemandeRecord } from "@/lib/demandes"
 
-export function Distribution() {
+interface DistributionProps {
+  /**
+   * Demande APPROUVÉE à transformer en ordre de sortie (étape 3). Posée par
+   * le parent lors du clic sur « Créer l'ordre de sortie » (écran Décision) :
+   * l'onglet « Ordres de sortie » s'ouvre et le formulaire se préremplit.
+   */
+  initialDemande?: DemandeRecord | null;
+  /** Notifie le parent que la demande a été reprise par le formulaire. */
+  onInitialDemandeConsumed?: () => void;
+}
+
+export function Distribution({ initialDemande, onInitialDemandeConsumed }: DistributionProps) {
   const {
     materials,
     isLoading: isLoadingMaterials,
@@ -75,6 +87,10 @@ export function Distribution() {
 
   // State for material selected from inventory to add to nouvel ordre
   const [selectedMaterialForNouvelOrdre, setSelectedMaterialForNouvelOrdre] = useState<MaterialOption | null>(null);
+
+  // Demande à reprendre dans le formulaire de l'onglet « Ordres de sortie »
+  // (posée ci-dessous par l'effet d'ouverture automatique).
+  const [demandeAPreRemplir, setDemandeAPreRemplir] = useState<DemandeRecord | null>(null);
 
   // State for user role
   const [userRole, setUserRole] = useState<string | null>(null);
@@ -107,12 +123,27 @@ export function Distribution() {
     version: 0,
   });
 
+  // ── ÉTAPE 3 : ouverture automatique sur une demande à transformer ──────
+  // Le dépositaire clique sur « Créer l'ordre de sortie » dans l'écran
+  // Décision : on bascule TOUT SEUL sur l'onglet « Ordres de sortie » et le
+  // formulaire est prérempli avec la demande (voir NouvelOrdreSortie).
+  useEffect(() => {
+    if (!initialDemande) return;
+    setDemandeAPreRemplir(initialDemande);
+    // La demande prime sur un éventuel matériel choisi dans l'inventaire.
+    setSelectedMaterialForNouvelOrdre(null);
+    // Bascule vers l'onglet « Ordres de sortie » où se trouve le formulaire.
+    setActiveTab("ordres");
+    onInitialDemandeConsumed?.();
+  }, [initialDemande, onInitialDemandeConsumed]);
+
   // Handler for successful sortie creation
   const handleNouvelOrdreSuccess = (reference: string) => {
     setNouvelOrdreReference(reference);
     setNouvelOrdreError(null);
     setShowNouvelOrdre(false);
     setSelectedMaterialForNouvelOrdre(null);
+    setDemandeAPreRemplir(null);
     setFiltreSorties((prev) => ({ statut: "en_preparation", version: prev.version + 1 }));
 
     // Show success toast
@@ -448,6 +479,8 @@ export function Distribution() {
                 onError={handleNouvelOrdreError}
                 userRole={userRole ?? ''}
                 initialMaterial={selectedMaterialForNouvelOrdre}
+                initialDemande={demandeAPreRemplir}
+                onDemandePreRemplie={() => setDemandeAPreRemplir(null)}
               />
             )}
 

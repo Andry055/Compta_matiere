@@ -1,0 +1,1033 @@
+/* ==========================================================================
+   ComptaMatière — Système visuel « Console Orbital » (Nébuleuse)
+   --------------------------------------------------------------------------
+   Direction artistique : poste de contrôle de gestion de stocks.
+   Base graphite bleu profond, panneaux translucides à liseré lumineux,
+   accent cyan glacé (signal), ambre (alerte), menthe (succès).
+
+   NOTE ARCHITECTURE : `src/index.css` est un artefact Tailwind v4 COMPILÉ ET
+   FIGÉ (tailwindcss n'est pas installé, il n'y a pas de PostCSS) — aucune
+   nouvelle classe utilitaire ne peut y être générée. Ce fichier est donc
+   écrit en CSS "maison" : il surcharge les tokens de thème (`:root` / `.dark`)
+   et définit une famille de classes `.cm-*` réutilisées par les composants.
+
+   Ces règles sont NON empilées (hors @layer) : elles priment sur les
+   utilitaires Tailwind compilés, qui le sont.
+   ========================================================================== */
+
+/* ==========================================================================
+   1. THÈME — Jetons de couleur
+   ========================================================================== */
+
+:root {
+  /* --- Surfaces (thème clair : « Neige ») --- */
+  --background: oklch(0.975 0.004 250);
+  --foreground: oklch(0.20 0.02 258);
+  --card: oklch(1 0 0 / 0.90);
+  --card-foreground: oklch(0.20 0.02 258);
+  --popover: oklch(1 0 0 / 0.98);
+  --popover-foreground: oklch(0.20 0.02 258);
+
+  /* --- Accent primaire : bleu-cyan profond (lisible sur blanc) --- */
+  --primary: oklch(0.53 0.13 233);
+  --primary-foreground: oklch(0.99 0 0);
+
+  --secondary: oklch(0.955 0.006 250);
+  --secondary-foreground: oklch(0.25 0.02 255);
+  --muted: oklch(0.955 0.006 250);
+  --muted-foreground: oklch(0.50 0.02 255);
+  --accent: oklch(0.94 0.012 245);
+  --accent-foreground: oklch(0.25 0.03 250);
+
+  --destructive: oklch(0.58 0.22 27);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.90 0.008 250);
+  --input: oklch(0.91 0.008 250);
+  --ring: oklch(0.53 0.13 233);
+
+  --chart-1: oklch(0.60 0.14 220);
+  --chart-2: oklch(0.66 0.15 160);
+  --chart-3: oklch(0.72 0.15 78);
+  --chart-4: oklch(0.60 0.16 300);
+  --chart-5: oklch(0.63 0.21 22);
+
+  --radius: 0.625rem;
+
+  --sidebar: oklch(0.99 0.002 250 / 0.88);
+  --sidebar-foreground: oklch(0.20 0.02 258);
+  --sidebar-primary: oklch(0.53 0.13 233);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --sidebar-accent: oklch(0.945 0.012 245);
+  --sidebar-accent-foreground: oklch(0.22 0.03 250);
+  --sidebar-border: oklch(0.90 0.008 250);
+  --sidebar-ring: oklch(0.53 0.13 233);
+
+  /* --- Jetons d'extension « console » --- */
+  --cm-accent: oklch(0.53 0.13 233);
+  --cm-accent-soft: oklch(0.60 0.12 225);
+  --cm-accent-2: oklch(0.72 0.15 78);
+  --cm-success: oklch(0.64 0.16 155);
+  --cm-danger: oklch(0.58 0.22 27);
+  --cm-ink: oklch(0.20 0.02 258);
+  --cm-ink-dim: oklch(0.50 0.02 255);
+  --cm-grid: oklch(0.55 0.03 250 / 0.055);
+  --cm-aurora: oklch(0.60 0.12 225 / 0.13);
+  --cm-aurora-2: oklch(0.75 0.14 80 / 0.10);
+  --cm-hairline: oklch(0.45 0.02 250 / 0.13);
+  --cm-hairline-strong: oklch(0.45 0.02 250 / 0.22);
+  --cm-glass: oklch(1 0 0 / 0.72);
+  --cm-glass-strong: oklch(1 0 0 / 0.88);
+  --cm-shadow: 0 1px 2px oklch(0.20 0.02 258 / 0.05),
+    0 8px 24px -8px oklch(0.20 0.02 258 / 0.14);
+  --cm-shadow-lg: 0 2px 4px oklch(0.20 0.02 258 / 0.06),
+    0 24px 56px -16px oklch(0.20 0.02 258 / 0.22);
+  --cm-glow: 0 0 0 1px oklch(0.60 0.12 225 / 0.32),
+    0 0 22px -4px oklch(0.60 0.12 225 / 0.45);
+  --cm-ease: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dark {
+  /* --- Surfaces (thème sombre : « Nébuleuse ») --- */
+  --background: oklch(0.145 0.016 250);
+  --foreground: oklch(0.955 0.006 240);
+  --card: oklch(0.185 0.016 252 / 0.92);
+  --card-foreground: oklch(0.955 0.006 240);
+  --popover: oklch(0.17 0.016 252 / 0.90);
+  --popover-foreground: oklch(0.955 0.006 240);
+
+  /* --- Accent primaire : cyan glacé (le signal de l'interface) --- */
+  --primary: oklch(0.80 0.125 205);
+  --primary-foreground: oklch(0.16 0.03 235);
+
+  --secondary: oklch(0.245 0.018 252);
+  --secondary-foreground: oklch(0.94 0.01 240);
+  --muted: oklch(0.235 0.016 252);
+  --muted-foreground: oklch(0.68 0.018 248);
+  --accent: oklch(0.28 0.022 250);
+  --accent-foreground: oklch(0.95 0.008 240);
+
+  --destructive: oklch(0.63 0.20 24);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.32 0.02 248);
+  --input: oklch(0.28 0.018 250);
+  --ring: oklch(0.80 0.125 205);
+
+  --chart-1: oklch(0.80 0.125 205);
+  --chart-2: oklch(0.74 0.15 165);
+  --chart-3: oklch(0.80 0.14 80);
+  --chart-4: oklch(0.72 0.12 300);
+  --chart-5: oklch(0.68 0.19 20);
+
+  --sidebar: oklch(0.165 0.016 252 / 0.86);
+  --sidebar-foreground: oklch(0.93 0.008 240);
+  --sidebar-primary: oklch(0.80 0.125 205);
+  --sidebar-primary-foreground: oklch(0.16 0.03 235);
+  --sidebar-accent: oklch(0.26 0.02 250);
+  --sidebar-accent-foreground: oklch(0.95 0.008 240);
+  --sidebar-border: oklch(0.30 0.018 248);
+  --sidebar-ring: oklch(0.80 0.125 205);
+
+  /* --- Jetons d'extension « console » --- */
+  --cm-accent: oklch(0.80 0.125 205);
+  --cm-accent-soft: oklch(0.70 0.12 210);
+  --cm-accent-2: oklch(0.80 0.14 80);
+  --cm-success: oklch(0.78 0.16 158);
+  --cm-danger: oklch(0.68 0.19 22);
+  --cm-ink: oklch(0.955 0.006 240);
+  --cm-ink-dim: oklch(0.68 0.018 248);
+  --cm-grid: oklch(0.80 0.06 230 / 0.045);
+  --cm-aurora: oklch(0.72 0.13 215 / 0.16);
+  --cm-aurora-2: oklch(0.78 0.14 80 / 0.075);
+  --cm-hairline: oklch(0.85 0.03 230 / 0.11);
+  --cm-hairline-strong: oklch(0.85 0.03 230 / 0.20);
+  --cm-glass: oklch(0.20 0.018 252 / 0.66);
+  --cm-glass-strong: oklch(0.20 0.018 252 / 0.86);
+  --cm-shadow: 0 1px 2px oklch(0 0 0 / 0.30),
+    0 10px 30px -10px oklch(0 0 0 / 0.55);
+  --cm-shadow-lg: 0 2px 6px oklch(0 0 0 / 0.36),
+    0 28px 64px -18px oklch(0 0 0 / 0.70);
+  --cm-glow: 0 0 0 1px oklch(0.80 0.125 205 / 0.38),
+    0 0 24px -4px oklch(0.80 0.125 205 / 0.50);
+}
+
+/* ==========================================================================
+   2. BASE — Typographie, sélection, focus, ascenseurs
+   ========================================================================== */
+
+body {
+  font-feature-settings: "rlig" 1, "calt" 1, "tnum" 0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Les chiffres alignés verticalement : signature « console de données ». */
+.cm-num,
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--cm-accent) 32%, transparent);
+  color: var(--foreground);
+}
+
+/* Cases à cocher et boutons radio : couleur d'accent du thème. */
+input[type="checkbox"],
+input[type="radio"] {
+  accent-color: var(--cm-accent);
+}
+
+/* Tous les menus contextuels (Radix) partagent la même surface de verre. */
+.bg-popover {
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+  border-color: color-mix(in oklch, var(--cm-accent) 20%, transparent);
+}
+
+/* Anneau de focus lumineux, cohérent sur toute l'application. */
+:where(a, button, input, select, textarea, [tabindex]):focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--cm-accent) 70%, transparent);
+  outline-offset: 2px;
+  border-radius: inherit;
+}
+
+/* Ascenseurs discrets, assortis au thème. */
+.cm-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in oklch, var(--cm-accent) 40%, transparent) transparent;
+}
+
+.cm-scroll::-webkit-scrollbar {
+  width: 9px;
+  height: 9px;
+}
+
+.cm-scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.cm-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in oklch, var(--cm-accent) 30%, transparent);
+  border-radius: 999px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+
+.cm-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in oklch, var(--cm-accent) 55%, transparent);
+  background-clip: padding-box;
+}
+
+/* ==========================================================================
+   3. COQUE — Fond ambiant (aurore + grille technique)
+   ========================================================================== */
+
+.cm-shell {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--background);
+  background-image:
+    radial-gradient(
+      1100px 620px at 8% -12%,
+      var(--cm-aurora),
+      transparent 62%
+    ),
+    radial-gradient(
+      900px 540px at 102% -4%,
+      var(--cm-aurora-2),
+      transparent 58%
+    ),
+    radial-gradient(
+      1100px 720px at 50% 118%,
+      color-mix(in oklch, var(--cm-accent) 8%, transparent),
+      transparent 60%
+    );
+  background-attachment: fixed;
+}
+
+/* Grille technique en surimpression, attenuée vers les bords. */
+.cm-shell::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--cm-grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--cm-grid) 1px, transparent 1px);
+  background-size: 52px 52px;
+  -webkit-mask-image: radial-gradient(
+    ellipse 90% 70% at 50% 0%,
+    #000 10%,
+    transparent 78%
+  );
+  mask-image: radial-gradient(
+    ellipse 90% 70% at 50% 0%,
+    #000 10%,
+    transparent 78%
+  );
+}
+
+/* Le contenu reste au-dessus de la surimpression. */
+.cm-shell > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* ==========================================================================
+   4. PANNEAUX — Surfaces translucides à liseré lumineux
+   ========================================================================== */
+
+.cm-panel {
+  position: relative;
+  background-color: var(--cm-glass);
+  border: 1px solid var(--cm-hairline);
+  border-radius: calc(var(--radius) + 2px);
+  box-shadow: var(--cm-shadow);
+  -webkit-backdrop-filter: blur(16px) saturate(150%);
+  backdrop-filter: blur(16px) saturate(150%);
+  transition:
+    border-color 0.25s var(--cm-ease),
+    box-shadow 0.25s var(--cm-ease),
+    transform 0.25s var(--cm-ease);
+}
+
+/* Liseré haut : simule la lumière rasante sur une arête de verre. */
+.cm-panel::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 1px;
+  border-radius: 999px;
+  pointer-events: none;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, #fff 46%, transparent),
+    transparent
+  );
+}
+
+/* Panneau survolé : le bord s'illumine, la carte s'élève légèrement. */
+.cm-panel-hover:hover {
+  border-color: color-mix(in oklch, var(--cm-accent) 42%, transparent);
+  box-shadow: var(--cm-shadow-lg);
+  transform: translateY(-2px);
+}
+
+/* Variante opaque : pour les zones de données denses (tableaux). */
+.cm-panel-solid {
+  background-color: var(--card);
+}
+
+.cm-panel-flat {
+  background-color: color-mix(in oklch, var(--card) 55%, transparent);
+  border: 1px solid var(--cm-hairline);
+  border-radius: calc(var(--radius) + 2px);
+}
+
+.cm-hairline {
+  border-color: var(--cm-hairline);
+}
+
+/* ==========================================================================
+   4 bis. SUPERPOSITIONS — Voile et fenêtres modales
+   ========================================================================== */
+
+.cm-overlay {
+  background-color: oklch(0 0 0 / 0.62);
+  -webkit-backdrop-filter: blur(6px) saturate(120%);
+  backdrop-filter: blur(6px) saturate(120%);
+}
+
+.cm-modal {
+  border-color: color-mix(in oklch, var(--cm-accent) 24%, transparent);
+  box-shadow:
+    var(--cm-shadow-lg),
+    0 0 0 1px color-mix(in oklch, var(--cm-accent) 14%, transparent);
+  -webkit-backdrop-filter: blur(22px) saturate(160%);
+  backdrop-filter: blur(22px) saturate(160%);
+}
+
+/* ==========================================================================
+   5. EN-TÊTE — Barre de commande translucide
+   ========================================================================== */
+
+.cm-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 30;
+  background-color: color-mix(in oklch, var(--background) 78%, transparent);
+  -webkit-backdrop-filter: blur(18px) saturate(160%);
+  backdrop-filter: blur(18px) saturate(160%);
+  border-bottom: 1px solid var(--cm-hairline);
+  box-shadow: 0 1px 0 0 color-mix(in oklch, var(--cm-accent) 8%, transparent);
+}
+
+.cm-statusbar {
+  background-color: color-mix(in oklch, var(--background) 82%, transparent);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--cm-hairline);
+}
+
+/* ==========================================================================
+   6. NAVIGATION LATÉRALE
+   ========================================================================== */
+
+.cm-sidebar {
+  background-color: var(--sidebar);
+  -webkit-backdrop-filter: blur(20px) saturate(150%);
+  backdrop-filter: blur(20px) saturate(150%);
+  border-right: 1px solid var(--sidebar-border);
+}
+
+.cm-brand-mark {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.9rem;
+  color: var(--sidebar-primary-foreground);
+  background: linear-gradient(
+    145deg,
+    color-mix(in oklch, var(--cm-accent) 92%, #fff 8%),
+    color-mix(in oklch, var(--cm-accent) 62%, #06212b 38%)
+  );
+  box-shadow: var(--cm-glow);
+}
+
+.cm-nav-item {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.75rem;
+  width: 100%;
+  padding: 0.625rem 0.75rem;
+  border-radius: calc(var(--radius) + 2px);
+  font-size: 0.875rem;
+  color: var(--sidebar-foreground);
+  opacity: 0.72;
+  transition:
+    background-color 0.2s var(--cm-ease),
+    color 0.2s var(--cm-ease),
+    opacity 0.2s var(--cm-ease),
+    transform 0.2s var(--cm-ease);
+}
+
+.cm-nav-item:hover {
+  opacity: 1;
+  background-color: color-mix(in oklch, var(--sidebar-accent) 65%, transparent);
+  transform: translateX(2px);
+}
+
+.cm-nav-item[data-active="true"] {
+  opacity: 1;
+  color: var(--sidebar-accent-foreground);
+  background-color: color-mix(in oklch, var(--cm-accent) 14%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--cm-accent) 26%, transparent);
+}
+
+/* Rail lumineux de l'entrée active. */
+.cm-nav-item[data-active="true"]::before {
+  content: "";
+  position: absolute;
+  left: -0.25rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 1.35rem;
+  border-radius: 999px;
+  background: var(--cm-accent);
+  box-shadow: 0 0 12px 0 color-mix(in oklch, var(--cm-accent) 75%, transparent);
+}
+
+.cm-nav-item[data-active="true"] .cm-nav-icon {
+  color: var(--cm-accent);
+}
+
+.cm-nav-icon {
+  flex-shrink: 0;
+  margin-top: 0.125rem;
+  transition: color 0.2s var(--cm-ease);
+}
+
+/* ==========================================================================
+   7. TYPOGRAPHIE — Micro-labels, titres, chiffres
+   ========================================================================== */
+
+/* Micro-label technique : capitales très espacées. */
+.cm-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+.cm-eyebrow-accent {
+  color: color-mix(in oklch, var(--cm-accent) 88%, var(--foreground));
+}
+
+.cm-title {
+  font-weight: 650;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
+  color: var(--foreground);
+}
+
+.cm-subtitle {
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+  line-height: 1.5;
+}
+
+/* Chiffre-clé : monospace, tracking serré, forte présence. */
+.cm-metric-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1;
+  color: var(--foreground);
+}
+
+.cm-metric-label {
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+}
+
+/* Badge de statut / pastille. */
+.cm-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 999px;
+  background: var(--cm-accent);
+  box-shadow: 0 0 8px 0 color-mix(in oklch, var(--cm-accent) 80%, transparent);
+}
+
+.cm-dot-live {
+  position: relative;
+  background: var(--cm-success);
+  box-shadow: 0 0 8px 0 color-mix(in oklch, var(--cm-success) 80%, transparent);
+}
+
+.cm-dot-live::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 999px;
+  background: inherit;
+  animation: cm-ping 2.4s var(--cm-ease) infinite;
+}
+
+/* ==========================================================================
+   8. BOUTONS
+   ========================================================================== */
+
+/* Bouton d'action principal : dégradé maîtrisé + halo au survol.
+   `--cm-btn-accent` permet à un conteneur (carte d'action, encart) de
+   recolorer le bouton sans dupliquer la classe. */
+.cm-btn-primary {
+  --cm-btn-accent: var(--cm-accent);
+
+  position: relative;
+  overflow: hidden;
+  color: var(--primary-foreground);
+  background: linear-gradient(
+    140deg,
+    color-mix(in oklch, var(--cm-btn-accent) 96%, #fff 4%),
+    color-mix(in oklch, var(--cm-btn-accent) 70%, #07222c 30%)
+  );
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklch, #fff 28%, transparent),
+    0 8px 22px -10px color-mix(in oklch, var(--cm-btn-accent) 85%, transparent);
+  transition:
+    transform 0.2s var(--cm-ease),
+    box-shadow 0.2s var(--cm-ease),
+    filter 0.2s var(--cm-ease);
+}
+
+.cm-btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 0 1px 0 0 color-mix(in oklch, #fff 32%, transparent),
+    0 12px 30px -8px color-mix(in oklch, var(--cm-btn-accent) 95%, transparent);
+}
+
+.cm-btn-primary:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+/* Balayage lumineux au survol (micro-interaction). */
+.cm-btn-primary::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    100deg,
+    transparent 32%,
+    color-mix(in oklch, #fff 30%, transparent) 50%,
+    transparent 68%
+  );
+  transform: translateX(-120%);
+  transition: transform 0.7s var(--cm-ease);
+}
+
+.cm-btn-primary:hover:not(:disabled)::after {
+  transform: translateX(120%);
+}
+
+/* Bouton discret : contour net, remplissage au survol. */
+.cm-btn-ghost {
+  border: 1px solid var(--cm-hairline-strong);
+  background-color: color-mix(in oklch, var(--card) 40%, transparent);
+  color: var(--foreground);
+  transition:
+    border-color 0.2s var(--cm-ease),
+    background-color 0.2s var(--cm-ease),
+    color 0.2s var(--cm-ease);
+}
+
+.cm-btn-ghost:hover:not(:disabled) {
+  border-color: color-mix(in oklch, var(--cm-accent) 48%, transparent);
+  background-color: color-mix(in oklch, var(--cm-accent) 10%, transparent);
+  color: color-mix(in oklch, var(--cm-accent) 85%, var(--foreground));
+}
+
+/* ==========================================================================
+   9. FORMULAIRES
+   ========================================================================== */
+
+.cm-field {
+  background-color: color-mix(in oklch, var(--background) 72%, transparent);
+  border: 1px solid var(--cm-hairline-strong);
+  transition:
+    border-color 0.2s var(--cm-ease),
+    box-shadow 0.2s var(--cm-ease),
+    background-color 0.2s var(--cm-ease);
+}
+
+.cm-field:hover:not(:disabled):not(:focus) {
+  border-color: color-mix(in oklch, var(--cm-accent) 32%, transparent);
+}
+
+.cm-field:focus,
+.cm-field:focus-visible {
+  outline: none;
+  border-color: color-mix(in oklch, var(--cm-accent) 62%, transparent);
+  background-color: var(--background);
+  box-shadow: 0 0 0 3px color-mix(in oklch, var(--cm-accent) 18%, transparent);
+}
+
+.cm-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: color-mix(in oklch, var(--foreground) 78%, var(--muted-foreground));
+  margin-bottom: 0.375rem;
+}
+
+/* Case à cocher : cadre net, remplissage plein à l'état coché. */
+.cm-check {
+  background-color: color-mix(in oklch, var(--background) 60%, transparent);
+  border-color: var(--cm-hairline-strong);
+  transition:
+    background-color 0.16s var(--cm-ease),
+    border-color 0.16s var(--cm-ease),
+    transform 0.16s var(--cm-ease);
+}
+
+.cm-check:hover:not(:disabled):not([data-state="checked"]) {
+  border-color: color-mix(in oklch, var(--cm-accent) 55%, transparent);
+}
+
+.cm-check[data-state="checked"] {
+  box-shadow: 0 0 12px -4px color-mix(in oklch, var(--cm-accent) 80%, transparent);
+}
+
+/* Avatar de repli : dégradé très doux, initiales lisibles. */
+.cm-avatar-fallback {
+  background: linear-gradient(
+    140deg,
+    color-mix(in oklch, var(--cm-accent) 26%, var(--card)),
+    color-mix(in oklch, var(--cm-accent) 8%, var(--card))
+  );
+  color: color-mix(in oklch, var(--cm-accent) 78%, var(--foreground));
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  box-shadow: inset 0 0 0 1px color-mix(in oklch, var(--cm-accent) 22%, transparent);
+}
+
+/* Filet de séparation : dégradé horizontal, jamais un trait plat. */
+.cm-divider {
+  background: linear-gradient(
+    90deg,
+    transparent,
+    var(--cm-hairline-strong) 18%,
+    var(--cm-hairline-strong) 82%,
+    transparent
+  );
+}
+
+.cm-divider:is([data-orientation="vertical"]) {
+  background: linear-gradient(
+    180deg,
+    transparent,
+    var(--cm-hairline-strong) 18%,
+    var(--cm-hairline-strong) 82%,
+    transparent
+  );
+}
+
+/* ==========================================================================
+   10. TABLEAUX
+   ========================================================================== */
+
+.cm-table thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background-color: color-mix(in oklch, var(--card) 92%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+  color: var(--muted-foreground);
+  border-bottom: 1px solid var(--cm-hairline-strong);
+}
+
+.cm-table tbody tr {
+  transition: background-color 0.16s var(--cm-ease);
+}
+
+.cm-table tbody tr:hover {
+  background-color: color-mix(in oklch, var(--cm-accent) 7%, transparent);
+}
+
+.cm-table tbody td {
+  border-bottom: 1px solid var(--cm-hairline);
+}
+
+/* ==========================================================================
+   11. ÉTATS — Badges, messages, états vides
+   ========================================================================== */
+
+.cm-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.1875rem 0.5625rem;
+  border-radius: 999px;
+  border: 1px solid var(--cm-hairline-strong);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  background-color: color-mix(in oklch, var(--card) 55%, transparent);
+  color: var(--foreground);
+  white-space: nowrap;
+}
+
+.cm-badge-accent {
+  border-color: color-mix(in oklch, var(--cm-accent) 34%, transparent);
+  background-color: color-mix(in oklch, var(--cm-accent) 13%, transparent);
+  color: color-mix(in oklch, var(--cm-accent) 90%, var(--foreground));
+}
+
+.cm-badge-success {
+  border-color: color-mix(in oklch, var(--cm-success) 34%, transparent);
+  background-color: color-mix(in oklch, var(--cm-success) 13%, transparent);
+  color: color-mix(in oklch, var(--cm-success) 90%, var(--foreground));
+}
+
+.cm-badge-warning {
+  border-color: color-mix(in oklch, var(--cm-accent-2) 36%, transparent);
+  background-color: color-mix(in oklch, var(--cm-accent-2) 14%, transparent);
+  color: color-mix(in oklch, var(--cm-accent-2) 88%, var(--foreground));
+}
+
+.cm-badge-danger {
+  border-color: color-mix(in oklch, var(--cm-danger) 36%, transparent);
+  background-color: color-mix(in oklch, var(--cm-danger) 13%, transparent);
+  color: color-mix(in oklch, var(--cm-danger) 90%, var(--foreground));
+}
+
+/* Classe sémantique du projet (Distribution.tsx) : message d'erreur métier.
+   Elle n'existe pas dans l'artefact Tailwind figé — on la définit ici pour
+   qu'elle suive le jeton `destructive` et donc le thème. */
+.text-destructif {
+  color: var(--destructive);
+}
+
+/* ==========================================================================
+   11bis. CARTES D'INDICATEURS (KPI)
+   --------------------------------------------------------------------------
+   Surface en verre dépolie + pastille d'icône lumineuse + chiffre en
+   chasse fixe. Le halo de l'icône reprend la couleur d'accent de la carte
+   (fournie via --cm-kpi-accent), ce qui évite les aplats de couleur
+   saturée tout en conservant la hiérarchie sémantique existante.
+   ========================================================================== */
+
+.cm-kpi {
+  --cm-kpi-accent: var(--cm-accent);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--cm-hairline);
+  background-color: var(--cm-glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: var(--cm-shadow);
+  overflow: hidden;
+  transition:
+    transform 0.24s var(--cm-ease),
+    border-color 0.24s var(--cm-ease),
+    box-shadow 0.24s var(--cm-ease);
+}
+
+/* Liseré lumineux sur le bord supérieur : signature « console ». */
+.cm-kpi::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--cm-kpi-accent) 55%, transparent),
+    transparent
+  );
+  opacity: 0.75;
+}
+
+.cm-kpi:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklch, var(--cm-kpi-accent) 32%, var(--cm-hairline-strong));
+  box-shadow:
+    var(--cm-shadow),
+    0 12px 32px -18px color-mix(in oklch, var(--cm-kpi-accent) 55%, transparent);
+}
+
+/* Pastille d'icône : halo coloré discret, jamais un aplat saturé. */
+.cm-kpi-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: 0.625rem;
+  border: 1px solid color-mix(in oklch, var(--cm-kpi-accent) 28%, transparent);
+  background-color: color-mix(in oklch, var(--cm-kpi-accent) 12%, transparent);
+  color: color-mix(in oklch, var(--cm-kpi-accent) 82%, var(--foreground));
+  box-shadow: inset 0 1px 0 color-mix(in oklch, var(--cm-kpi-accent) 22%, transparent);
+}
+
+.cm-kpi-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.cm-kpi-value {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  font-size: 1.5rem;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  color: var(--foreground);
+}
+
+/* Carte d'action rapide : surface neutre + accent porté par l'icône.
+   Le dégradé est réservé à l'icône et au liseré, pas à toute la carte :
+   on évite les aplats saturés qui alourdissent la lecture. */
+.cm-action {
+  --cm-action-accent: var(--cm-accent);
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 1rem;
+  border-radius: var(--radius);
+  border: 1px solid var(--cm-hairline);
+  background-color: var(--cm-glass);
+  backdrop-filter: blur(18px) saturate(150%);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  box-shadow: var(--cm-shadow);
+  overflow: hidden;
+  cursor: pointer;
+  transition:
+    transform 0.24s var(--cm-ease),
+    border-color 0.24s var(--cm-ease),
+    box-shadow 0.24s var(--cm-ease);
+}
+
+.cm-action::before {
+  content: "";
+  position: absolute;
+  inset-inline: 0;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--cm-action-accent) 60%, transparent),
+    transparent
+  );
+}
+
+.cm-action:hover {
+  transform: translateY(-2px);
+  border-color: color-mix(in oklch, var(--cm-action-accent) 30%, var(--cm-hairline-strong));
+  box-shadow:
+    var(--cm-shadow),
+    0 16px 36px -20px color-mix(in oklch, var(--cm-action-accent) 60%, transparent);
+}
+
+.cm-action:focus-visible {
+  outline: 2px solid color-mix(in oklch, var(--cm-action-accent) 65%, transparent);
+  outline-offset: 2px;
+}
+
+.cm-action-title {
+  font-weight: 600;
+  font-size: 0.9375rem;
+  line-height: 1.3;
+  letter-spacing: -0.012em;
+  color: var(--foreground);
+}
+
+.cm-action-desc {
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: var(--muted-foreground);
+}
+
+/* ==========================================================================
+   12. ANIMATIONS
+   ========================================================================== */
+
+@keyframes cm-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  75%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes cm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cm-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes cm-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Entrée en scène, avec décalage piloté par --cm-i. */
+.cm-rise {
+  animation: cm-rise 0.45s var(--cm-ease) both;
+  animation-delay: calc(var(--cm-i, 0) * 55ms);
+}
+
+.cm-fade {
+  animation: cm-fade 0.3s var(--cm-ease) both;
+}
+
+/* Balayage de chargement (barre de progression indeterminate). */
+.cm-sweep {
+  position: relative;
+  overflow: hidden;
+}
+
+.cm-sweep::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--cm-accent) 30%, transparent),
+    transparent
+  );
+  animation: cm-sweep 1.6s var(--cm-ease) infinite;
+}
+
+/* Respect strict des préférences système : aucune animation superflue. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+
+  .cm-panel-hover:hover {
+    transform: none;
+  }
+}
+
+/* ==========================================================================
+   13. RESPONSIVE — Allègement sur petits écrans
+   ========================================================================== */
+
+@media (max-width: 640px) {
+  .cm-shell {
+    background-attachment: scroll;
+  }
+
+  .cm-panel {
+    -webkit-backdrop-filter: blur(10px) saturate(140%);
+    backdrop-filter: blur(10px) saturate(140%);
+  }
+}

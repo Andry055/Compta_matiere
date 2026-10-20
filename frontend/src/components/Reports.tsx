@@ -171,7 +171,7 @@ export function Reports({ user }: { user?: User }) {
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <FileText className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -183,7 +183,7 @@ export function Reports({ user }: { user?: User }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Calendar className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
@@ -197,7 +197,7 @@ export function Reports({ user }: { user?: User }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <TrendingUp className="h-8 w-8 p-2 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400" />
             <div>
@@ -213,7 +213,7 @@ export function Reports({ user }: { user?: User }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Download className="h-8 w-8 p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400" />
             <div>
@@ -227,7 +227,7 @@ export function Reports({ user }: { user?: User }) {
       </div>
 
       {/* Quick Actions */}
-      <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <h3 className="text-lg text-card-foreground mb-4">Actions Rapides</h3>
         <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
           <button
@@ -293,7 +293,7 @@ export function Reports({ user }: { user?: User }) {
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -332,7 +332,7 @@ export function Reports({ user }: { user?: User }) {
       </div>
 
       {/* Reports List */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
             Rapports Disponibles ({filteredReports.length})
@@ -789,7 +789,7 @@ function DemandeurReports({ user }: { user?: User }) {
           return (
             <div
               key={card.label}
-              className="bg-card border border-border rounded-lg p-4 shadow-sm"
+              className="cm-panel cm-panel-solid rounded-lg p-4"
             >
               <div className="flex items-center gap-3">
                 <Icon className={`h-8 w-8 p-2 ${card.iconClass}`} />
@@ -808,7 +808,7 @@ function DemandeurReports({ user }: { user?: User }) {
       </div>
 
       {/* Filtres */}
-      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm space-y-4">
+      <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -924,7 +924,7 @@ function DemandeurReports({ user }: { user?: User }) {
       </div>
 
       {/* Liste des rapports */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-4 sm:p-6 border-b border-border">
           <h3 className="text-base sm:text-lg text-card-foreground">
             Rapports disponibles ({filteredReports.length})
@@ -997,7 +997,7 @@ function DemandeurReports({ user }: { user?: User }) {
       {/* Aperçu du rapport sélectionné */}
       {activeReport && activeReportDef && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="cm-modal border bg-popover w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-start justify-between p-6 border-b border-border">
               <div>
                 <h3 className="text-lg text-card-foreground flex items-center gap-2">

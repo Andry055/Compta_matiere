@@ -195,7 +195,7 @@ export function DirectionModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div className="bg-card border border-border rounded-xl w-full max-w-4xl max-h-[90vh] shadow-2xl overflow-hidden">
+      <div className="cm-modal border bg-popover rounded-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-border bg-muted/30">
           <div className="flex items-center gap-3">

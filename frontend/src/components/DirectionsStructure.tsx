@@ -77,7 +77,7 @@ export function DirectionsStructure({
       {directions.map((direction) => (
         <div
           key={direction.id}
-          className={`bg-card border border-border rounded-lg shadow-sm ${
+          className={`cm-panel cm-panel-solid rounded-lg ${
             direction.isCurrentAdminDirection
               ? "ring-2 ring-blue-200 dark:ring-blue-800 bg-blue-50/30 dark:bg-blue-900/10"
               : ""

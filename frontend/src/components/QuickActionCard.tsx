@@ -1,4 +1,5 @@
 import { LucideIcon } from "lucide-react"
+import type { CSSProperties } from "react"
 
 interface QuickActionCardProps {
   icon: LucideIcon
@@ -10,91 +11,62 @@ interface QuickActionCardProps {
   className?: string
 }
 
-const colorStyles = {
-  green: {
-    background: 'bg-gradient-to-r from-green-50 to-green-100 dark:from-green-900/20 dark:to-green-800/20',
-    border: 'border-green-200 dark:border-green-700',
-    icon: 'text-green-600 dark:text-green-400',
-    title: 'text-green-900 dark:text-green-100',
-    description: 'text-green-700 dark:text-green-300',
-    button: 'bg-green-600 hover:bg-green-700 text-white',
-    hover: 'hover:from-green-100 hover:to-green-200 dark:hover:from-green-800/30 dark:hover:to-green-700/30'
-  },
-  blue: {
-    background: 'bg-gradient-to-r from-blue-50 to-blue-100 dark:from-blue-900/20 dark:to-blue-800/20',
-    border: 'border-blue-200 dark:border-blue-700',
-    icon: 'text-blue-600 dark:text-blue-400',
-    title: 'text-blue-900 dark:text-blue-100',
-    description: 'text-blue-700 dark:text-blue-300',
-    button: 'bg-blue-600 hover:bg-blue-700 text-white',
-    hover: 'hover:from-blue-100 hover:to-blue-200 dark:hover:from-blue-800/30 dark:hover:to-blue-700/30'
-  },
-  purple: {
-    background: 'bg-gradient-to-r from-purple-50 to-purple-100 dark:from-purple-900/20 dark:to-purple-800/20',
-    border: 'border-purple-200 dark:border-purple-700',
-    icon: 'text-purple-600 dark:text-purple-400',
-    title: 'text-purple-900 dark:text-purple-100',
-    description: 'text-purple-700 dark:text-purple-300',
-    button: 'bg-purple-600 hover:bg-purple-700 text-white',
-    hover: 'hover:from-purple-100 hover:to-purple-200 dark:hover:from-purple-800/30 dark:hover:to-purple-700/30'
-  },
-  orange: {
-    background: 'bg-gradient-to-r from-orange-50 to-orange-100 dark:from-orange-900/20 dark:to-orange-800/20',
-    border: 'border-orange-200 dark:border-orange-700',
-    icon: 'text-orange-600 dark:text-orange-400',
-    title: 'text-orange-900 dark:text-orange-100',
-    description: 'text-orange-700 dark:text-orange-300',
-    button: 'bg-orange-600 hover:bg-orange-700 text-white',
-    hover: 'hover:from-orange-100 hover:to-orange-200 dark:hover:from-orange-800/30 dark:hover:to-orange-700/30'
-  }
+/**
+ * Teintes d'accent par famille d'action.
+ *
+ * On ne peint plus la carte entière d'un dégradé : seule l'icône et le
+ * liseré portent la couleur, le reste de la surface reste neutre. C'est
+ * lisible en thème clair comme en thème sombre, et la hiérarchie visuelle
+ * reste celle des données affichées autour.
+ */
+const ACCENTS: Record<QuickActionCardProps['color'], string> = {
+  green: 'oklch(0.68 0.17 150)',
+  blue: 'oklch(0.62 0.19 258)',
+  purple: 'oklch(0.6 0.22 300)',
+  orange: 'oklch(0.7 0.19 45)',
 }
 
-export function QuickActionCard({ 
-  icon: Icon, 
-  title, 
-  description, 
-  buttonText, 
-  onClick, 
+export function QuickActionCard({
+  icon: Icon,
+  title,
+  description,
+  buttonText,
+  onClick,
   color,
-  className = "" 
+  className = ""
 }: QuickActionCardProps) {
-  const styles = colorStyles[color]
-  
+  const accent = ACCENTS[color]
+
   return (
-    <div 
-      className={`
-        ${styles.background} ${styles.border} ${styles.hover}
-        border rounded-lg p-4 sm:p-6 cursor-pointer 
-        hover:shadow-lg hover:shadow-${color}-200/50 dark:hover:shadow-${color}-900/50
-        transition-all duration-300 transform hover:-translate-y-1
-        ${className}
-      `}
+    <div
+      className={`cm-action ${className}`}
+      style={{ ["--cm-action-accent" as string]: accent } as CSSProperties}
       onClick={onClick}
+      role="button"
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault()
+          onClick()
+        }
+      }}
     >
-      <div className="flex items-center gap-3 mb-3">
-        <div className={`p-2 rounded-lg bg-white dark:bg-black/20 ${styles.icon} shadow-sm`}>
-          <Icon className="h-6 w-6" />
-        </div>
-        <h3 className={`text-lg ${styles.title}`}>{title}</h3>
+      <div className="flex items-center gap-3">
+        <span className="cm-kpi-icon">
+          <Icon className="h-4 w-4" aria-hidden />
+        </span>
+        <h3 className="cm-action-title">{title}</h3>
       </div>
-      <p className={`text-sm ${styles.description} mb-4 leading-relaxed`}>
-        {description}
-      </p>
-      <button 
-        className={`
-          group relative w-full px-4 py-3 ${styles.button} 
-          rounded-lg transition-all duration-200 text-sm font-medium
-          shadow-lg hover:shadow-xl transform-gpu overflow-hidden
-          hover:scale-105 active:scale-95
-        `}
+      <p className="cm-action-desc">{description}</p>
+      <button
+        className="cm-btn-primary w-full"
+        style={{ ["--cm-btn-accent" as string]: accent } as CSSProperties}
         onClick={(e) => {
           e.stopPropagation()
           onClick()
         }}
       >
-        <div className="absolute inset-0 bg-gradient-to-r from-white/0 to-white/20 opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
-        <span className="relative">{buttonText}</span>
-        <div className="absolute inset-0 border border-white/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-200" />
+        {buttonText}
       </button>
     </div>
   )

@@ -384,7 +384,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
           return (
             <div
               key={card.label}
-              className="bg-card border border-border rounded-lg p-4 shadow-sm"
+              className="cm-panel cm-panel-solid rounded-lg p-4"
             >
               <div className="flex items-center gap-3">
                 <Icon className={`h-8 w-8 p-2 ${card.iconClass}`} />
@@ -404,7 +404,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
 
       {/* Recherche */}
       {searchOpen && (
-        <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
@@ -423,7 +423,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
 
       {/* Filtres */}
       {filtersOpen && (
-        <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">
@@ -544,7 +544,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
       )}
 
       {/* Tableau */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-4 sm:p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
             Tableau des entrées ({filtered.length})

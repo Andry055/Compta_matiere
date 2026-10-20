@@ -2,7 +2,9 @@ import { Moon, Sun } from "lucide-react"
 import { useEffect, useState } from "react"
 
 export function ThemeToggle() {
-  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('system')
+  // Le thème sombre (« Nébuleuse ») est l'identité visuelle par défaut de
+  // ComptaMatière ; le choix de l'utilisateur reste mémorisé s'il existe.
+  const [theme, setTheme] = useState<'light' | 'dark' | 'system'>('dark')
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -53,7 +55,7 @@ export function ThemeToggle() {
 
   if (!mounted) {
     return (
-      <button className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+      <button className="cm-btn-ghost inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors">
         <Sun className="h-4 w-4" />
         <span className="sr-only">Toggle theme</span>
       </button>
@@ -78,7 +80,7 @@ export function ThemeToggle() {
   return (
     <button
       onClick={toggleTheme}
-      className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+      className="cm-btn-ghost inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors"
       title={getThemeLabel()}
     >
       {currentIcon()}

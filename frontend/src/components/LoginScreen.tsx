@@ -187,24 +187,25 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 dark:from-gray-900 dark:to-gray-800 flex items-center justify-center p-4">
+    <div className="cm-shell min-h-screen flex items-center justify-center p-4">
       <div className="w-full max-w-md">
         {/* Logo and Title */}
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-16 h-16 bg-primary rounded-full mb-4">
-            <Package className="h-8 w-8 text-primary-foreground" />
+        <div className="text-center mb-8 cm-rise">
+          <div className="cm-brand-mark w-16 h-16 mx-auto mb-5 rounded-2xl">
+            <Package className="h-7 w-7" />
           </div>
-          <h1 className="text-2xl text-foreground mb-2">ComptaMatière</h1>
-          <p className="text-muted-foreground text-sm">
+          <p className="cm-eyebrow cm-eyebrow-accent mb-2">Ministère · Gestion Centralisée</p>
+          <h1 className="cm-title text-3xl sm:text-4xl mb-2">ComptaMatière</h1>
+          <p className="cm-subtitle">
             Système de Gestion d'Équipements
           </p>
         </div>
 
         {/* Login Form */}
-        <div className="bg-card border border-border rounded-lg shadow-lg p-6">
+        <div className="cm-panel cm-panel-solid rounded-xl p-6 sm:p-7 cm-rise" style={{ ["--cm-i" as string]: 1 }}>
           <div className="mb-6">
-            <h2 className="text-lg text-card-foreground mb-2">Connexion</h2>
-            <p className="text-sm text-muted-foreground">
+            <h2 className="cm-title text-lg mb-1.5">Connexion</h2>
+            <p className="cm-subtitle">
               Accédez à votre espace personnel
             </p>
           </div>
@@ -220,10 +221,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
             {/* Email Field */}
             <div>
-              <label
-                htmlFor="email"
-                className="block text-sm text-card-foreground mb-2"
-              >
+              <label htmlFor="email" className="cm-label">
                 Adresse email
               </label>
               <input
@@ -233,16 +231,13 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="votre.email@entreprise.com"
                 required
-                className="w-full px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-ring transition-colors text-sm"
+                className="cm-field w-full px-3 py-2.5 rounded-lg text-sm"
               />
             </div>
 
             {/* Password Field */}
             <div>
-              <label
-                htmlFor="password"
-                className="block text-sm text-card-foreground mb-2"
-              >
+              <label htmlFor="password" className="cm-label">
                 Mot de passe
               </label>
               <div className="relative">
@@ -253,12 +248,13 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="w-full px-3 py-2 pr-10 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-ring transition-colors text-sm"
+                  className="cm-field w-full px-3 py-2.5 pr-10 rounded-lg text-sm"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                  aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
+                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
                 >
                   {showPassword ? (
                     <EyeOff className="h-4 w-4" />
@@ -270,7 +266,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </div>
 
             {/* Remember Me */}
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <label className="flex items-center gap-2 cursor-pointer">
                 <input
                   type="checkbox"
@@ -294,10 +290,10 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             <button
               type="submit"
               disabled={isLoading}
-              className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg transition-colors ${
+              className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
                 isLoading
                   ? "bg-muted text-muted-foreground cursor-not-allowed"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+                  : "cm-btn-primary"
               }`}
             >
               {isLoading ? (
@@ -324,9 +320,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             </button>
 
             {showDemoCredentials && (
-              <div className="mt-4 p-4 bg-muted/30 rounded-lg">
-                <h4 className="text-sm text-card-foreground mb-3">
-                  Comptes de test disponibles :
+              <div className="cm-panel-flat mt-4 p-4 cm-fade">
+                <h4 className="cm-eyebrow mb-3">
+                  Comptes de test disponibles
                 </h4>
                 <div className="space-y-2 text-xs">
                   <div className="grid gap-2">
@@ -337,7 +333,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                           "admin123"
                         )
                       }
-                      className="text-left p-2 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
+                      className="text-left p-2.5 rounded-lg border border-red-500/30 bg-red-500/10 transition-colors hover:bg-red-500/20"
                     >
                       <div className="text-red-700 dark:text-red-300">
                         👑 <strong>Marie RAKOTO</strong> - Administrateur
@@ -355,7 +351,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                           "depositaire123"
                         )
                       }
-                      className="text-left p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                      className="text-left p-2.5 rounded-lg border border-blue-500/30 bg-blue-500/10 transition-colors hover:bg-blue-500/20"
                     >
                       <div className="text-blue-700 dark:text-blue-300">
                         👤 <strong>Rakotomalala Hery</strong> - Dépositaire
@@ -373,7 +369,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                           "magasinier123"
                         )
                       }
-                      className="text-left p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
+                      className="text-left p-2.5 rounded-lg border border-blue-500/30 bg-blue-500/10 transition-colors hover:bg-blue-500/20"
                     >
                       <div className="text-blue-700 dark:text-blue-300">
                         👤 <strong>Andriamampianina Fara</strong> -
@@ -391,7 +387,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                           "logistique123"
                         )
                       }
-                      className="text-left p-2 bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 rounded hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
+                      className="text-left p-2.5 rounded-lg border border-green-500/30 bg-green-500/10 transition-colors hover:bg-green-500/20"
                     >
                       <div className="text-green-700 dark:text-green-300">
                         📦 <strong>Razafindrakoto Tojo</strong> - Chef
@@ -409,7 +405,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                           "comptable123"
                         )
                       }
-                      className="text-left p-2 bg-purple-50 dark:bg-purple-900/20 border border-purple-200 dark:border-purple-800 rounded hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
+                      className="text-left p-2.5 rounded-lg border border-purple-500/30 bg-purple-500/10 transition-colors hover:bg-purple-500/20"
                     >
                       <div className="text-purple-700 dark:text-purple-300">
                         👥 <strong>Ravaomanana Nirina</strong> - Comptable
@@ -426,7 +422,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                           "demandeur123"
                         )
                       }
-                      className="text-left p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
+                      className="text-left p-2.5 rounded-lg border border-orange-500/30 bg-orange-500/10 transition-colors hover:bg-orange-500/20"
                     >
                       <div className="text-orange-700 dark:text-orange-300">
                         💻 <strong>Randriamampionona Tolotra</strong> -
@@ -444,7 +440,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         </div>
 
         {/* Footer */}
-        <div className="text-center mt-6">
+        <div className="text-center mt-6 cm-rise" style={{ ["--cm-i" as string]: 2 }}>
           <p className="text-xs text-muted-foreground">
             © 2025 ComptaMatière - Gestion Centralisée d'Équipements
           </p>

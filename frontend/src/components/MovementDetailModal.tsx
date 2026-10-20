@@ -422,7 +422,7 @@ export function MovementDetailModal({
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="cm-modal border bg-popover w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-border">
           <div>
@@ -809,7 +809,7 @@ export function MovementDetailModal({
               {/* Confirmation avant signature (traçabilité) */}
               {confirmRole && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
-                  <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md shadow-2xl">
+                  <div className="cm-modal border bg-popover p-6 w-full max-w-md">
                     <div className="flex items-center gap-3 mb-4">
                       <div className="p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400">
                         <PenTool className="h-5 w-5" />

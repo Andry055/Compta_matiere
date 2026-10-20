@@ -155,7 +155,7 @@ export function AffectationDetailModal({
   );
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-      <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+      <div className="cm-modal border bg-popover w-full max-w-3xl max-h-[90vh] overflow-y-auto">
         {/* Header */}
         <div className="flex items-start justify-between p-6 border-b border-border">
           <div>
@@ -449,7 +449,7 @@ export function AffectationDetailModal({
         {/* Confirmation de validation */}
         {confirmKey && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
-            <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md shadow-2xl">
+            <div className="cm-modal border bg-popover p-6 w-full max-w-md">
               <div className="flex items-center gap-3 mb-4">
                 <div className="p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30">
                   <PenTool className="h-5 w-5" />
@@ -496,7 +496,7 @@ export function AffectationDetailModal({
             onClick={() => setQrAgrandi(false)}
           >
             <div
-              className="bg-card border border-border rounded-lg p-6 max-w-sm w-full"
+              className="cm-modal border bg-popover p-6 max-w-sm w-full"
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex items-center justify-between mb-4">

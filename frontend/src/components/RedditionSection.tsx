@@ -152,7 +152,7 @@ export function RedditionSection({ user }: RedditionSectionProps) {
       : false
 
   return (
-    <div className="bg-card border border-border rounded-lg shadow-sm">
+    <div className="cm-panel cm-panel-solid rounded-lg">
       {/* En-tête */}
       <div className="p-4 sm:p-6 border-b border-border">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">

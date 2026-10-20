@@ -344,7 +344,7 @@ export function MaterialExit({ user }: MaterialExitProps) {
       </div>
 
       {/* Batch Information */}
-      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
         <h3 className="text-lg text-card-foreground mb-4 flex items-center gap-2">
           <FileText className="h-5 w-5" />
           Informations du Lot de Sortie
@@ -419,7 +419,7 @@ export function MaterialExit({ user }: MaterialExitProps) {
       </div>
 
       {/* Equipment Selection */}
-      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
         <h3 className="text-lg text-card-foreground mb-4 flex items-center gap-2">
           <Package className="h-5 w-5" />
           Sélectionner un Équipement en Stock
@@ -639,7 +639,7 @@ export function MaterialExit({ user }: MaterialExitProps) {
 
       {/* Exit Items List */}
       {exitItems.length > 0 && (
-        <div className="bg-card border border-border rounded-lg shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg">
           <div className="p-4 sm:p-6 border-b border-border">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <h3 className="text-lg text-card-foreground">

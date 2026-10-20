@@ -623,7 +623,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
           <button
             type="button"
             onClick={() => setEntryMode("stock")}
-            className="group rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:border-primary/50 hover:bg-primary/5"
+            className="group rounded-2xl border border-border cm-panel cm-panel-solid cm-panel-hover p-5 text-left"
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <Package className="h-6 w-6" />
@@ -638,7 +638,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
           <button
             type="button"
             onClick={() => setEntryMode("transfert")}
-            className="group rounded-2xl border border-border bg-card p-5 text-left shadow-sm transition-all hover:border-primary/50 hover:bg-primary/5"
+            className="group rounded-2xl border border-border cm-panel cm-panel-solid cm-panel-hover p-5 text-left"
           >
             <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
               <ArrowLeft className="h-6 w-6" />
@@ -792,7 +792,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
   if (loadingReferences) {
     return (
       <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-2xl border border-border cm-panel cm-panel-solid p-5">
           <div className="mb-4 h-3 w-32 animate-pulse rounded bg-muted" />
           <div className="mb-3 h-6 w-2/3 animate-pulse rounded bg-muted" />
           <div className="mb-4 h-4 w-full animate-pulse rounded bg-muted/80" />
@@ -1598,7 +1598,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
         <div className="lg:col-span-1">
           <div className="lg:sticky lg:top-6 space-y-4">
             {/* QR Code */}
-            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+            <div className="cm-panel cm-panel-solid rounded-lg p-4">
               <h3 className="text-sm font-medium text-card-foreground flex items-center gap-2 mb-3">
                 <QrCodeIcon className="h-4 w-4 text-primary" />
                 QR CODE DE L'ENTRÉE
@@ -1647,7 +1647,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
             </div>
 
             {/* Résumé */}
-            <div className="bg-card border border-border rounded-lg shadow-sm divide-y divide-border">
+            <div className="cm-panel cm-panel-solid rounded-lg divide-y divide-border">
               <div className="p-4">
                 <h3 className="text-sm font-medium text-card-foreground mb-2">
                   RÉSUMÉ DE L'ENTRÉE
@@ -1823,7 +1823,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
           onClick={() => setQrAgrandi(false)}
         >
           <div
-            className="bg-card border border-border rounded-lg p-6 max-w-sm w-full"
+            className="cm-modal border bg-popover p-6 max-w-sm w-full"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex items-center justify-between mb-4">

@@ -652,7 +652,7 @@ export function NewAffectationPage({
         {/* Colonne droite — Résumé */}
         <div className="lg:col-span-1">
           <div className="lg:sticky lg:top-6 space-y-4">
-            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+            <div className="cm-panel cm-panel-solid rounded-lg p-4">
               <h3 className="text-sm font-medium text-card-foreground mb-3">
                 RÉSUMÉ DE L'AFFECTATION
               </h3>
@@ -680,7 +680,7 @@ export function NewAffectationPage({
               </div>
             </div>
 
-            <div className="bg-card border border-border rounded-lg shadow-sm p-4">
+            <div className="cm-panel cm-panel-solid rounded-lg p-4">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-medium text-card-foreground">
                   VALIDATION

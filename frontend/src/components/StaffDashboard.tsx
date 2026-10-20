@@ -205,7 +205,7 @@ export function StaffDashboard({ user }: StaffDashboardProps) {
 
       {/* Quick Stats */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="h-8 w-8 sm:h-10 sm:w-10 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400 flex items-center justify-center">
               <ArrowDown className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -226,7 +226,7 @@ export function StaffDashboard({ user }: StaffDashboardProps) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="h-8 w-8 sm:h-10 sm:w-10 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400 flex items-center justify-center">
               <ArrowUp className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -247,7 +247,7 @@ export function StaffDashboard({ user }: StaffDashboardProps) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="h-8 w-8 sm:h-10 sm:w-10 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400 flex items-center justify-center">
               <Clock className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -263,7 +263,7 @@ export function StaffDashboard({ user }: StaffDashboardProps) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow">
+        <div className="cm-panel cm-panel-solid cm-panel-hover rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="h-8 w-8 sm:h-10 sm:w-10 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400 flex items-center justify-center">
               <Euro className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -337,7 +337,7 @@ export function StaffDashboard({ user }: StaffDashboardProps) {
       </div>
 
       {/* Recent Journal Activity */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-4 sm:p-6 border-b border-border">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-center gap-2">

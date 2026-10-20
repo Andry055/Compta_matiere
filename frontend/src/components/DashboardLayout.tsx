@@ -16,9 +16,10 @@ import { Users } from "./Users"
 import { Settings } from "./Settings"
 import { ThemeToggle } from "./ThemeToggle"
 import { NotificationBell } from "./NotificationBell"
-import { Menu, Package, Shield, Wifi, Check, X, LogOut } from "lucide-react"
+import { Menu, Package, Shield, X, LogOut } from "lucide-react"
 import { useState, useEffect } from "react"
 import { User } from "../App"
+import type { DemandeRecord } from "../lib/demandes"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
 import { ErrorBoundary } from "./ErrorBoundary"
 
@@ -41,6 +42,10 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
   // Pièce à ouvrir dans l'écran Arrivée Matériel, demandée par un clic sur une
   // notification de la cloche du navbar (les 3 rôles du flux de réception).
   const [entreeCibleId, setEntreeCibleId] = useState<string | number | null>(null)
+  // Demande APPROUVÉE à transformer en ordre de sortie (étape 3) : posée par
+  // l'écran Décision (clic « Créer l'ordre de sortie »), elle ouvre la page
+  // Distribution sur l'onglet « Ordres de sortie » avec le formulaire prérempli.
+  const [ordreSortieDemande, setOrdreSortieDemande] = useState<DemandeRecord | null>(null)
 
   // Navigation programmatique depuis un écran (ex. PV de réception → journal).
   // Passée aux écrans via la prop onNavigate.
@@ -107,7 +112,12 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
       case "equipment":
         return <Equipment user={user} />
       case "distribution":
-        return <Distribution />
+        return (
+          <Distribution
+            initialDemande={ordreSortieDemande}
+            onInitialDemandeConsumed={() => setOrdreSortieDemande(null)}
+          />
+        )
       case "movements":
         return <Movements />
       case "departments":
@@ -118,6 +128,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
             user={user}
             detailRequestId={requestDetailId ?? undefined}
             onDetailConsumed={() => setRequestDetailId(null)}
+            onCreerOrdreSortie={handleCreerOrdreSortie}
           />
         )
       case "reports":
@@ -136,6 +147,10 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
     // Une navigation classique invalide la pièce demandée par une notification :
     // l'utilisateur choisit librement son écran d'arrivée.
     setEntreeCibleId(null)
+    // …ainsi que la demande en attente de transformation en ordre de sortie :
+    // seul un clic sur « Créer l'ordre de sortie » doit ouvrir le formulaire
+    // prérempli.
+    setOrdreSortieDemande(null)
     if (section !== "requests") {
       setRequestDetailId(null)
     }
@@ -156,12 +171,24 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
     }
   }
 
+  // Étape 3 : le dépositaire clique sur « Créer l'ordre de sortie » dans
+  // l'écran Décision → on ouvre Distribution sur l'onglet « Ordres de sortie »,
+  // où le formulaire se préremplit avec la demande. La cible est posée AVANT le
+  // changement d'écran (handleSectionChange l'effacerait).
+  const handleCreerOrdreSortie = (demande: DemandeRecord) => {
+    setOrdreSortieDemande(demande)
+    setActiveSection("distribution")
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
+  }
+
   return (
-    <div className="flex h-screen w-full bg-background">
+    <div className="cm-shell flex h-screen w-full">
       {/* Mobile Overlay */}
       {isMobile && mobileMenuOpen && (
-        <div 
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+        <div
+          className="cm-overlay fixed inset-0 z-40 lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
@@ -175,19 +202,19 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
         transition-transform duration-300 ease-in-out
         ${isMobile ? 'w-80' : ''}
       `}>
-        <SimpleSidebar 
-          activeSection={activeSection} 
+        <SimpleSidebar
+          activeSection={activeSection}
           onSectionChange={handleSectionChange}
           user={user}
           isMobile={isMobile}
           onClose={() => setMobileMenuOpen(false)}
         />
       </div>
-      
+
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="flex items-center justify-between p-3 sm:p-4 border-b border-border bg-background shrink-0">
+        <header className="cm-topbar flex items-center justify-between gap-3 p-3 sm:p-4 shrink-0">
           <div className="flex items-center gap-3 sm:gap-4">
             <button
               onClick={() => {
@@ -197,7 +224,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
                   setSidebarOpen(!sidebarOpen)
                 }
               }}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+              className="cm-btn-ghost inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors"
             >
               {isMobile && mobileMenuOpen ? (
                 <X className="h-4 w-4" />
@@ -209,7 +236,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
             {(!sidebarOpen || isMobile) && (
               <div className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
-                <span className="text-foreground hidden sm:inline">ComptaMatière</span>
+                <span className="cm-title text-base hidden sm:inline">ComptaMatière</span>
               </div>
             )}
           </div>
@@ -217,16 +244,14 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
           {/* System Status & Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Compliance Status - Hidden on small screens */}
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
-              <Shield className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              <span className="text-xs text-blue-700 dark:text-blue-300">
-                Conforme 94%
-              </span>
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 cm-badge cm-badge-accent">
+              <Shield className="h-4 w-4" />
+              <span className="text-xs">Conforme 94%</span>
             </div>
 
             {/* User Info - Hidden on mobile */}
             <div className="hidden md:flex flex-col items-end">
-              <span className="text-sm text-foreground">{user.name}</span>
+              <span className="text-sm font-medium text-foreground">{user.name}</span>
               <span className="text-xs text-muted-foreground">
                 {roleConfig?.label || (user.role === 'admin' ? 'Administrateur' : user.department)}
               </span>
@@ -247,7 +272,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
             {/* Logout */}
             <button
               onClick={onLogout}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-destructive hover:text-destructive-foreground transition-colors"
+              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-border bg-background transition-colors hover:bg-destructive hover:text-destructive-foreground"
               title="Se déconnecter"
             >
               <LogOut className="h-4 w-4" />
@@ -255,9 +280,9 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
             </button>
           </div>
         </header>
-        
+
         {/* Main Content */}
-        <main className="flex-1 overflow-auto">
+        <main className="flex-1 overflow-auto cm-scroll">
           <ErrorBoundary
             title="Impossible de charger la page."
             message="Le module demandé n'a pas pu s'afficher. Réessayez ou revenez au tableau de bord."
@@ -268,11 +293,11 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
         </main>
 
         {/* Status Bar - Hidden on mobile */}
-        <footer className="border-t border-border bg-background px-4 sm:px-6 py-2 shrink-0 hidden sm:block">
+        <footer className="cm-statusbar px-4 sm:px-6 py-2 shrink-0 hidden sm:block">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-4">
-              <div className="flex items-center gap-1">
-                <Wifi className="h-3 w-3 text-green-600" />
+              <div className="flex items-center gap-2">
+                <span className="cm-dot cm-dot-live" aria-hidden />
                 <span>Connecté</span>
               </div>
               <div className="hidden md:block">

@@ -236,7 +236,7 @@ export function OrganizationalReports({
 
       {/* Summary Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-lg">
               <Users className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -252,7 +252,7 @@ export function OrganizationalReports({
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 bg-green-100 dark:bg-green-900/30 rounded-lg">
               <UserCheck className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -274,7 +274,7 @@ export function OrganizationalReports({
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 bg-orange-100 dark:bg-orange-900/30 rounded-lg">
               <Clock className="h-5 w-5 text-orange-600 dark:text-orange-400" />
@@ -294,7 +294,7 @@ export function OrganizationalReports({
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="flex items-center justify-center w-10 h-10 bg-purple-100 dark:bg-purple-900/30 rounded-lg">
               <TrendingUp className="h-5 w-5 text-purple-600 dark:text-purple-400" />
@@ -317,7 +317,7 @@ export function OrganizationalReports({
       {/* Direction Analysis */}
       <div className="grid gap-6 lg:grid-cols-2">
         {/* Breakdown by Direction */}
-        <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-card-foreground flex items-center gap-2">
               <Building2 className="h-5 w-5" />
@@ -363,7 +363,7 @@ export function OrganizationalReports({
         </div>
 
         {/* Top Functions */}
-        <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-6">
           <div className="flex items-center justify-between mb-6">
             <h3 className="text-lg font-semibold text-card-foreground flex items-center gap-2">
               <Briefcase className="h-5 w-5" />
@@ -406,7 +406,7 @@ export function OrganizationalReports({
       </div>
 
       {/* Status Distribution */}
-      <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-card-foreground flex items-center gap-2">
             <Activity className="h-5 w-5" />
@@ -463,7 +463,7 @@ export function OrganizationalReports({
       </div>
 
       {/* Service Analysis */}
-      <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-card-foreground flex items-center gap-2">
             <Briefcase className="h-5 w-5" />

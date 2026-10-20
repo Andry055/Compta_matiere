@@ -160,7 +160,7 @@ export function Movements() {
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <ArrowUp className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
@@ -170,7 +170,7 @@ export function Movements() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <ArrowDown className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -180,7 +180,7 @@ export function Movements() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <ArrowUpDown className="h-8 w-8 p-2 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400" />
             <div>
@@ -194,7 +194,7 @@ export function Movements() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400 flex items-center justify-center text-xs">
               !
@@ -208,7 +208,7 @@ export function Movements() {
       </div>
 
       {/* Filters */}
-      <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -251,7 +251,7 @@ export function Movements() {
       </div>
 
       {/* Movements List */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
             Liste des Mouvements ({filteredMovements.length})

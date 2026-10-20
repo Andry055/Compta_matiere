@@ -246,7 +246,7 @@ export function NewTransfertPage({
   if (loadingReferences) {
     return (
       <div className="p-3 sm:p-6 space-y-4">
-        <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+        <div className="rounded-2xl border border-border cm-panel cm-panel-solid p-5">
           <div className="mb-4 h-3 w-32 animate-pulse rounded bg-muted" />
           <div className="mb-3 h-6 w-2/3 animate-pulse rounded bg-muted" />
           <div className="grid gap-4 sm:grid-cols-2">
@@ -654,7 +654,7 @@ export function NewTransfertPage({
         </div>
         {/* ---------------- Colonne latérale — processus ---------------- */}
         <div className="space-y-4 sm:space-y-6">
-          <div className="bg-card border border-border rounded-lg shadow-sm p-4 sm:p-6">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-sm font-medium text-card-foreground mb-3 flex items-center gap-2">
               <Package className="h-4 w-4 text-primary" />
               Processus du transfert
@@ -676,7 +676,7 @@ export function NewTransfertPage({
               ))}
             </ol>
           </div>
-          <div className="bg-card border border-border rounded-lg shadow-sm p-4 sm:p-6">
+          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
             <h3 className="text-sm font-medium text-card-foreground mb-2">
               Affectation ou transfert ?
             </h3>

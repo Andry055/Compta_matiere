@@ -154,7 +154,7 @@ export function SecurityDashboard() {
 
       {/* Statistics */}
       <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <Shield className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -164,7 +164,7 @@ export function SecurityDashboard() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <CheckCircle className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
@@ -174,7 +174,7 @@ export function SecurityDashboard() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <Clock className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400" />
             <div>
@@ -184,7 +184,7 @@ export function SecurityDashboard() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-3 sm:p-4">
           <div className="flex items-center gap-2 sm:gap-3">
             <AlertTriangle className="h-6 w-6 sm:h-8 sm:w-8 p-1 sm:p-2 bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400" />
             <div>
@@ -196,7 +196,7 @@ export function SecurityDashboard() {
       </div>
 
       {/* Filters */}
-      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
         <div>
           <label className="block text-sm text-muted-foreground mb-2">Filtrer par statut</label>
           <select
@@ -213,7 +213,7 @@ export function SecurityDashboard() {
       </div>
 
       {/* Activity Log */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-4 sm:p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
             Journal des Connexions ({filteredActivities.length})
@@ -324,7 +324,7 @@ export function SecurityDashboard() {
       </div>
 
       {/* Security Recommendations */}
-      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
         <h3 className="text-lg text-card-foreground mb-4 flex items-center gap-2">
           <Shield className="h-5 w-5" />
           Recommandations de Sécurité

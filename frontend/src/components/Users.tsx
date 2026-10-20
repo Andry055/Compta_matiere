@@ -435,7 +435,7 @@ export function Users() {
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <UsersIcon className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -447,7 +447,7 @@ export function Users() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400 flex items-center justify-center text-xs">
               ✓
@@ -461,7 +461,7 @@ export function Users() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Shield className="h-8 w-8 p-2 bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400" />
             <div>
@@ -473,7 +473,7 @@ export function Users() {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Calendar className="h-8 w-8 p-2 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400" />
             <div>
@@ -487,7 +487,7 @@ export function Users() {
       </div>
 
       {/* Filters and Search */}
-      <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -526,7 +526,7 @@ export function Users() {
       </div>
 
       {/* Users List */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
             Liste des Utilisateurs ({filteredUsers.length})

@@ -158,6 +158,12 @@
   color: var(--destructive-foreground);
 }
 
+/* Sortie effectuée : contre-jour vert cohérent avec le thème « Console Orbital ». */
+.msa-badge--success {
+  background: oklch(0.64 0.16 155);
+  color: oklch(0.99 0.01 150);
+}
+
 .msa-champs {
   display: flex;
   flex-direction: column;

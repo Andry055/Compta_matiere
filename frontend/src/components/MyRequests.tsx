@@ -478,7 +478,7 @@ export function MyRequests({
           return (
             <div
               key={card.label}
-              className="bg-card border border-border rounded-lg p-4 shadow-sm"
+              className="cm-panel cm-panel-solid rounded-lg p-4"
             >
               <div className="flex items-center gap-3">
                 <Icon className={`h-8 w-8 p-2 ${card.iconClass}`} />
@@ -498,7 +498,7 @@ export function MyRequests({
 
       {/* Recherche */}
       {searchOpen && (
-        <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
@@ -513,7 +513,7 @@ export function MyRequests({
       )}
 
       {/* Filtres */}
-      <div className="bg-card border border-border rounded-lg p-4 sm:p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
         <div className="flex flex-col sm:flex-row gap-3 sm:gap-4 sm:items-end">
           <button
             onClick={() => setSearchOpen((v) => !v)}
@@ -589,7 +589,7 @@ export function MyRequests({
       </div>
 
       {/* Tableau */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-4 sm:p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
             Liste de mes demandes ({filtered.length})
@@ -757,7 +757,7 @@ export function MyRequests({
       -------------------------------------------------------------- */}
       {showForm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-lg w-full max-w-4xl max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="cm-modal border bg-popover w-full max-w-4xl max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between p-6 border-b border-border sticky top-0 bg-card z-10">
               <div>
                 <h3 className="text-lg text-card-foreground flex items-center gap-2">
@@ -1149,7 +1149,7 @@ export function MyRequests({
           const sortie = getSortieOfDemande(detailDemande);
           return (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-              <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+              <div className="cm-modal border bg-popover w-full max-w-3xl max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-start justify-between p-6 border-b border-border">
                   <div>

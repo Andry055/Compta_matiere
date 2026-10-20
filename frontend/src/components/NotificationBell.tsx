@@ -299,24 +299,28 @@ export function NotificationBell({
     <div ref={containerRef} className="relative">
       <button
         onClick={handleToggle}
-        className="relative inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+        className="cm-btn-ghost relative inline-flex items-center justify-center h-9 w-9 rounded-lg"
         title="Mes notifications"
+        aria-expanded={open}
+        aria-haspopup="dialog"
       >
         <Bell className="h-4 w-4" />
         {total > 0 && (
-          <span className="absolute -top-1 -right-1 min-w-3 h-3 bg-red-500 rounded-full text-xs flex items-center justify-center">
-            <span className="text-white text-[10px] leading-3">
-              {total > 9 ? "9+" : total}
-            </span>
+          <span className="absolute -top-1 -right-1 min-w-4 h-4 px-1 bg-destructive rounded-full text-[10px] font-semibold flex items-center justify-center text-destructive-foreground cm-num">
+            {total > 9 ? "9+" : total}
           </span>
         )}
         <span className="sr-only">Mes notifications</span>
       </button>
 
       {open && (
-        <div className="absolute right-0 top-full mt-2 w-80 sm:w-96 bg-card border border-border rounded-lg shadow-xl z-50 overflow-hidden">
-          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border bg-muted/20">
-            <span className="text-sm text-card-foreground font-medium">
+        <div
+          role="dialog"
+          aria-label="Mes notifications"
+          className="cm-modal absolute right-0 top-full mt-2 w-80 sm:w-96 rounded-lg z-50 overflow-hidden"
+        >
+          <div className="flex items-center justify-between gap-3 px-4 py-3 border-b border-border">
+            <span className="cm-eyebrow">
               Mes notifications
             </span>
             {nbNonLues > 0 && (
@@ -334,7 +338,7 @@ export function NotificationBell({
             {/* ── 1) Actions en attente du rôle (circuit Arrivée Matériel) ── */}
             {aDesEtapes && etapes.length > 0 && (
               <>
-                <p className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <p className="cm-eyebrow px-4 pt-3 pb-1">
                   En attente — {roleLabel}
                 </p>
                 {etapes.map((n) => {
@@ -347,7 +351,7 @@ export function NotificationBell({
                       disabled={!ouvrable}
                       title={ouvrable ? "Ouvrir cette pièce" : undefined}
                       className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
-                        ouvrable ? "hover:bg-muted/40 cursor-pointer" : ""
+                        ouvrable ? "hover:bg-accent/40 cursor-pointer" : ""
                       }`}
                     >
                       <span
@@ -381,7 +385,7 @@ export function NotificationBell({
             {/* ── 1.bis) Actions en attente du rôle (circuit de préparation des sorties) ── */}
             {(aDesEtapesSortie || aDesAutorisations) && etapesSortie.length > 0 && (
               <>
-                <p className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <p className="cm-eyebrow px-4 pt-3 pb-1">
                   En attente — {roleLabel}
                 </p>
                 {etapesSortie.map((n) => {
@@ -394,7 +398,7 @@ export function NotificationBell({
                       disabled={!ouvrable}
                       title={ouvrable ? "Ouvrir cette pièce" : undefined}
                       className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
-                        ouvrable ? "hover:bg-muted/40 cursor-pointer" : ""
+                        ouvrable ? "hover:bg-accent/40 cursor-pointer" : ""
                       }`}
                     >
                       <span
@@ -430,7 +434,7 @@ export function NotificationBell({
                  que la remise n'est pas enregistrée. ── */}
             {role === "depositaire" && etapesValidation.length > 0 && (
               <>
-                <p className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                <p className="cm-eyebrow px-4 pt-3 pb-1">
                   En attente — {roleLabel}
                 </p>
                 {etapesValidation.map((n) => {
@@ -443,7 +447,7 @@ export function NotificationBell({
                       disabled={!ouvrable}
                       title={ouvrable ? "Ouvrir l'espace Distribution" : undefined}
                       className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
-                        ouvrable ? "hover:bg-muted/40 cursor-pointer" : ""
+                        ouvrable ? "hover:bg-accent/40 cursor-pointer" : ""
                       }`}
                     >
                       <span
@@ -475,7 +479,7 @@ export function NotificationBell({
             )}
 
             {/* ── 2) Notifications d'information (flux historique) ── */}
-            <p className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+            <p className="cm-eyebrow px-4 pt-3 pb-1">
               Informations
             </p>
             {items.length === 0 ? (
@@ -490,7 +494,7 @@ export function NotificationBell({
                   <button
                     key={item.id}
                     onClick={() => handleOpenItem(item.id)}
-                    className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors ${
+                    className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-border last:border-b-0 hover:bg-accent/40 transition-colors ${
                       isUnread ? "bg-blue-50/60 dark:bg-blue-900/10" : ""
                     }`}
                   >

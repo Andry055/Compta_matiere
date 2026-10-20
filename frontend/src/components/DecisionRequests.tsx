@@ -24,6 +24,18 @@ import { Message } from "./ui/message";
 
 interface DecisionRequestsProps {
   user?: User;
+  /**
+   * ÉTAPE 3 « ouverte » : au lieu de créer l'ordre d'un seul clic (le
+   * serveur préremplirait tout en base), le bouton transmet la demande au
+   * parent qui ouvre la page Distribution, onglet « Ordres de sortie », avec
+   * le formulaire PRÉREMPLI à partir de la demande. Le dépositaire vérifie
+   * puis confirme : la création n'a lieu qu'à cette confirmation.
+   *
+   * Fourni UNIQUEMENT pour le dépositaire (le formulaire de Distribution est
+   * réservé à ce rôle) : sans cette prop, le comportement historique serveur
+   * est conservé.
+   */
+  onCreerOrdreSortie?: (demande: DemandeRecord) => void;
 }
 
 /**
@@ -43,7 +55,7 @@ interface DecisionRequestsProps {
  * validation, refuse un second ordre et renvoie un message d'erreur qui est
  * AFFICHÉ tel quel (jamais de fausse réussite).
  */
-export function DecisionRequests({ user }: DecisionRequestsProps) {
+export function DecisionRequests({ user, onCreerOrdreSortie }: DecisionRequestsProps) {
   const [demandes, setDemandes] = useState<DemandeRecord[] | null>(null);
   const [origineDetail, setOrigineDetail] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
@@ -195,6 +207,20 @@ export function DecisionRequests({ user }: DecisionRequestsProps) {
       });
       return;
     }
+
+    // ÉTAPE 3 « ouverte » : on n'écrit RIEN côté serveur ici. La demande est
+    // transmise au parent, qui ouvre l'onglet « Ordres de sortie » avec le
+    // formulaire prérempli ; le serveur reste seul juge à la confirmation
+    // (stock, valeur unitaire, « une demande, un ordre »).
+    if (onCreerOrdreSortie) {
+      setMessage({
+        texte: `Demande ${demande.reference} : le formulaire de l'onglet « Ordres de sortie » est prérempli — vérifiez puis confirmez la création.`,
+        variante: "success",
+      });
+      onCreerOrdreSortie(demande);
+      return;
+    }
+
     setOrdreEnCours(demande.documentId);
     setMessage(null);
     const resultat = await creerOrdreSortie(demande.documentId);
@@ -248,7 +274,7 @@ export function DecisionRequests({ user }: DecisionRequestsProps) {
         </div>
 
         {!chargement && aTraiter.length === 0 && (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card p-8 text-center">
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-border cm-panel cm-panel-solid p-8 text-center">
             <Inbox className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
               Aucune demande en attente de décision.
@@ -261,7 +287,7 @@ export function DecisionRequests({ user }: DecisionRequestsProps) {
         return (
           <article
             key={demande.documentId || demande.id}
-            className="rounded-lg border border-border bg-card p-4"
+            className="rounded-lg border border-border cm-panel cm-panel-solid p-4"
           >
             <header className="mb-3 flex flex-wrap items-center gap-2">
               <span className="font-medium text-foreground">
@@ -396,8 +422,9 @@ export function DecisionRequests({ user }: DecisionRequestsProps) {
               Demandes approuvées
             </h2>
             <p className="text-sm text-muted-foreground">
-              Un bouton crée l'ordre de sortie : direction, lignes et pièce
-              justificative sont repris de la demande par le serveur.
+              {onCreerOrdreSortie
+                ? "Un bouton ouvre le formulaire de l'onglet « Ordres de sortie » prérempli avec la demande : direction, lignes et pièce justificative sont repris de la demande."
+                : "Un bouton crée l'ordre de sortie : direction, lignes et pièce justificative sont repris de la demande par le serveur."}
             </p>
           </div>
           <span className="rounded-full bg-muted px-3 py-1 text-sm text-muted-foreground">
@@ -406,7 +433,7 @@ export function DecisionRequests({ user }: DecisionRequestsProps) {
         </div>
 
         {!chargement && approuvees.length === 0 && (
-          <div className="flex flex-col items-center gap-2 rounded-lg border border-border bg-card p-8 text-center">
+          <div className="flex flex-col items-center gap-2 rounded-lg border border-border cm-panel cm-panel-solid p-8 text-center">
             <Inbox className="h-8 w-8 text-muted-foreground" />
             <p className="text-sm text-muted-foreground">
               Aucune demande approuvée à transformer en ordre de sortie.
@@ -420,7 +447,7 @@ export function DecisionRequests({ user }: DecisionRequestsProps) {
           return (
             <article
               key={`ordre-${demande.documentId || demande.id}`}
-              className="rounded-lg border border-border bg-card p-4"
+              className="rounded-lg border border-border cm-panel cm-panel-solid p-4"
             >
               <header className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="font-medium text-foreground">

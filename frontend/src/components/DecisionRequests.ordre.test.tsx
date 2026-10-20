@@ -157,3 +157,59 @@ describe("DecisionRequests — étape 3 : l'ordre de sortie", () => {
     );
   });
 });
+
+/**
+ * ÉTAPE 3 « ouverte » — quand le parent fournit `onCreerOrdreSortie`, le bouton
+ * n'écrit PLUS rien côté serveur : il transmet la demande pour que l'onglet
+ * « Ordres de sortie » de Distribution s'ouvre avec le formulaire prérempli.
+ */
+describe("DecisionRequests — étape 3 : direction vers le formulaire prérempli", () => {
+  it("transmet la demande au parent sans rien créer côté serveur", async () => {
+    const onCreerOrdreSortie = vi.fn();
+    render(
+      <DecisionRequests user={UTILISATEUR} onCreerOrdreSortie={onCreerOrdreSortie} />
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: /Créer l'ordre de sortie/i })
+      ).toBeTruthy()
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Créer l'ordre de sortie/i })
+    );
+
+    await waitFor(() => expect(onCreerOrdreSortie).toHaveBeenCalledTimes(1));
+    // La demande transmise est bien celle cliquée (documentId + référence).
+    expect(onCreerOrdreSortie.mock.calls[0][0].documentId).toBe("dem-2026-020");
+    expect(onCreerOrdreSortie.mock.calls[0][0].reference).toBe("DEM-2026-020");
+    // Aucune écriture serveur à ce stade : la création n'a lieu qu'à la
+    // CONFIRMATION du formulaire prérempli.
+    expect(creerOrdreSortieMock).not.toHaveBeenCalled();
+    // L'utilisateur est informé que le formulaire est prérempli.
+    expect(
+      screen.getByText(/formulaire de l'onglet « Ordres de sortie » est prérempli/i)
+    ).toBeTruthy();
+  });
+
+  it("n'ouvre pas de formulaire pour une demande qui a déjà son ordre", async () => {
+    const onCreerOrdreSortie = vi.fn();
+    render(
+      <DecisionRequests user={UTILISATEUR} onCreerOrdreSortie={onCreerOrdreSortie} />
+    );
+    await waitFor(() =>
+      expect(screen.getByText("DEM-2026-021")).toBeTruthy()
+    );
+
+    // Une seule demande est transformable : celle SANS ordre (une demande, un ordre).
+    const boutons = screen.getAllByRole("button", {
+      name: /Créer l'ordre de sortie/i,
+    });
+    expect(boutons.length).toBe(1);
+    fireEvent.click(boutons[0]);
+
+    await waitFor(() => expect(onCreerOrdreSortie).toHaveBeenCalledTimes(1));
+    expect(onCreerOrdreSortie.mock.calls[0][0].documentId).toBe("dem-2026-020");
+    expect(creerOrdreSortieMock).not.toHaveBeenCalled();
+  });
+});

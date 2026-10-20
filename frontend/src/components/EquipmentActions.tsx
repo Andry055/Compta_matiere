@@ -158,7 +158,7 @@ export function EquipmentActions({
           />
 
           {/* Menu */}
-          <div className="absolute right-0 top-full mt-2 w-80 bg-card border border-border rounded-xl shadow-xl z-50 overflow-hidden animate-in slide-in-from-top-2 duration-200">
+          <div className="absolute right-0 top-full mt-2 w-80 cm-modal border bg-popover rounded-xl z-50 overflow-hidden">
             {/* Equipment Header */}
             <div className="p-4 border-b border-border bg-muted/20">
               <div className="flex items-center gap-3">
@@ -395,7 +395,7 @@ export function EquipmentActions({
       {/* Delete Confirmation Modal */}
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="cm-modal border bg-popover rounded-xl p-6 w-full max-w-md">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400">
                 <AlertTriangle className="h-5 w-5" />
@@ -464,7 +464,7 @@ export function EquipmentActions({
       {/* Archive Confirmation Modal */}
       {showArchiveConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-xl p-6 w-full max-w-md shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="cm-modal border bg-popover rounded-xl p-6 w-full max-w-md">
             <div className="flex items-center gap-3 mb-4">
               <div className="p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400">
                 <Archive className="h-5 w-5" />

@@ -26,7 +26,7 @@ import {
   ClipboardCheck,
   RefreshCw,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import { User } from "../App";
 import { AllEquipmentModal } from "./AllEquipmentModal";
 import { mockRequests } from "../lib/requests";
@@ -191,6 +191,7 @@ function DemandeurDashboard({
       label: "Mes demandes",
       value: stats.total,
       icon: Clipboard,
+      kpiAccent: "oklch(0.62 0.19 258)",
       iconClass:
         "bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400",
       foot: "Demandes de mon périmètre",
@@ -199,6 +200,7 @@ function DemandeurDashboard({
       label: "Demandes en attente",
       value: stats.enAttente,
       icon: Hourglass,
+      kpiAccent: "oklch(0.7 0.19 45)",
       iconClass:
         "bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400",
       foot: "En attente de validation",
@@ -207,6 +209,7 @@ function DemandeurDashboard({
       label: "Demandes validées",
       value: stats.validees,
       icon: Check,
+      kpiAccent: "oklch(0.68 0.17 150)",
       iconClass:
         "bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400",
       foot: "Validées par le responsable",
@@ -215,6 +218,7 @@ function DemandeurDashboard({
       label: "Matériels reçus",
       value: materielsRecus,
       icon: Inbox,
+      kpiAccent: "oklch(0.6 0.22 300)",
       iconClass:
         "bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400",
       foot: "Unités reçues par mon service",
@@ -223,6 +227,7 @@ function DemandeurDashboard({
       label: "Sorties du mois",
       value: statsSorties.duMois,
       icon: ArrowUpFromLine,
+      kpiAccent: "oklch(0.55 0.21 272)",
       iconClass:
         "bg-indigo-100 text-indigo-600 rounded-lg dark:bg-indigo-900/30 dark:text-indigo-400",
       foot: statsSorties.moisLabel,
@@ -231,6 +236,7 @@ function DemandeurDashboard({
       label: "Équipements disponibles",
       value: equipementsDisponibles,
       icon: Package,
+      kpiAccent: "oklch(0.66 0.15 210)",
       iconClass:
         "bg-cyan-100 text-cyan-600 rounded-lg dark:bg-cyan-900/30 dark:text-cyan-400",
       foot: "Disponibles à la demande",
@@ -239,6 +245,7 @@ function DemandeurDashboard({
       label: "Entrées récentes",
       value: entreesRecentes,
       icon: ArrowDownToLine,
+      kpiAccent: "oklch(0.65 0.13 185)",
       iconClass:
         "bg-teal-100 text-teal-600 rounded-lg dark:bg-teal-900/30 dark:text-teal-400",
       foot: "Entrées consultables",
@@ -247,6 +254,7 @@ function DemandeurDashboard({
       label: "Alertes",
       value: alertes,
       icon: AlertTriangle,
+      kpiAccent: "oklch(0.62 0.21 25)",
       iconClass:
         "bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400",
       foot: "À traiter en priorité",
@@ -265,10 +273,11 @@ function DemandeurDashboard({
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
+          <p className="cm-eyebrow cm-eyebrow-accent mb-1.5">Pilotage</p>
+          <h1 className="cm-title text-2xl sm:text-3xl mb-2">
             Tableau de Bord
           </h1>
-          <p className="text-muted-foreground text-sm sm:text-base">
+          <p className="cm-subtitle text-sm sm:text-base">
             Vue d'ensemble de vos demandes, équipements et mouvements
           </p>
         </div>
@@ -300,20 +309,21 @@ function DemandeurDashboard({
           return (
             <div
               key={card.label}
-              className="bg-card border border-border rounded-lg p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
+              className="cm-kpi"
+              style={
+                { ["--cm-kpi-accent" as string]: card.kpiAccent } as CSSProperties
+              }
             >
-              <div className="flex items-center gap-3">
-                <Icon className={`h-8 w-8 p-2 ${card.iconClass} flex-shrink-0`} />
-                <div className="min-w-0">
-                  <div className="text-xs sm:text-sm text-muted-foreground truncate">
-                    {card.label}
-                  </div>
-                  <div className="text-lg sm:text-xl text-card-foreground">
-                    {card.value}
-                  </div>
-                  <div className="text-xs text-muted-foreground truncate hidden sm:block">
+              <div className="flex items-start gap-3">
+                <span className="cm-kpi-icon">
+                  <Icon className="h-4 w-4" aria-hidden />
+                </span>
+                <div className="cm-kpi-body">
+                  <span className="cm-metric-label truncate">{card.label}</span>
+                  <span className="cm-kpi-value">{card.value}</span>
+                  <span className="text-xs text-muted-foreground truncate hidden sm:block">
                     {card.foot}
-                  </div>
+                  </span>
                 </div>
               </div>
             </div>
@@ -324,12 +334,12 @@ function DemandeurDashboard({
       {/* Activités récentes + état des demandes */}
       <div className="grid gap-4 lg:grid-cols-3">
         {/* Mes activités récentes */}
-        <div className="lg:col-span-2 bg-card border border-border rounded-lg shadow-sm">
+        <div className="lg:col-span-2 cm-panel cm-panel-solid rounded-lg">
           <div className="p-4 sm:p-6 border-b border-border">
-            <h3 className="text-base sm:text-lg text-card-foreground">
+            <h3 className="cm-title text-base sm:text-lg">
               Mes activités récentes
             </h3>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+            <p className="cm-subtitle mt-1">
               Dernières demandes, validations et sorties de mon périmètre
             </p>
           </div>
@@ -365,12 +375,12 @@ function DemandeurDashboard({
         </div>
 
         {/* État de mes demandes */}
-        <div className="bg-card border border-border rounded-lg shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg">
           <div className="p-4 sm:p-6 border-b border-border">
-            <h3 className="text-base sm:text-lg text-card-foreground">
+            <h3 className="cm-title text-base sm:text-lg">
               État de mes demandes
             </h3>
-            <p className="text-xs sm:text-sm text-muted-foreground mt-1">
+            <p className="cm-subtitle mt-1">
               Répartition par statut
             </p>
           </div>
@@ -457,6 +467,7 @@ export function Dashboard({ user }: { user?: User }) {
       label: "Mes demandes",
       value: mesDemandes.length,
       icon: Clipboard,
+      kpiAccent: "oklch(0.62 0.19 258)",
       iconClass:
         "bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400",
       foot: "Demandes de mon périmètre",
@@ -465,6 +476,7 @@ export function Dashboard({ user }: { user?: User }) {
       label: "Demandes en attente",
       value: mesDemandes.filter((r) => r.status === "En attente").length,
       icon: Hourglass,
+      kpiAccent: "oklch(0.7 0.19 45)",
       iconClass:
         "bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400",
       foot: "En attente de validation",
@@ -473,6 +485,7 @@ export function Dashboard({ user }: { user?: User }) {
       label: "Demandes validées",
       value: mesDemandes.filter((r) => r.status === "Approuvé").length,
       icon: Check,
+      kpiAccent: "oklch(0.68 0.17 150)",
       iconClass:
         "bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400",
       foot: "Validées par le responsable",
@@ -481,6 +494,7 @@ export function Dashboard({ user }: { user?: User }) {
       label: "Mes dernières sorties",
       value: mesSorties.length,
       icon: ArrowUpFromLine,
+      kpiAccent: "oklch(0.6 0.22 300)",
       iconClass:
         "bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400",
       foot: "Sorties de mon service / direction",
@@ -489,6 +503,7 @@ export function Dashboard({ user }: { user?: User }) {
       label: "Dernières entrées disponibles",
       value: entreesDisponibles.length,
       icon: ArrowDownToLine,
+      kpiAccent: "oklch(0.66 0.15 210)",
       iconClass:
         "bg-cyan-100 text-cyan-600 rounded-lg dark:bg-cyan-900/30 dark:text-cyan-400",
       foot: "Entrées vérifiées / validées",
@@ -497,6 +512,7 @@ export function Dashboard({ user }: { user?: User }) {
       label: "Alertes importantes",
       value: 3,
       icon: AlertTriangle,
+      kpiAccent: "oklch(0.62 0.21 25)",
       iconClass:
         "bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400",
       foot: "À traiter en priorité",
@@ -577,7 +593,7 @@ export function Dashboard({ user }: { user?: User }) {
       {/* Key Metrics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         {/* Total Journal Entries */}
-        <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm text-muted-foreground">Entrées Journal</h3>
             <BookOpen className="h-6 w-6 text-muted-foreground" />
@@ -589,7 +605,7 @@ export function Dashboard({ user }: { user?: User }) {
         </div>
 
         {/* Total Value */}
-        <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm text-muted-foreground">Valeur Inventaire</h3>
             <Euro className="h-6 w-6 text-muted-foreground" />
@@ -601,7 +617,7 @@ export function Dashboard({ user }: { user?: User }) {
         </div>
 
         {/* In Stock */}
-        <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm text-muted-foreground">
               Matériels en Stock
@@ -617,7 +633,7 @@ export function Dashboard({ user }: { user?: User }) {
         </div>
 
         {/* Compliance Score */}
-        <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm text-muted-foreground">Score Conformité</h3>
             <Shield className="h-6 w-6 text-muted-foreground" />
@@ -631,7 +647,7 @@ export function Dashboard({ user }: { user?: User }) {
 
       {/* Secondary Metrics */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <TrendingUp className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
@@ -641,7 +657,7 @@ export function Dashboard({ user }: { user?: User }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Building className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -651,7 +667,7 @@ export function Dashboard({ user }: { user?: User }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Hash className="h-8 w-8 p-2 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400" />
             <div>
@@ -661,7 +677,7 @@ export function Dashboard({ user }: { user?: User }) {
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <AlertTriangle className="h-8 w-8 p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400" />
             <div>
@@ -687,20 +703,21 @@ export function Dashboard({ user }: { user?: User }) {
               return (
                 <div
                   key={card.label}
-                  className="bg-card border border-border rounded-lg p-4 shadow-sm"
+                  className="cm-kpi"
+                  style={
+                    { ["--cm-kpi-accent" as string]: card.kpiAccent } as CSSProperties
+                  }
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon className={`h-8 w-8 p-2 ${card.iconClass}`} />
-                    <div>
-                      <div className="text-sm text-muted-foreground">
-                        {card.label}
-                      </div>
-                      <div className="text-xl text-card-foreground">
-                        {card.value}
-                      </div>
-                      <div className="text-xs text-muted-foreground">
+                  <div className="flex items-start gap-3">
+                    <span className="cm-kpi-icon">
+                      <Icon className="h-4 w-4" aria-hidden />
+                    </span>
+                    <div className="cm-kpi-body">
+                      <span className="cm-metric-label truncate">{card.label}</span>
+                      <span className="cm-kpi-value">{card.value}</span>
+                      <span className="text-xs text-muted-foreground truncate">
                         {card.foot}
-                      </div>
+                      </span>
                     </div>
                   </div>
                 </div>
@@ -711,10 +728,10 @@ export function Dashboard({ user }: { user?: User }) {
       )}
 
       {/* Activité récente */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-6 border-b border-border">
-          <h3 className="text-lg text-card-foreground">Activité récente</h3>
-          <p className="text-sm text-muted-foreground mt-1">
+          <h3 className="cm-title text-lg">Activité récente</h3>
+          <p className="cm-subtitle mt-1">
             Demandes créées et validées, matériels préparés, sorties
             effectuées et dernières entrées enregistrées
           </p>
@@ -745,7 +762,7 @@ export function Dashboard({ user }: { user?: User }) {
       </div>
 
       {/* Recent Journal Entries with Enhanced Traceability */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-6 border-b border-border">
           <div className="flex items-center justify-between">
             <div>

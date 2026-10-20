@@ -295,7 +295,7 @@ export function MaterialExitModal({ user, isOpen, onClose }: MaterialExitModalPr
         </div>
       )}
 
-      <div className="bg-card border border-border rounded-lg w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col shadow-2xl animate-in zoom-in-95 duration-200">
+      <div className="cm-modal border bg-popover w-full max-w-4xl max-h-[95vh] overflow-hidden flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 sm:p-6 border-b border-border bg-blue-50 dark:bg-blue-900/20">
           <div className="flex items-center gap-3">

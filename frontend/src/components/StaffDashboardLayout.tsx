@@ -64,11 +64,11 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
   }
 
   return (
-    <div className="flex h-screen w-full bg-background">
+    <div className="cm-shell flex h-screen w-full">
       {/* Mobile Overlay */}
       {isMobile && mobileMenuOpen && (
         <div
-          className="fixed inset-0 bg-black/50 z-40 lg:hidden"
+          className="cm-overlay fixed inset-0 z-40 lg:hidden"
           onClick={() => setMobileMenuOpen(false)}
         />
       )}
@@ -96,7 +96,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
       {/* Main Content */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Header */}
-        <header className="flex items-center justify-between p-3 sm:p-4 border-b border-border bg-background shrink-0">
+        <header className="cm-topbar flex items-center justify-between gap-3 p-3 sm:p-4 shrink-0">
           <div className="flex items-center gap-3 sm:gap-4">
             <button
               onClick={() => {
@@ -106,7 +106,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
                   setSidebarOpen(!sidebarOpen);
                 }
               }}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-accent hover:text-accent-foreground transition-colors"
+              className="cm-btn-ghost inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors"
             >
               {isMobile && mobileMenuOpen ? (
                 <X className="h-4 w-4" />
@@ -118,7 +118,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
             {(!sidebarOpen || isMobile) && (
               <div className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
-                <span className="text-foreground hidden sm:inline">
+                <span className="cm-title text-base hidden sm:inline">
                   ComptaMatière
                 </span>
               </div>
@@ -129,7 +129,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
           <div className="flex items-center gap-2 sm:gap-3">
             {/* Welcome Message - Hidden on mobile */}
             <div className="hidden md:flex flex-col items-end">
-              <span className="text-sm text-foreground">
+              <span className="text-sm font-medium text-foreground">
                 Bonjour, {user.name.split(" ")[0]}
               </span>
               <span className="text-xs text-muted-foreground">
@@ -138,7 +138,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
             </div>
 
             {/* Notifications */}
-            <button className="relative inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-accent hover:text-accent-foreground transition-colors">
+            <button className="cm-btn-ghost relative inline-flex items-center justify-center h-9 w-9 rounded-lg transition-colors">
               <Bell className="h-4 w-4" />
               <span className="absolute -top-1 -right-1 h-3 w-3 bg-orange-500 rounded-full text-xs flex items-center justify-center">
                 <span className="text-white text-[10px]">2</span>
@@ -152,7 +152,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
             {/* Logout */}
             <button
               onClick={onLogout}
-              className="inline-flex items-center justify-center h-9 w-9 rounded-md border border-border bg-background hover:bg-destructive hover:text-destructive-foreground transition-colors"
+              className="inline-flex items-center justify-center h-9 w-9 rounded-lg border border-border bg-background transition-colors hover:bg-destructive hover:text-destructive-foreground"
               title="Se déconnecter"
             >
               <LogOut className="h-4 w-4" />
@@ -162,10 +162,10 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
         </header>
 
         {/* Main Content */}
-        <main className="flex-1 overflow-auto">{renderContent()}</main>
+        <main className="flex-1 overflow-auto cm-scroll">{renderContent()}</main>
 
         {/* Status Bar - Hidden on mobile */}
-        <footer className="border-t border-border bg-background px-4 sm:px-6 py-2 shrink-0 hidden sm:block">
+        <footer className="cm-statusbar px-4 sm:px-6 py-2 shrink-0 hidden sm:block">
           <div className="flex items-center justify-between text-xs text-muted-foreground">
             <div className="flex items-center gap-4">
               <div>Session: {user.name}</div>

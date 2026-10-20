@@ -5,6 +5,7 @@ import { Request, mockRequests } from "../lib/requests"
 import { sortieRecords, getSortieTrace, splitDepartement } from "../lib/movements"
 import { MyRequests } from "./MyRequests"
 import { DecisionRequests } from "./DecisionRequests"
+import type { DemandeRecord } from "../lib/demandes"
 
 interface RequestsProps {
   user?: UserType
@@ -12,9 +13,15 @@ interface RequestsProps {
   detailRequestId?: number
   /** Notifie le parent que le détail demandé a été ouvert */
   onDetailConsumed?: () => void
+  /**
+   * Étape 3 : le dépositaire clique sur « Créer l'ordre de sortie » → le
+   * parent ouvre la page Distribution (onglet « Ordres de sortie ») avec le
+   * formulaire prérempli à partir de la demande.
+   */
+  onCreerOrdreSortie?: (demande: DemandeRecord) => void
 }
 
-export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsProps) {
+export function Requests({ user, detailRequestId, onDetailConsumed, onCreerOrdreSortie }: RequestsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("Tous")
   const [loadingRequests, setLoadingRequests] = useState<{ [key: number]: string }>({})
@@ -66,8 +73,18 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
   // traiter sont lues dans la BASE, et l'approbation / le rejet s'enregistrent
   // réellement (l'ancienne liste de démonstration ne decidait rien).
   // L'administrateur applicatif dispose des mêmes droits côté serveur.
+  // Étape 3 : seul le DÉPOSITAIRE est dirigé vers le formulaire de
+  // Distribution (il est réservé à ce rôle) ; l'admin conserve la création
+  // serveur en un clic.
   if (user?.role === "depositaire" || user?.role === "admin") {
-    return <DecisionRequests user={user} />
+    return (
+      <DecisionRequests
+        user={user}
+        onCreerOrdreSortie={
+          user?.role === "depositaire" ? onCreerOrdreSortie : undefined
+        }
+      />
+    )
   }
 
   const scopedRequests =
@@ -218,7 +235,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Clipboard className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
@@ -232,7 +249,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Clock className="h-8 w-8 p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400" />
             <div>
@@ -242,7 +259,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <Check className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
@@ -256,7 +273,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
           </div>
         </div>
 
-        <div className="bg-card border border-border rounded-lg p-4 shadow-sm">
+        <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <div className="h-8 w-8 p-2 bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30 dark:text-red-400 flex items-center justify-center text-xs">
               !
@@ -276,7 +293,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
       </div>
 
       {/* Filters */}
-      <div className="bg-card border border-border rounded-lg p-6 shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <div className="flex flex-col sm:flex-row gap-4">
           <div className="flex-1 relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
@@ -302,7 +319,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
       </div>
 
       {/* Requests List */}
-      <div className="bg-card border border-border rounded-lg shadow-sm">
+      <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
             Liste des Demandes ({filteredRequests.length})
@@ -509,7 +526,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
       {/* Nouvelle Demande Modal */}
       {showNewRequestModal && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-          <div className="bg-card border border-border rounded-lg p-6 w-full max-w-md max-h-[90vh] overflow-y-auto shadow-2xl">
+          <div className="cm-modal border bg-popover p-6 w-full max-w-md max-h-[90vh] overflow-y-auto">
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg text-card-foreground">Nouvelle Demande</h3>
               <button
@@ -689,7 +706,7 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
 
           return (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
-              <div className="bg-card border border-border rounded-lg w-full max-w-3xl max-h-[90vh] overflow-y-auto shadow-2xl">
+              <div className="cm-modal border bg-popover w-full max-w-3xl max-h-[90vh] overflow-y-auto">
                 {/* Header */}
                 <div className="flex items-start justify-between p-6 border-b border-border">
                   <div>

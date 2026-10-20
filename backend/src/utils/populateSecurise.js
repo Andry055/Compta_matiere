@@ -35,17 +35,28 @@ function securePopulateAndFilters(ctx) {
 
   const query = ctx.query || {};
 
-  // Remove problematic populate
-  if (query.populate) {
-    query.populate = filterPopulate(query.populate);
+  // Populate : on NE RETIRE QUE les segments interdits. Si plus rien ne doit
+  // être peuplé, la clé `populate` est supprimée de la requête : la laisser
+  // à `false` fait rejeter la requête (400) par Strapi, et la laisser à `{}`
+  // fait peupler TOUTES les relations (donc ré-ouvrir l'accès aux sorties
+  // des autres).
+  if (query.populate !== undefined && query.populate !== null) {
+    const filtre = filterPopulate(query.populate);
+    if (filtre === undefined) {
+      delete query.populate;
+    } else {
+      query.populate = filtre;
+    }
   }
 
-  // Remove problematic filters
+  // Filtres : les TABLEAUX sont conservés tels quels (un tableau d'opérateurs
+  // comme `$in` ou `$and` deviendrait sinon un objet indexé, inopérant pour
+  // Strapi : le filtre d'isolation du serveur ne serait plus appliqué).
   if (query.filters) {
     query.filters = filterFilters(query.filters);
   }
 
-  // Remove problematic sort
+  // Tri : même règle que les filtres (un tableau de tris reste un tableau).
   if (query.sort) {
     query.sort = filterSort(query.sort);
   }
@@ -56,25 +67,26 @@ function securePopulateAndFilters(ctx) {
 /**
  * Recursively filter populate object to remove paths that lead to sortie relations.
  * @param {any} populate - The populate value from query
- * @returns {any} Filtered populate
+ * @returns {any} Filtered populate, ou `undefined` s'il ne reste rien à peupler
  */
 function filterPopulate(populate) {
   if (typeof populate === 'boolean') {
-    return populate ? true : false;
+    return populate;
   }
 
   if (typeof populate === 'string') {
-    // Check if the string contains forbidden relations
+    // Relation interdite : ce segment seul est retiré de la requête.
     if (isForbiddenRelation(populate)) {
-      return false; // Don't populate this field
+      return undefined;
     }
     return populate;
   }
 
   if (Array.isArray(populate)) {
-    return populate
+    const restant = populate
       .map(item => filterPopulate(item))
-      .filter(item => item !== false); // Remove false values
+      .filter(item => item !== undefined);
+    return restant.length ? restant : undefined;
   }
 
   if (populate && typeof populate === 'object') {
@@ -85,9 +97,14 @@ function filterPopulate(populate) {
         continue;
       }
       // Recursively filter the value (which could be an object for nested populate)
-      filtered[key] = filterPopulate(value);
+      const sous = filterPopulate(value);
+      if (sous === undefined) {
+        continue;
+      }
+      filtered[key] = sous;
     }
-    return filtered;
+    // Plus aucun segment autorisé : ne rien peupler du tout.
+    return Object.keys(filtered).length ? filtered : undefined;
   }
 
   return populate;
@@ -95,10 +112,17 @@ function filterPopulate(populate) {
 
 /**
  * Recursively filter filters object to remove conditions on forbidden relations.
+ * Les TABLEAUX sont conservés comme tableaux (condition d'opérateurs Strapi :
+ * `$in`, `$and`, `$or`... un tableau aplati en objet indexé devient
+ * inopérant et supprime notamment le filtre d'isolation posé par le serveur).
  * @param {any} filters - The filters value from query
  * @returns {any} Filtered filters
  */
 function filterFilters(filters) {
+  if (Array.isArray(filters)) {
+    return filters.map(condition => filterFilters(condition));
+  }
+
   if (!filters || typeof filters !== 'object') {
     return filters;
   }
@@ -149,6 +173,10 @@ function isForbiddenRelation(path) {
  * @returns {any} Filtered sort
  */
 function filterSort(sort) {
+  if (Array.isArray(sort)) {
+    return sort.map(entry => filterSort(entry));
+  }
+
   if (!sort || typeof sort !== 'object') {
     return sort;
   }

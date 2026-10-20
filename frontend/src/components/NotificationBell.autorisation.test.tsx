@@ -19,6 +19,9 @@ vi.mock("../lib/api", () => ({
   countSortiesAAutoriser: vi.fn(async () => 0),
   fetchOrdresAAutoriser: vi.fn(async () => []),
   fetchAllSortiesOrThrow: vi.fn(async () => []),
+  // Flux DU DÉPOSITAIRE (ordres acceptés par le chef logistique) : requis par
+  // la cloche dès qu'un rôle hors logistique est monté.
+  fetchOrdresValidesPourDepositaire: vi.fn(async () => []),
 }));
 
 const api = await import("../lib/api");

@@ -10,6 +10,9 @@
 
 import { User } from "../App";
 import { ActivityItem, SortieRecord, sortieRecords } from "./movements";
+// Import de TYPE uniquement (effacé à la compilation) : évite le cycle
+// d'imports avec ./api, qui importe lui-même ce module.
+import type { EchecApi } from "./api";
 
 export type StatutDemande =
   | "Brouillon"
@@ -41,14 +44,33 @@ export const PRIORITES_DEMANDE: PrioriteDemande[] = [
 /** Une ligne de matériel demandé (plusieurs matériels par demande) */
 export interface DemandeLigne {
   categorie: string;
+  /** Désignation affichée du matériel (libellé lisible). */
   materiel: string;
   quantite: number;
   motif: string;
+  /**
+   * `documentId` de la fiche de STOCK visée par la ligne (étape 1 : le
+   * matériel vient du stock réel, jamais d'une saisie libre). Absent pour
+   * les demandes antérieures à l'étape 1.
+   */
+  materielDocumentId?: string;
+  /**
+   * Quantité DEMANDÉE par le demandeur (étape 2). Quand le Dépositaire
+   * ajuste la quantité, `quantite` porte la quantité approuvée et
+   * `quantiteDemandee` la quantité initialement demandée (traçabilité).
+   */
+  quantiteDemandee?: number;
 }
 
 /** Une demande (regroupement de lignes) */
 export interface DemandeRecord {
   id: number;
+  /**
+   * `documentId` de la demande sur le serveur : c'est l'identifiant
+   * accepté par les endpoints de DÉCISION (étape 2). Absent pour les
+   * demandes purely locales (repli hors ligne).
+   */
+  documentId?: string;
   /** Référence officielle DEM-AAAA-NNN (ex. DEM-2025-014) */
   reference: string;
   date: string;
@@ -59,6 +81,11 @@ export interface DemandeRecord {
   statut: StatutDemande;
   motif?: string;
   observation?: string;
+  /**
+   * Motif du REJET (étape 2) : obligatoire côté serveur, affiché au
+   * demandeur pour qu'il sache pourquoi sa demande a été refusée.
+   */
+  motifRejet?: string;
   direction: string;
   service: string;
   demandeur: string;
@@ -66,6 +93,12 @@ export interface DemandeRecord {
   validePar?: string;
   /** Sortie associée (SORT-AAAA-NNN) une fois la demande traitée */
   sortieReference?: string;
+  /**
+   * `documentId` de l'ORDRE DE SORTIE rattaché à la demande (étape 3).
+   * Présent dès que l'ordre a été créé : une demande ne porte qu'UN seul
+   * ordre (règle appliquée par le serveur).
+   */
+  sortieDocumentId?: string;
   /** Identifiants des lignes serveur (regroupement d'une même référence) */
   ids?: number[];
 }
@@ -641,9 +674,34 @@ interface StrapiDemandeRow {
   date_envoi?: string | null;
   date_validation?: string | null;
   valide_par?: string | null;
+  /** Motif de rejet (étape 2). */
+  motif_rejet?: string | null;
   direction?: { nom_direction?: string | null } | null;
   service?: { nom_service?: string | null } | null;
   demandeur?: { id?: number; username?: string | null } | null;
+  /** Lignes de la demande (composant `demande.ligne`, étape 1). */
+  lignes?: StrapiDemandeLigne[] | null;
+  /**
+   * Ordres de sortie rattachés à la demande (étape 3). La règle « une
+   * demande, un ordre » est appliquée par le serveur : le tableau ne peut
+   * donc porter qu'un seul ordre.
+   */
+  sorties?: Array<{ documentId?: string | null; reference?: string | null }> | null;
+}
+
+/** Une ligne de demande renvoyée par le serveur (composant `demande.ligne`). */
+interface StrapiDemandeLigne {
+  id?: number;
+  /** Désignation dénormalisée par le serveur à la création. */
+  designation?: string | null;
+  quantite?: number | null;
+  motif?: string | null;
+  categorie?: string | null;
+  /** Fiche de stock visée (relation `materiel`). */
+  materiel?: {
+    documentId?: string | null;
+    designation?: string | null;
+  } | null;
 }
 
 const STATUTS_API: Record<string, StatutDemande> = {
@@ -663,58 +721,105 @@ const PRIORITES_API: Record<string, PrioriteDemande> = {
   critique: "Critique",
 };
 
-function mapStrapiDemande(row: StrapiDemandeRow): DemandeRecord {
-  return {
-    id: row.id,
-    reference: row.reference || `DEM-API-${row.id}`,
-    date: (row.date_demande || new Date().toISOString().slice(0, 10)) as string,
-    dateEnvoi: row.date_envoi || undefined,
-    dateValidation: row.date_validation || undefined,
-    lignes: [
+/**
+ * Lignes d'une demande lue sur le serveur.
+ *
+ * Étape 1 : la demande porte TOUTES ses lignes (`lignes`). Le repli sur les
+ * champs plats dénormalisés ne concerne que les demandes antérieures, qui
+ * n'avaient qu'une seule ligne.
+ */
+function mapLignesDemande(row: StrapiDemandeRow): DemandeLigne[] {
+  const lignes = Array.isArray(row.lignes) ? row.lignes : [];
+  if (lignes.length === 0) {
+    return [
       {
         categorie: "—",
         materiel: row.designation_materiel || "—",
         quantite: Number(row.quantite) || 1,
         motif: row.motif || "—",
       },
-    ],
+    ];
+  }
+  return lignes.map((ligne) => ({
+    categorie: ligne.categorie || "—",
+    materiel: ligne.designation || ligne.materiel?.designation || "—",
+    quantite: Number(ligne.quantite) || 1,
+    motif: ligne.motif || "—",
+    materielDocumentId: ligne.materiel?.documentId || undefined,
+    // Quantité initialement demandée : conservée même si le Dépositaire a
+    // ajusté la quantité approuvée (étape 2).
+    quantiteDemandee: ligne.quantite_demandee
+      ? Number(ligne.quantite_demandee)
+      : Number(ligne.quantite) || 1,
+  }));
+}
+
+function mapStrapiDemande(row: StrapiDemandeRow): DemandeRecord {
+  return {
+    id: row.id,
+    documentId: row.documentId || undefined,
+    reference: row.reference || `DEM-API-${row.id}`,
+    date: (row.date_demande || new Date().toISOString().slice(0, 10)) as string,
+    dateEnvoi: row.date_envoi || undefined,
+    dateValidation: row.date_validation || undefined,
+    lignes: mapLignesDemande(row),
     priorite: PRIORITES_API[row.priorite || ""] || "Normal",
     statut: STATUTS_API[row.statut || ""] || "En attente",
     motif: row.motif || undefined,
     observation: row.observation || undefined,
+    motifRejet: row.motif_rejet || undefined,
     direction: row.direction?.nom_direction || "—",
     service: row.service?.nom_service || "—",
     demandeur: row.demandeur?.username || "—",
     fonction: row.fonction || undefined,
     validePar: row.valide_par || undefined,
-    sortieReference: undefined,
+    // Ordre de sortie rattaché (étape 3) : le serveur n'en autorise qu'UN.
+    sortieReference: row.sorties?.[0]?.reference || undefined,
+    sortieDocumentId: row.sorties?.[0]?.documentId || undefined,
     ids: [row.id],
   };
 }
 
 /**
- * Charge les demandes du profil connecté depuis Strapi (/api/demandes).
+ * Charge les demandes du profil connecté depuis Strapi (/api/demandes) en
+ * distinguant les CAUSES d'échec.
  *
  * Le contrôleur serveur limite déjà la liste aux demandes de l'utilisateur
- * connecté (contrôle côté base de données, pas seulement frontend).
+ * connecté (contrôle côté base de données, pas seulement frontend) : le
+ * client ne doit PAS refiltrer cette liste (ni par le nom du demandeur, ni
+ * par l'organigramme) — il afficherait alors un tableau VIDE alors que la
+ * base contient bien ses demandes.
  *
- * Retourne `null` si le backend est injoignable ou non connecté
- * (repli sur les données locales par l'appelant).
+ * `ok: true` avec une liste VIDE signifie « le serveur a répondu : ce profil
+ * n'a aucune demande ». `ok: false` est le seul cas qui autorise l'appelant à
+ * se rabattre sur les données locales.
  */
-export async function fetchDemandes(): Promise<DemandeRecord[] | null> {
+export async function fetchDemandesDetail(): Promise<
+  | { ok: true; demandes: DemandeRecord[] }
+  | { ok: false; echec: EchecApi }
+> {
   try {
     const { api, getStrapiJwt } = await import("./api");
-    if (!getStrapiJwt()) return null; // sans jeton : pas d'accès serveur
+    if (!getStrapiJwt()) return { ok: false, echec: "session_absente" };
     const { data } = await api.get("/api/demandes", {
       timeout: 5000,
       params: {
         sort: "date_demande:desc",
         "pagination[pageSize]": 100,
-        populate: ["direction", "service", "demandeur"],
+        // `lignes` porte les lignes de la demande (composant `demande.ligne`),
+        // `lignes.materiel` la fiche de stock visée par chaque ligne.
+        // `sorties` porte l'ordre de sortie rattaché (étape 3) : l'écran doit
+        // savoir si la demande a DÉJÀ son ordre (une demande, un ordre).
+        populate: {
+          direction: true,
+          service: true,
+          demandeur: true,
+          sorties: true,
+          lignes: { populate: { materiel: true } },
+        },
       },
     });
     const rows: StrapiDemandeRow[] = data?.data ?? [];
-    if (!rows.length) return null;
 
     // Regroupement des lignes qui partagent la même référence (groupe)
     const byGroup = new Map<string, DemandeRecord>();
@@ -729,10 +834,32 @@ export async function fetchDemandes(): Promise<DemandeRecord[] | null> {
         byGroup.set(key, { ...mapped, reference: key });
       }
     });
-    return Array.from(byGroup.values());
-  } catch {
-    return null;
+    return { ok: true, demandes: Array.from(byGroup.values()) };
+  } catch (e) {
+    // La cause de l'échec est determined par le classifieur d'`api.ts` ; à
+    // défaut (module indisponible), l'échec est traité comme un incident
+    // réseau — jamais comme une liste vide.
+    const moduleApi = (await import("./api")) as {
+      classerEchecApi?: (err: unknown) => EchecApi;
+    };
+    const classer = moduleApi.classerEchecApi;
+    return {
+      ok: false,
+      echec: typeof classer === "function" ? classer(e) : "reseau",
+    };
   }
+}
+
+/**
+ * Charge les demandes du profil connecté depuis Strapi (/api/demandes).
+ *
+ * Retourne la liste lue sur le serveur (`[]` si le profil n'a AUCUNE demande)
+ * ou `null` si le backend est injoignable, en erreur ou non connecté — seul
+ * cas où l'appelant a le droit de se rabattre sur les données locales.
+ */
+export async function fetchDemandes(): Promise<DemandeRecord[] | null> {
+  const resultat = await fetchDemandesDetail();
+  return resultat.ok ? resultat.demandes : null;
 }
 
 /**
@@ -770,5 +897,132 @@ export async function fetchDemandesPourLiaison(): Promise<
       );
   } catch {
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Étape 2 « Décision » : approbation / rejet d'une demande
+// ---------------------------------------------------------------------------
+
+/** Résultat d'une décision : succès, ou message d'erreur renvoyé par le serveur. */
+export type ResultatDecision =
+  | { ok: true }
+  | { ok: false; message: string };
+
+/** Message d'erreur métier renvoyé par l'API Strapi. */
+function messageErreurDecision(erreur: unknown, repli: string): string {
+  const e = erreur as {
+    response?: { data?: { error?: { message?: string } } };
+    message?: string;
+  };
+  return (
+    e?.response?.data?.error?.message || e?.message || repli
+  );
+}
+
+/** Quantité approuvée pour une ligne de décision. */
+export interface LigneDecision {
+  /** `documentId` de la fiche de STOCK visée par la ligne. */
+  materiel: string;
+  quantite: number;
+}
+
+/**
+ * APPROUVE une demande (étape 2).
+ *
+ * Les quantités sont AJUSTABLES : `lignes` porte la quantité retenue par le
+ * Dépositaire pour chaque ligne (celle de la demande si elle est omise).
+ * Le serveur re-vérifie le stock, refuse une seconde validation et pose le
+ * validateur et la date de validation.
+ */
+export async function approuverDemande(
+  documentId: string,
+  lignes: LigneDecision[],
+  observation?: string
+): Promise<ResultatDecision> {
+  try {
+    const { api } = await import("./api");
+    await api.post(`/api/demandes/${documentId}/approuver`, {
+      data: {
+        lignes,
+        ...(observation && observation.trim()
+          ? { observation: observation.trim() }
+          : {}),
+      },
+    });
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      message: messageErreurDecision(
+        e,
+        "La demande n'a pas pu être approuvée."
+      ),
+    };
+  }
+}
+
+/**
+ * REJETTE une demande (étape 2) : le MOTIF est obligatoire — le serveur
+ * refuse une rejection sans motif, l'écran doit donc le demander.
+ */
+export async function rejeterDemande(
+  documentId: string,
+  motif: string
+): Promise<ResultatDecision> {
+  try {
+    const { api } = await import("./api");
+    await api.post(`/api/demandes/${documentId}/rejeter`, {
+      data: { motif: (motif || "").trim() },
+    });
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      message: messageErreurDecision(
+        e,
+        "La demande n'a pas pu être rejetée."
+      ),
+    };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Étape 3 « Ordre de sortie » : transformer une demande approuvée en ordre
+// ---------------------------------------------------------------------------
+
+/** Résultat de la création d'un ordre : succès, ou message du serveur. */
+export type ResultatOrdre =
+  | { ok: true; reference: string }
+  | { ok: false; message: string };
+
+/**
+ * CRÉE l'ordre de sortie d'une demande APPROUVÉE (étape 3).
+ *
+ * L'écran n'envoie AUCUNE donnée de l'ordre : le serveur construit tout
+ * depuis la demande (direction, service, lignes et quantités approuvées,
+ * pièce justificative = référence de la demande). Une demande ne portant
+ * qu'UN seul ordre, un second appel est refusé par le serveur (409).
+ */
+export async function creerOrdreSortie(
+  documentId: string
+): Promise<ResultatOrdre> {
+  try {
+    const { api } = await import("./api");
+    const reponse = await api.post(
+      `/api/demandes/${documentId}/creer-ordre`,
+      {}
+    );
+    const reference =
+      reponse?.data?.data?.reference || reponse?.data?.reference || "";
+    return { ok: true, reference };
+  } catch (e) {
+    return {
+      ok: false,
+      message: messageErreurDecision(
+        e,
+        "L'ordre de sortie n'a pas pu être créé."
+      ),
+    };
   }
 }

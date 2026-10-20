@@ -33,6 +33,11 @@
     "motif": {
       "type": "text"
     },
+    "lignes": {
+      "type": "component",
+      "repeatable": true,
+      "component": "demande.ligne"
+    },
     "priorite": {
       "type": "enumeration",
       "enum": ["normal", "urgent", "critique"],
@@ -59,6 +64,9 @@
       "type": "string"
     },
     "observation": {
+      "type": "text"
+    },
+    "motif_rejet": {
       "type": "text"
     },
     "date_demande": {

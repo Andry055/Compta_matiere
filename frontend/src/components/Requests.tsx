@@ -4,6 +4,7 @@ import { User as UserType } from "../App"
 import { Request, mockRequests } from "../lib/requests"
 import { sortieRecords, getSortieTrace, splitDepartement } from "../lib/movements"
 import { MyRequests } from "./MyRequests"
+import { DecisionRequests } from "./DecisionRequests"
 
 interface RequestsProps {
   user?: UserType
@@ -59,6 +60,14 @@ export function Requests({ user, detailRequestId, onDetailConsumed }: RequestsPr
         onDetailConsumed={onDetailConsumed}
       />
     )
+  }
+
+  // Espace Dépositaire comptable (étape 2 « Décision ») : les demandes à
+  // traiter sont lues dans la BASE, et l'approbation / le rejet s'enregistrent
+  // réellement (l'ancienne liste de démonstration ne decidait rien).
+  // L'administrateur applicatif dispose des mêmes droits côté serveur.
+  if (user?.role === "depositaire" || user?.role === "admin") {
+    return <DecisionRequests user={user} />
   }
 
   const scopedRequests =

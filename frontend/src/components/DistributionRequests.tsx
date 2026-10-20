@@ -4,7 +4,7 @@ import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
 import { ClipboardList, CheckCircle, Package, Calendar, PenTool, Check } from "lucide-react"
 import { toast } from "sonner"
-import { getSorties, signSortie, deletePendingSorties, clearAllSorties } from "../lib/store"
+import { getSorties, signSortie } from "../lib/store"
 import { SortieMateriel } from "../types/accounting"
 import { User } from "../App"
 
@@ -49,30 +49,6 @@ export function DistributionRequests() {
           <p className="text-muted-foreground">
             Circuit de validation à 3 signatures (Dépositaire, Magasinier, Logistique) avant la remise physique du matériel.
           </p>
-          <div className="mt-4 space-y-2">
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (window.confirm("Supprimer toutes les demandes en attente ?")) {
-                  deletePendingSorties();
-                }
-              }}
-              size="sm"
-            >
-              Supprimer toutes les demandes en attente
-            </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                if (window.confirm("Vider complètement la liste des ordres de sortie ? Cette action est irréversible.")) {
-                  clearAllSorties();
-                }
-              }}
-              size="sm"
-            >
-              Vider complètement la liste des sorties
-            </Button>
-          </div>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">

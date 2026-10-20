@@ -21,10 +21,11 @@ import {
   markAllNotificationsRead,
   markNotificationRead,
 } from "../lib/notifications";
-import { fetchEntrees } from "../lib/api";
+import { fetchEntrees, fetchOrdresValidesPourDepositaire } from "../lib/api";
 import {
   NotificationEtape,
   notificationsPourRole,
+  notificationsPourRoleSortie,
 } from "../lib/notificationEtapes";
 import { sortiesActionsStore } from "../lib/sortiesActionsStore";
 import type { AlerteSorties } from "../lib/sortieAlertes";
@@ -125,6 +126,8 @@ interface NotificationBellProps {
   version?: number;
   /** Ouvre l'écran Arrivée Matériel sur la pièce visée par une notification. */
   onOpenEntree?: (entreeId: string | number) => void;
+  /** Ouvre l'espace Distribution sur une notification de sortie (dépositaire). */
+  onOpenSortie?: () => void;
 }
 
 /**
@@ -136,6 +139,10 @@ interface NotificationBellProps {
  *      (dérivées du serveur via fetchEntrees, cf. notificationEtapes) ;
  *   2. les notifications d'information du module lib/notifications.
  *
+ * À quoi s'ajoute, pour le DÉPOSITAIRE, la notification dérivée du serveur
+ * « sortie acceptée par le chef logistique » (3ᵉ signature), visible tant que
+ * la remise n'est pas enregistrée.
+ *
  * Les actions en attente sont un indicateur d'ÉTAT, pas des messages : elles
  * ne se marquent pas « lues », elles se soldent en signant. Un clic ouvre
  * directement la pièce concernée.
@@ -144,12 +151,16 @@ export function NotificationBell({
   user,
   version = 0,
   onOpenEntree,
+  onOpenSortie,
 }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState<AppNotification[]>([]);
   const [etapes, setEtapes] = useState<NotificationEtape[]>([]);
   const [etapesSortie, setEtapesSortie] = useState<NotificationEtape[]>([]);
+  const [etapesValidation, setEtapesValidation] = useState<NotificationEtape[]>(
+    []
+  );
   const [chargementEtapes, setChargementEtapes] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -170,6 +181,7 @@ export function NotificationBell({
     if (!role || !ROLES_AVEC_ETAPES.includes(role)) {
       setEtapes([]);
       setEtapesSortie([]);
+      setEtapesValidation([]);
       return;
     }
     setChargementEtapes(true);
@@ -180,6 +192,17 @@ export function NotificationBell({
     // précédente plutôt que d'annoncer « aucune action en attente », qui
     // serait un faux rassurant.
     if (entrees) setEtapes(notificationsPourRole(role, entrees));
+
+    // Dépositaire : les ordres ACCEPTÉS par le chef logistique (3ᵉ signature)
+    // servis en direct par le serveur — même garde sur le null.
+    if (role === "depositaire") {
+      const ordres = await fetchOrdresValidesPourDepositaire();
+      if (ordres) {
+        setEtapesValidation(notificationsPourRoleSortie(role, ordres));
+      }
+    } else {
+      setEtapesValidation([]);
+    }
 
     setChargementEtapes(false);
   }, [role]);
@@ -260,8 +283,16 @@ export function NotificationBell({
     if (onOpenEntree) onOpenEntree(etape.entreeId);
   };
 
+  /** Notification « sortie acceptée » du dépositaire : ouvre l'espace
+   *  Distribution (jamais l'écran Arrivée Matériel, qui attend une entrée). */
+  const handleOpenValidation = () => {
+    setOpen(false);
+    if (onOpenSortie) onOpenSortie();
+  };
+
   const nbNonLues = unread.length;
-  const total = nbNonLues + etapes.length + etapesSortie.length;
+  const total =
+    nbNonLues + etapes.length + etapesSortie.length + etapesValidation.length;
   const roleLabel = role ? ROLES_CONFIG[role].label : "";
 
   return (
@@ -362,6 +393,55 @@ export function NotificationBell({
                       onClick={() => handleOpenEtape(n)}
                       disabled={!ouvrable}
                       title={ouvrable ? "Ouvrir cette pièce" : undefined}
+                      className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
+                        ouvrable ? "hover:bg-muted/40 cursor-pointer" : ""
+                      }`}
+                    >
+                      <span
+                        className={`mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-lg ${etapeIconColor(
+                          n.type
+                        )}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="flex-1 min-w-0">
+                        <span className="block text-sm font-medium leading-snug text-card-foreground">
+                          {n.title}
+                        </span>
+                        <span className="block text-xs text-muted-foreground mt-0.5">
+                          {n.body}
+                        </span>
+                        <span className="block text-[10px] text-muted-foreground mt-1">
+                          {new Date(n.date).toLocaleString("fr-FR")}
+                        </span>
+                      </span>
+                      {ouvrable && (
+                        <ChevronRight className="mt-1.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
+                      )}
+                    </button>
+                  );
+                })}
+                <div className="h-px bg-border" />
+              </>
+            )}
+
+            {/* ── 1.ter) Dépositaire : sorties ACCEPTÉES par le chef logistique
+                 (3ᵉ signature) — notification dérivée du serveur, visible tant
+                 que la remise n'est pas enregistrée. ── */}
+            {role === "depositaire" && etapesValidation.length > 0 && (
+              <>
+                <p className="px-4 pt-3 pb-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  En attente — {roleLabel}
+                </p>
+                {etapesValidation.map((n) => {
+                  const Icon = etapeIcon(n.type);
+                  const ouvrable = !!onOpenSortie;
+                  return (
+                    <button
+                      key={n.id}
+                      onClick={() => handleOpenValidation()}
+                      disabled={!ouvrable}
+                      title={ouvrable ? "Ouvrir l'espace Distribution" : undefined}
                       className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
                         ouvrable ? "hover:bg-muted/40 cursor-pointer" : ""
                       }`}

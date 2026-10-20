@@ -337,7 +337,8 @@ export function Journal() {
 
       setEntreesEnCour(entreesEnCoursCalculees);
 
-      // Construire le registre à partir des entrées validées + sorties effectuées.
+      // Construire le registre à partir des entrées validées + sorties
+      // comptabilisées (déclenchées par la 3ᵉ signature du chef logistique).
       const lignes = creerRegistreComptable(entreesResult, sortiesResult);
 
       if (!actif) return;
@@ -416,7 +417,9 @@ export function Journal() {
   const nombreEntrees =
     entrees?.filter((e) => e.statut === "Validée").length ?? 0;
   const nombreSorties =
-    sorties?.filter((s) => s.statut === "Sortie effectuée").length ?? 0;
+    sorties?.filter(
+      (s) => s.statut === "Validée" || s.statut === "Sortie effectuée"
+    ).length ?? 0;
 
   // ---------------------------------------------------------------------------
   // Export : désactivé, message "bientôt disponible"
@@ -520,7 +523,9 @@ export function Journal() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl">{nombreSorties}</div>
-              <p className="text-xs text-muted-foreground">Sorties effectuées</p>
+              <p className="text-xs text-muted-foreground">
+                Validées par le chef logistique
+              </p>
             </CardContent>
           </Card>
 
@@ -729,8 +734,9 @@ export function Journal() {
                 Registre officiel
               </CardTitle>
               <CardDescription>
-                Écritures validées et sorties effectuées, triées par date de
-                validation (la plus récente en premier).
+                Écritures validées et sorties comptabilisées (3ᵉ signature du
+                chef logistique), triées par date de validation (la plus
+                récente en premier).
               </CardDescription>
             </CardHeader>
             <CardContent>

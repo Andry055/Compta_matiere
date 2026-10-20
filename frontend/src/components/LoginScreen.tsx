@@ -68,7 +68,9 @@ const mockUserDatabase: Array<UserType & { password: string }> = [
     email: "tolotra.randria@mtefop.gov.mg",
     password: "demandeur123",
     role: "demandeur",
-    department: "DRH - Service du Personnel",
+    // Libellé aligné sur l'organigramme réel : c'est lui qui détermine la
+    // direction et le service portés par les demandes du compte.
+    department: "DRH - Service Gestion Personnel",
     permissions: ["equipment.view"],
     demandeurLevel: "service",
   },
@@ -78,7 +80,10 @@ const mockUserDatabase: Array<UserType & { password: string }> = [
     email: "jean.rakoto@mtefop.gov.mg",
     password: "direction123",
     role: "demandeur",
-    department: "Direction du Travail (DT)",
+    // Le libellé doit correspondre à l'organigramme RÉEL (c'est lui qui
+    // détermine la direction de la demande côté serveur) : une direction
+    // existante, pas un libellé fantaisiste.
+    department: "Direction Logistique",
     permissions: ["equipment.view"],
     demandeurLevel: "direction",
   },

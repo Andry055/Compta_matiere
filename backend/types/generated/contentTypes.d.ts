@@ -568,6 +568,7 @@ export interface ApiDemandeDemande extends Struct.CollectionTypeSchema {
     >;
     fonction: Schema.Attribute.String;
     groupe: Schema.Attribute.String;
+    lignes: Schema.Attribute.Component<'demande.ligne', true>;
     locale: Schema.Attribute.String & Schema.Attribute.Private;
     localizations: Schema.Attribute.Relation<
       'oneToMany',
@@ -575,6 +576,7 @@ export interface ApiDemandeDemande extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     motif: Schema.Attribute.Text;
+    motif_rejet: Schema.Attribute.Text;
     mouvements: Schema.Attribute.Relation<
       'oneToMany',
       'api::mouvement.mouvement'

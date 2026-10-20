@@ -2,71 +2,120 @@
 
 /**
  * Lot 1 Test 3: Creation validation refusals
- * Création refusée (400) : sans justificatif, sans destination, quantité > stock, deux lignes du même matériel, demande non approuvée, fiche sans valeur unitaire.
+ * Création refusée (400) : sans justificatif, sans destination, quantité > stock,
+ * deux lignes du même matériel, demande non approuvée, fiche sans valeur unitaire.
+ *
+ * Ces contrôles sont EXERCÉS RÉELLEMENT sur `preparerSortie()`
+ * (`src/utils/creationSortie.js`) : la logique de création est aujourd'hui
+ * partagée par les deux portes (formulaire classique et création depuis une
+ * demande approuvée), et elle est testée par son EFFET (le refus), plus par
+ * la présence d'une chaîne dans une source.
  */
 
 const { test } = require('node:test');
 const assert = require('node:assert');
-const fs = require('node:fs');
-const path = require('node:path');
+const { preparerSortie } = require('../src/utils/creationSortie');
+const { creerAppFaux, ficheStock } = require('./aide-creation-sortie');
 
-const racine = path.join(__dirname, '..');
-const SORTIE_CONTROLEUR = path.join(racine, 'src', 'api', 'sortie', 'controllers', 'sortie.js');
+/** Corps de creation valide, à modifier par chaque test. */
+function corpsValide(overrides = {}) {
+  return {
+    date_sortie: '2026-10-20',
+    justificatif: 'DEM-2026-001',
+    direction_id: 'dir-1',
+    lignes: [{ materiel_id: 'mat-1', quantite: 2 }],
+    ...overrides,
+  };
+}
+
+/** Appelle `preparerSortie` et renvoie l'erreur métier levée. */
+async function refusAttendu(app, body) {
+  try {
+    await preparerSortie(app, body);
+  } catch (e) {
+    return e;
+  }
+  throw new Error('preparerSortie aurait dû refuser cette création');
+}
 
 test('Lot 1.3 - Creation validation: justificatif obligatoire', async () => {
-  const controleurSource = fs.readFileSync(SORTIE_CONTROLEUR, 'utf8');
+  const app = creerAppFaux({ materiaux: [ficheStock('mat-1', 'Écran', 10, 100)] });
+  const erreur = await refusAttendu(app, corpsValide({ justificatif: '   ' }));
 
-  // Check that justificatif validation exists
-  assert.match(controleurSource, /Justificatif obligatoire/);
-  // Check that the validation condition exists
-  assert.match(controleurSource, /if \(!justificatif \|\| justificatif\.trim\(\) === ''\)/);
-  // Check that the badRequest call exists (simplified)
-  assert.match(controleurSource, /badRequest/);
+  assert.strictEqual(erreur.status, 400);
+  assert.match(erreur.message, /Justificatif obligatoire/);
 });
 
 test('Lot 1.3 - Creation validation: destination obligatoire', async () => {
-  const controleurSource = fs.readFileSync(SORTIE_CONTROLEUR, 'utf8');
+  const app = creerAppFaux({ materiaux: [ficheStock('mat-1', 'Écran', 10, 100)] });
+  const erreur = await refusAttendu(
+    app,
+    corpsValide({ direction_id: null, service_id: null })
+  );
 
-  // Check that destination validation exists
-  assert.match(controleurSource, /Une destination est obligatoire/);
-  // Check that the validation condition exists
-  assert.match(controleurSource, /if \(!directionId \&\& !serviceId \&\& \(!beneficiaire \|\| beneficiaire\.trim\(\) === ''\)\)/);
-  // Check that the badRequest call exists (simplified)
-  assert.match(controleurSource, /badRequest/);
+  assert.strictEqual(erreur.status, 400);
+  assert.match(erreur.message, /Une destination est obligatoire/);
 });
 
 test('Lot 1.3 - Creation validation: quantité <= stock', async () => {
-  const controleurSource = fs.readFileSync(SORTIE_CONTROLEUR, 'utf8');
+  const app = creerAppFaux({ materiaux: [ficheStock('mat-1', 'Écran', 1, 100)] });
+  const erreur = await refusAttendu(
+    app,
+    corpsValide({ lignes: [{ materiel_id: 'mat-1', quantite: 5 }] })
+  );
 
-  // Check that stock validation exists
-  assert.match(controleurSource, /Stock insuffisant pour/);
-  assert.match(controleurSource, /quantiteDemandee > quantiteStock/);
+  assert.strictEqual(erreur.status, 400);
+  assert.match(erreur.message, /Stock insuffisant pour/);
+  assert.match(erreur.message, /quantité demandée 5/);
 });
 
 test('Lot 1.3 - Creation validation: pas de doublon de matériel', async () => {
-  const controleurSource = fs.readFileSync(SORTIE_CONTROLEUR, 'utf8');
+  const app = creerAppFaux({ materiaux: [ficheStock('mat-1', 'Écran', 10, 100)] });
+  const erreur = await refusAttendu(
+    app,
+    corpsValide({
+      lignes: [
+        { materiel_id: 'mat-1', quantite: 1 },
+        { materiel_id: 'mat-1', quantite: 2 },
+      ],
+    })
+  );
 
-  // Check that duplicate material validation exists
-  assert.match(controleurSource, /Doublon de matériel/);
-  assert.match(controleurSource, /lignesVues\.has\(materielId\)/);
+  assert.strictEqual(erreur.status, 400);
+  assert.match(erreur.message, /Doublon de matériel/);
 });
 
 test('Lot 1.3 - Creation validation: demande approuvee ou préparation', async () => {
-  const controleurSource = fs.readFileSync(SORTIE_CONTROLEUR, 'utf8');
+  const app = creerAppFaux({
+    materiaux: [ficheStock('mat-1', 'Écran', 10, 100)],
+    demandes: [{ documentId: 'dem-1', reference: 'DEM-2026-001', statut: 'en_attente' }],
+  });
+  const erreur = await refusAttendu(
+    app,
+    corpsValide({ demande_id: 'dem-1' })
+  );
 
-  // Check that demande validation exists
-  assert.match(controleurSource, /La demande doit avoir un statut « approuvee » ou « préparation »/);
-  // Check that the validation condition exists
-  assert.match(controleurSource, /if \(!\[\'approuvee\', \'preparation\'\].includes\(demande\.statut\)\)/);
-  // Check that the badRequest call exists (simplified)
-  assert.match(controleurSource, /badRequest/);
+  assert.strictEqual(erreur.status, 400);
+  assert.match(erreur.message, /La demande doit avoir un statut/);
 });
 
 test('Lot 1.3 - Creation validation: fiche sans valeur unitaire', async () => {
-  const controleurSource = fs.readFileSync(SORTIE_CONTROLEUR, 'utf8');
+  const app = creerAppFaux({
+    materiaux: [ficheStock('mat-1', 'Écran', 10, 0)],
+  });
+  const erreur = await refusAttendu(app, corpsValide());
 
-  // Check that valeur unitaire validation exists in ligne creation
-  assert.match(controleurSource, /Valeur unitaire manquante sur la fiche de/);
-  // Check that the validation condition exists
-  assert.match(controleurSource, /!valeurUnitaire \|\| valeurUnitaire <= 0/);
+  assert.strictEqual(erreur.status, 400);
+  assert.match(erreur.message, /Valeur unitaire manquante sur la fiche de/);
+});
+
+test('Lot 1.3 - Creation validation: quantité invalide refusée', async () => {
+  const app = creerAppFaux({ materiaux: [ficheStock('mat-1', 'Écran', 10, 100)] });
+  const erreur = await refusAttendu(
+    app,
+    corpsValide({ lignes: [{ materiel_id: 'mat-1', quantite: 0 }] })
+  );
+
+  assert.strictEqual(erreur.status, 400);
+  assert.match(erreur.message, /Quantité invalide/);
 });

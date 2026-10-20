@@ -122,11 +122,32 @@ export function compterNotifications(role: AppRole, entrees: EntreeRecord[]): nu
 /** Calcule les actions en attente du circuit de SORTIE pour le rôle donné,
  *  à partir des sorties serveur. Pur et déterministe : une seule entrée par
  *  ordre réellement préparable (fonction pure partagée avec la liste
- *  « À préparer » et avec le store live). */
+ *  « À préparer » et avec le store live).
+ *
+ *  Rôles couverts :
+ *   - magasinier  : ordres à préparer (signature 1 manquante) ;
+ *   - dépositaire : ordres ACCEPTÉS par le chef logistique (3ᵉ signature,
+ *     statut « Validée ») et pas encore remis — c'est la notification « le
+ *     chef log a accepté la sortie ». Elle disparaît à la remise
+ *     (« Sortie effectuée »), comme toute action déjà soldée. */
 export function notificationsPourRoleSortie(
   role: AppRole,
   sorties: SortieRecord[]
 ): NotificationEtape[] {
+  if (role === "depositaire") {
+    return sorties
+      .filter((s) => s.statut === "Validée")
+      .map((sortie) => ({
+        id: `sortie-acc-${sortie.id}`,
+        entreeId: sortie.id,
+        reference: sortie.reference,
+        title: "Sortie acceptée par le chef logistique",
+        body: `La sortie ${sortie.reference} a été acceptée par le chef logistique (3/3) : elle est inscrite au journal comptable, le stock est débité — la remise au détenteur peut être enregistrée.`,
+        date: sortie.dateSignatureLogistique || sortie.dateSortie,
+        type: "sortie",
+      }));
+  }
+
   if (role !== "magasinier") return [];
 
   return sorties.filter(estAPreparerPourMagasinier).map((sortie) => ({

@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, fetchSorties } from "./api";
+import { api, fetchOrdresValidesPourDepositaire, fetchSorties } from "./api";
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -82,5 +82,64 @@ describe("fetchSorties — mapSortie (données réelles Strapi → SortieRecord)
     expect(rows![0].magasinier_signed).toBe(false);
     expect(rows![0].depositaire_signed).toBe(false);
     expect(rows![0].logistique_signed).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Flux DÉPOSITAIRE : la cloche doit savoir reconnaître une sortie acceptée
+// par le chef logistique (3ᵉ signature) — c'est cette lecture qui déclenche
+// la notification « le chef log a accepté la sortie ».
+// ---------------------------------------------------------------------------
+
+describe("fetchOrdresValidesPourDepositaire — lecture du déclenchement", () => {
+  const CHARGE_VALIDEE = {
+    data: {
+      data: [
+        {
+          id: 7,
+          documentId: "sortie-doc-7",
+          reference: "SOR-2026-007",
+          date_sortie: "2026-10-14",
+          statut: "validee",
+          magasinier_signed: true,
+          depositaire_signed: true,
+          logistique_signed: true,
+          date_signature_logistique: "2026-10-15T09:30:00.000Z",
+        },
+      ],
+      meta: { pagination: { page: 1, pageCount: 1 } },
+    },
+  };
+
+  it("filtre côté SERVEUR sur la validation (statut + signature 3)", async () => {
+    const get = vi.spyOn(api, "get").mockResolvedValue(CHARGE_VALIDEE as never);
+
+    await fetchOrdresValidesPourDepositaire();
+
+    const params = get.mock.calls[0][1]?.params as Record<string, unknown>;
+    // ⚠️ Énum SERVEUR (`validee`), jamais le libellé affiché « Validée ».
+    expect(params["filters[statut][$eq]"]).toBe("validee");
+    expect(params["filters[logistique_signed][$eq]"]).toBe(true);
+  });
+
+  it("mappe l'ordre accepté (statut affiché + horodatage de la 3ᵉ signature)", async () => {
+    vi.spyOn(api, "get").mockResolvedValue(CHARGE_VALIDEE as never);
+
+    const rows = await fetchOrdresValidesPourDepositaire();
+    expect(rows, "ne doit pas renvoyer null ici").not.toBeNull();
+
+    const ordre = rows![0];
+    expect(ordre.reference).toBe("SOR-2026-007");
+    // La cloche teste le libellé affiché « Validée » : sans ce mappage,
+    // aucune notification ne s'afficherait jamais.
+    expect(ordre.statut).toBe("Validée");
+    expect(ordre.logistique_signed).toBe(true);
+    expect(ordre.dateSignatureLogistique).toBe("2026-10-15T09:30:00.000Z");
+  });
+
+  it("retourne null (et jamais un faux succès) si le serveur est injoignable", async () => {
+    vi.spyOn(api, "get").mockRejectedValue(new Error("réseau"));
+
+    expect(await fetchOrdresValidesPourDepositaire()).toBeNull();
   });
 });

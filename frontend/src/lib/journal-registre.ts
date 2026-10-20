@@ -276,20 +276,41 @@ export function entreeVersLignesJournal(
   return lignes;
 }
 
-/** Transforme une sortie effectuée en ligne de journal.
- *  Le montant est calculé comme quantité × valeur unitaire (si disponible). */
+/** Date de validation d'une sortie pour le registre : c'est la 3ᵉ signature
+ *  (chef logistique, horodatage ISO posé par le serveur) qui déclenche
+ *  l'écriture au journal et le débit du stock — jamais la date de remise. */
+function dateValidationSortie(sortie: SortieRecord): string {
+  return (
+    sortie.dateSignatureLogistique || sortie.dateRemise || sortie.dateSortie
+  );
+}
+
+/** Valorisation d'une sortie : somme des lignes peuplées (montant serveur,
+ *  sinon quantité × valeur unitaire). 0 quand les lignes ne sont pas
+ *  chargées — le journal n'invente jamais de montant. */
+function montantSortie(sortie: SortieRecord): number {
+  return (sortie.lignes || []).reduce((total, ligne) => {
+    const montantLigne =
+      ligne.montant != null && ligne.montant !== 0
+        ? Number(ligne.montant) || 0
+        : (Number(ligne.quantite) || 0) * (Number(ligne.valeurUnitaire) || 0);
+    return total + montantLigne;
+  }, 0);
+}
+
+/** Transforme une sortie comptabilisée en ligne de journal.
+ *  Déclenchée dès la validation du chef logistique (3ᵉ signature). */
 export function sortieVersLigneJournal(
   sortie: SortieRecord
 ): JournalLigne {
   const quantite = sortie.quantite || 0;
-  const valeurUnitaire = 0; // Les sorties n'ont pas de prix unitaire dans le modèle actuel
-  const montant = quantite * valeurUnitaire;
+  const montant = montantSortie(sortie);
 
   return {
     id: sortie.id,
     numeroOrdre: "", // sera complété par assignerNumerosOrdre
     reference: sortie.reference || `SORT-${sortie.id}`,
-    dateValidation: sortie.dateSortie,
+    dateValidation: dateValidationSortie(sortie),
     fournisseur: sortie.demandeur || sortie.beneficiaire || "—",
     pieceJustificative: sortie.justificatif && sortie.justificatif !== "—"
       ? sortie.justificatif
@@ -297,7 +318,7 @@ export function sortieVersLigneJournal(
     quantite,
     designation: sortie.materiel || "—",
     numeroNomenclature: "",
-    prixUnitaire: valeurUnitaire,
+    prixUnitaire: 0,
     montant,
     espece: sortie.categorie || "—",
     sens: "Sortie",
@@ -316,7 +337,9 @@ export function sortieVersLigneJournal(
  *
  *  Règle : seules les entrées au statut "Validée" (3 signatures) sont incluses.
  *  Les entrées en cours (en_attente, verifiee) ne sont pas incluses.
- *  Les sorties au statut "Sortie effectuée" sont incluses si disponibles.
+ *  Les sorties sont comptabilisées dès la validation du chef logistique
+ *  (3ᵉ signature → statut "Validée"), et restent au registre après la remise
+ *  ("Sortie effectuée").
  *
  *  Le tri est effectué par date de validation (plus récent d'abord) puis par
  *  référence en cas d'égalité.
@@ -360,15 +383,18 @@ export function transformerEntreesEnLignesJournal(
   });
 }
 
-/** Transforme les sorties effectuées en lignes de journal.
- *  Les sorties sont ajoutées après les entrées, triées par date de sortie
+/** Transforme les sorties comptabilisées en lignes de journal.
+ *  DÉCLENCHEMENT : la 3ᵉ signature du chef logistique (statut "Validée",
+ *  stock déjà débité) suffit à inscrire la sortie au journal — la remise
+ *  ("Sortie effectuée") la maintient au registre sans la dupliquer.
+ *  Les sorties sont ajoutées après les entrées, triées par date de validation
  *  (plus récente d'abord). */
 export function transformerSortiesEnLignesJournal(
   sorties: SortieRecord[]
 ): JournalLigne[] {
-  // 1. Filtrer les sorties effectuées seulement
+  // 1. Filtrer : validées par le chef logistique OU déjà remises.
   const sortiesEffectuees = sorties.filter(
-    (s) => s.statut === "Sortie effectuée"
+    (s) => s.statut === "Validée" || s.statut === "Sortie effectuée"
   );
 
   // 2. Pour chaque sortie, créer une ligne de journal
@@ -447,7 +473,7 @@ export function creerRegistreComptable(
 
 /** Calcule les statistiques du registre à partir des lignes de journal.
  *  Ces statistiques ne prennent en compte que les écritures validées
- *  (entrées validées + sorties effectuées). */
+ *  (entrées validées + sorties validées par le chef logistique). */
 export function statistiquesRegistre(lignes: JournalLigne[]): {
   totalEntrees: number;
   totalSorties: number;

@@ -220,6 +220,25 @@ const DEMAND_ACTIONS = [
 ];
 
 // ---------------------------------------------------------------------------
+// Étape 2 « Décision » : le Dépositaire comptable approuve (quantités
+// ajustables) ou rejette (motif obligatoire) une demande.
+//
+// Ces permissions ouvrent les ROUTES ; le contrôle métier (rôle exact,
+// statut « en_attente », stock re-vérifié, motif non vide) est appliqué dans
+// le contrôleur. Elles ne sont accordées qu'au rôle « depositaire » (et à
+// l'administrateur applicatif) : le Demandeur, le magasinier, le logistique
+// et le comptable n'ont AUCUN droit de décision.
+// ---------------------------------------------------------------------------
+const DEMANDE_DECISION_ACTIONS = [
+  'api::demande.demande.approuver',
+  'api::demande.demande.rejeter',
+  // Étape 3 « Ordre de sortie » : création de l'ordre depuis la demande
+  // approuvée (préremplissage + unicité contrôlés par le serveur).
+  'api::demande.demande.creerOrdre',
+];
+const ROLES_DECISION = ['depositaire'];
+
+// ---------------------------------------------------------------------------
 // Entrées : permissions des endpoints de la validation à 3 signatures.
 // La signature proprement dite est de toute façon contrôlée par rôle dans le
 // contrôleur (un Demandeur ne peut jamais signer) ; ici on accorde seulement
@@ -479,7 +498,12 @@ const DEMO_DEMANDEUR = {
   provider: 'local',
   confirmed: true,
   blocked: false,
-  department: 'DRH - Service du Personnel',
+  // Le libellé doit correspondre à l'organigramme RÉEL : c'est lui qui
+  // détermine la direction ET le service portés par les demandes du compte
+  // (« DRH » / « Service Gestion Personnel »). Un libellé approchant
+  // (« Service du Personnel ») ne résolvait vers aucun service : la demande
+  // était enregistrée sans service.
+  department: 'DRH - Service Gestion Personnel',
   fonction: 'Chargé du personnel',
 };
 
@@ -511,6 +535,43 @@ const DEMO_SIGNATAIRES = [
   },
 ];
 
+// Comptes de démonstration que l'INTERFACE propose et qui doivent exister
+// côté Strapi : sans eux, `POST /api/auth/local` échoue, AUCUN jeton n'est
+// délivré et toutes les lectures de l'application se font en ANONYME (le
+// stock, les entrées, les sorties…). Le rôle `admin` est créé au boot
+// (voir ensureAuthSetup) ; il ne figure pas dans APP_ROLES, qui ne liste que
+// les rôles MÉTIER.
+const DEMO_COMPLEMENTS = [
+  {
+    username: 'Marie RAKOTO',
+    email: 'm.rakoto@ministere.gov.mg',
+    password: 'admin123',
+    department: 'Administration Centrale',
+    fonction: 'Responsable Comptabilité Matière (Admin)',
+    roleType: 'admin',
+  },
+  {
+    username: 'Ravaomanana Nirina',
+    email: 'nirina.ravao@mtefop.gov.mg',
+    password: 'comptable123',
+    department: 'DAF - Service Budget',
+    fonction: 'Chef Comptable',
+    roleType: 'comptable',
+  },
+  {
+    // Demandeur de niveau DIRECTION : son compte doit pointer vers une
+    // DIRECTION de l'organigramme (le service est à null). Le service racine
+    // n'existe pas dans l'organigramme réel : on retient la Direction
+    // Logistique, seule direction porteuse du service « Comptabilité Matière ».
+    username: 'Rakotoson Jean',
+    email: 'jean.rakoto@mtefop.gov.mg',
+    password: 'direction123',
+    department: 'Direction Logistique',
+    fonction: 'Directeur (demande au niveau direction)',
+    roleType: 'demandeur',
+  },
+];
+
 async function ensureAuthSetup(strapi) {
   const roleQuery = strapi.db.query('plugin::users-permissions.role');
   const permQuery = strapi.db.query('plugin::users-permissions.permission');
@@ -527,6 +588,32 @@ async function ensureAuthSetup(strapi) {
     roles[def.type] = role;
   }
   const authenticated = await roleQuery.findOne({ where: { type: 'authenticated' } });
+
+  // 1bis) Rôle « admin » APPLICATIF (Administration Centrale).
+  //
+  // L'interface propose un compte « Administration Centrale » (profil admin)
+  // qui n'appartenait à AUCUN rôle Strapi : la connexion échouait, AUCUN
+  // jeton n'était délivré, et la lecture du stock se faisait donc en ANONYME
+  // (sans garantie d'origine). On lui crée un rôle Strapi dédié — et non le
+  // rôle `authenticated`, que l'interface ne reconnaît pas comme rôle métier
+  // connu (elle retomberait alors sur son compte de démonstration local) —
+  // avec le même périmètre que `authenticated`.
+  let roleAdmin = await roleQuery.findOne({ where: { type: 'admin' } });
+  if (!roleAdmin) {
+    roleAdmin = await roleQuery.create({
+      data: {
+        type: 'admin',
+        name: 'Administrateur',
+        description:
+          "Administration centrale : accès complet aux écrans de l'application.",
+      },
+    });
+    strapi.log.info('[auth] Rôle « admin » créé.');
+  }
+  roles.admin = roleAdmin;
+  // Rôles « administrateur » : le rôle `authenticated` de Strapi et le rôle
+  // `admin` applicatif partagent le même périmètre.
+  const rolesAdministrateur = [roles.admin, authenticated].filter(Boolean);
 
   // 2) Permissions Content API (une ligne = une permission accordée)
   const targetRoles = [
@@ -548,7 +635,28 @@ async function ensureAuthSetup(strapi) {
     }
   }
 
-  // 2bis) Permissions « Entrées » : routes custom + lecture des données
+  // 2bis) Permissions « Décision de demande » (étape 2) : routes custom
+  // d'approbation et de rejet, accordées au seul rôle « depositaire ».
+  for (const type of ROLES_DECISION) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of DEMANDE_DECISION_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+  for (const role of rolesAdministrateur) {
+    for (const action of DEMANDE_DECISION_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2ter) Permissions « Entrées » : routes custom + lecture des données
   // de référence, accordées uniquement aux rôles signataires.
   for (const type of ROLES_SIGNATAIRES) {
     const role = roles[type];
@@ -613,11 +721,11 @@ async function ensureAuthSetup(strapi) {
       accordees.add(cle);
     }
   }
-  if (authenticated) {
+  for (const role of rolesAdministrateur) {
     for (const action of UPLOAD_ACTIONS) {
-      const cle = `authenticated:${action}`;
+      const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
-      await permQuery.create({ data: { action, role: authenticated.id } });
+      await permQuery.create({ data: { action, role: role.id } });
       accordees.add(cle);
     }
   }
@@ -636,6 +744,17 @@ async function ensureAuthSetup(strapi) {
     await permQuery.create({ data: { action, role: role.id } });
     accordees.add(cle);
   }
+  // L'admin APPLICATIF (hors APP_ROLES) lit aussi les fichiers téléversés :
+  // sans cela, le sanitizer Content-API retire le champ media `photos` des
+  // fiches matériel et l'écran Équipements les affiche sans vignette.
+  if (roles.admin) {
+    const action = 'plugin::upload.content-api.find';
+    const cle = `admin:${action}`;
+    if (!accordees.has(cle)) {
+      await permQuery.create({ data: { action, role: roles.admin.id } });
+      accordees.add(cle);
+    }
+  }
 
   // 2sexies) Permissions « Reddition de compte » : rapports (lecture) et
   // ouverture d'exercice (CRUD du stock initial), accordées aux rôles
@@ -650,22 +769,22 @@ async function ensureAuthSetup(strapi) {
       accordees.add(cle);
     }
   }
-  if (authenticated) {
+  for (const role of rolesAdministrateur) {
     for (const action of [...RAPPORT_ACTIONS, ...OUVERTURE_ACTIONS]) {
-      const cle = `authenticated:${action}`;
+      const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
-      await permQuery.create({ data: { action, role: authenticated.id } });
+      await permQuery.create({ data: { action, role: role.id } });
       accordees.add(cle);
     }
   }
 
   // L'admin (rôle authenticated créé par Strapi) garde un accès complet via
   // l'interface d'administration ; on lui accorde aussi les routes custom.
-  if (authenticated) {
+  for (const role of rolesAdministrateur) {
     for (const action of [...ENTREE_SIGN_ACTIONS, ...AFFECTATION_ACTIONS]) {
-      const cle = `authenticated:${action}`;
+      const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
-      await permQuery.create({ data: { action, role: authenticated.id } });
+      await permQuery.create({ data: { action, role: role.id } });
       accordees.add(cle);
     }
   }
@@ -681,6 +800,26 @@ async function ensureAuthSetup(strapi) {
       const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2septies ter) LECTURE DES SORTIES pour l'admin APPLICATIF.
+  //
+  // Le rôle `admin` (« Administration Centrale ») lisait déjà les ENTRÉES
+  // (bloc précédent) mais pas les SORTIES : `GET /api/sorties` lui renvoyait
+  // 403 et l'écran Distribution / la cloche des ordres restaient vides pour ce
+  // profil. Seules des permissions de LECTURE sont accordées — aucune
+  // écriture, aucune signature.
+  //
+  // Le rôle `authenticated` de Strapi n'est volontairement PAS concerné : il
+  // regrouperait TOUT utilisateur connecté, y compris un profil qui ne doit
+  // pas voir les sorties d'autrui.
+  if (roles.admin) {
+    for (const action of SORTIE_READ_ACTIONS) {
+      const cle = `admin:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roles.admin.id } });
       accordees.add(cle);
     }
   }
@@ -713,11 +852,34 @@ async function ensureAuthSetup(strapi) {
       accordees.add(cle);
     }
   }
-  if (authenticated) {
+  for (const role of rolesAdministrateur) {
     for (const action of ORGANIGRAMME_READ_ACTIONS) {
-      const cle = `authenticated:${action}`;
+      const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
-      await permQuery.create({ data: { action, role: authenticated.id } });
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2septies ter) LECTURE PUBLIQUE DU STOCK (uniquement `material.find` /
+  // `material.findOne`) : le stock est un catalogue de référence (désignation,
+  // quantité, catégorie, statut) que l'écran « Demande » doit pouvoir
+  // proposer à un profil connecté en mode démonstration — c'est-à-dire SANS
+  // jeton Strapi. Sans cette lecture, le demandeur ne peut pas choisir de
+  // matériel réel et l'écran annonce un stock vide alors qu'il en existe.
+  //
+  // AUCUNE permission d'écriture n'est accordée au rôle `public` : le stock
+  // reste modifiable uniquement par les rôles habilités (et le garde-fou
+  // `roleGuard` continue d'interdire l'écriture au demandeur).
+  const rolePublic = await roleQuery.findOne({ where: { type: 'public' } });
+  if (rolePublic) {
+    for (const action of [
+      'api::material.material.find',
+      'api::material.material.findOne',
+    ]) {
+      const cle = `public:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: rolePublic.id } });
       accordees.add(cle);
     }
   }
@@ -767,10 +929,13 @@ async function ensureAuthSetup(strapi) {
   }
 
   // 3) Comptes de démonstration (connexion JWT /api/auth/local) :
-  //    Demandeur + les 3 signataires de la validation à 3 signatures.
+  //    Demandeur + les 3 signataires de la validation à 3 signatures +
+  //    l'admin, le comptable et le demandeur de direction que l'interface
+  //    propose aussi (sans eux : aucun jeton, lectures en anonyme).
   const demoUsers = [
     { ...DEMO_DEMANDEUR, roleType: 'demandeur' },
     ...DEMO_SIGNATAIRES,
+    ...DEMO_COMPLEMENTS,
   ];
   for (const demo of demoUsers) {
     const existingUser = await userQuery.findOne({
@@ -782,7 +947,9 @@ async function ensureAuthSetup(strapi) {
       .plugin('users-permissions')
       .service('user')
       .add({ ...data, provider: 'local', confirmed: true, blocked: false, role: roles[roleType].id });
-    strapi.log.info(`[auth] Compte ${roleType} créé : ${demo.email} / ${demo.password}`);
+    // Le mot de passe n'est PAS journalisé (il est en clair dans le code
+    // source des comptes de démonstration) : seul le compte est tracé.
+    strapi.log.info(`[auth] Compte ${roleType} créé : ${demo.email}`);
   }
 }
 

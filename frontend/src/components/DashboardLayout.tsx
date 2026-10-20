@@ -233,10 +233,12 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
             </div>
 
             {/* Notifications : actions en attente du rôle + informations. Un clic sur une
-                notification de réception ouvre la pièce dans Arrivée Matériel. */}
+                notification de réception ouvre la pièce dans Arrivée Matériel ; une
+                notification de sortie acceptée (dépositaire) ouvre Distribution. */}
             <NotificationBell
               user={user}
               onOpenEntree={handleOuvrirNotification}
+              onOpenSortie={() => handleSectionChange("distribution")}
             />
 
             {/* Theme Toggle */}

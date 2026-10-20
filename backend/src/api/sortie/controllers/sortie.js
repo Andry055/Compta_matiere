@@ -34,10 +34,18 @@ const {
   filtreAppropriation,
   verifierAccesSortie,
 } = require('../../../utils/sortieAcces');
+// Création d'un ordre de sortie : logique PARTAGÉE avec la voie
+// « depuis une demande approuvée » (utils/creationSortie.js). Un seul chemin
+// de création : mêmes contrôles, même transaction, mêmes messages.
+const {
+  preparerSortie,
+  creerSortieEtLignes,
+  tracerMouvementSortie,
+  ErreurCreationSortie,
+} = require('../../../utils/creationSortie');
 
 const SORTIE_UID = 'api::sortie.sortie';
 const SORTIE_LIGNE_UID = 'api::sortie-ligne.sortie-ligne';
-const MATERIEL_UID = 'api::material.material';
 const MOUVEMENT_UID = 'api::mouvement.mouvement';
 
 /** Noms des tables SQL (collectionName des schémas) : utilisés par le SQL
@@ -167,19 +175,6 @@ async function loadSortie(strapi, documentId) {
   });
 }
 
-async function findMaterielByDesignation(strapi, designation) {
-  if (!designation) return null;
-  try {
-    const rows = await strapi.documents(MATERIEL_UID).findMany({
-      filters: { designation: { $eqi: designation } },
-      limit: 1,
-    });
-    return rows && rows.length > 0 ? rows[0] : null;
-  } catch (e) {
-    return null;
-  }
-}
-
 /** Nom de l'utilisateur (signataire / auteur d'un mouvement). */
 function nomUtilisateur(user) {
   return (
@@ -187,32 +182,6 @@ function nomUtilisateur(user) {
     (user && `Utilisateur #${user.id}`) ||
     ''
   );
-}
-
-/** Trace l'action dans la table `mouvements` (historique non modifiable).
- *  Un échec de traçage n'annule JAMAIS l'action métier déjà effectuée. */
-async function tracerMouvementSortie(app, sortie, action, statut, observations, utilisateur = '') {
-  try {
-    await app.documents(MOUVEMENT_UID).create({
-      data: {
-        reference: sortie.reference,
-        type: 'sortie',
-        date_mouvement: new Date().toISOString().slice(0, 10),
-        utilisateur,
-        action,
-        materiel: (sortie.lignes || [])
-          .map((l) => l.designation)
-          .filter(Boolean)
-          .join(', ') || '—',
-        quantite: (sortie.lignes || []).reduce((sum, l) => sum + (Number(l.quantite) || 0), 0),
-        statut,
-        sortie: sortie.documentId,
-        observations,
-      },
-    });
-  } catch (e) {
-    app.log.warn(`[sortie] Historique non tracé : ${e.message}`);
-  }
 }
 
 /**
@@ -570,236 +539,24 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
 
     const body = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
 
-    // --- Validation des champs obligatoires --------------------------------
-    if (!body.date_sortie) {
-      return badRequest(ctx, 'Date de sortie obligatoire.');
-    }
-    const lignes = Array.isArray(body.lignes) ? body.lignes : [];
-    if (lignes.length === 0) {
-      return badRequest(ctx, 'Au moins un matériel est requis.');
-    }
-    for (const ligne of lignes) {
-      const quantite = Number(ligne.quantite);
-      if (!Number.isFinite(quantite) || quantite <= 0 || !Number.isInteger(quantite)) {
-        return badRequest(ctx, 'Quantité invalide : elle doit être un entier supérieur à 0.');
-      }
-      if (typeof ligne.observations === 'string') {
-        ligne.observations = ligne.observations.trim() || null;
-      }
-    }
-
-    // --- Contrôles à la création (avant toute écriture) ---------------------
-    // 1. justificatif non vide
-    const justificatif = body.justificatif || '';
-    if (!justificatif || justificatif.trim() === '') {
-      return badRequest(ctx, 'Justificatif obligatoire.');
-    }
-
-    // 2. au moins une destination parmi direction, service, beneficiaire
-    const directionId = body.direction_id || body.direction || null;
-    const serviceId = body.service_id || body.service || null;
-    const beneficiaire = body.beneficiaire || '';
-    if (!directionId && !serviceId && (!beneficiaire || beneficiaire.trim() === '')) {
-      return badRequest(ctx, 'Une destination est obligatoire : direction, service ou bénéficiaire.');
-    }
-
-    // 3. quantité de chaque ligne ≤ quantite_stock actuel de la fiche
-    // 4. refus de deux lignes visant le même matériel
-    const lignesVues = new Set();
-    for (const ligne of lignes) {
-      // Vérification du matériel et de la quantité en stock.
-      // Le champ attendu est `materiel_id` (contrat serveur) ; `materielId`
-      // (anciens bundles / clients alternatifs) est accepté comme alias afin
-      // qu'un payload camelCase ne tombe jamais sur la résolution par texte.
-      const materielIdLigne = ligne.materiel_id || ligne.materielId || null;
-      let materiel = null;
-      if (materielIdLigne) {
-        try {
-          materiel = await app.documents(MATERIEL_UID).findOne({
-            documentId: materielIdLigne,
-          });
-        } catch (e) {
-          materiel = null;
-        }
-      } else if (ligne.designation && String(ligne.designation).trim()) {
-        materiel = await findMaterielByDesignation(app, ligne.designation);
-      }
-
-      if (!materiel) {
-        return badRequest(
-          ctx,
-          `Matériel introuvable pour la ligne « ${ligne.designation || materielIdLigne} ».`
-        );
-      }
-
-      const quantiteStock = Number(materiel.quantite_stock) || 0;
-      const quantiteDemandee = Number(ligne.quantite) || 0;
-      if (quantiteDemandee > quantiteStock) {
-        return badRequest(
-          ctx,
-          `Stock insuffisant pour « ${materiel.designation || materiel.documentId} » : quantité demandée ${quantiteDemandee}, quantité disponible ${quantiteStock}.`
-        );
-      }
-
-      // Vérification de doublon de matériel
-      const materielId = materiel.documentId;
-      if (lignesVues.has(materielId)) {
-        return badRequest(
-          ctx,
-          `Doublon de matériel : deux lignes ciblent le même matériel (« ${materiel.designation || materiel.documentId} »).`
-        );
-      }
-      lignesVues.add(materielId);
-    }
-
-    // 5. si demande est fournie : elle existe et son statut est approuvee ou préparation
-    const demandeId = body.demande_id || body.demande || null;
-    if (demandeId) {
-      try {
-        const demande = await app.documents('api::demande.demande').findOne({
-          documentId: demandeId,
-        });
-        if (!demande) {
-          return badRequest(ctx, 'Demande introuvable.');
-        }
-        if (!['approuvee', 'preparation'].includes(demande.statut)) {
-          return badRequest(ctx, `La demande doit avoir un statut « approuvee » ou « préparation » (actuel : ${demande.statut}).`);
-        }
-      } catch (e) {
-        return badRequest(ctx, 'Demande introuvable.');
-      }
-    }
-
-    // --- Résolution du matériel de chaque ligne (avant toute création) -----
-    // Toutes les lignes sont validées AVANT de créer quoi que ce soit :
-    // aucune sortie partielle.
-    const materielResolus = [];
-    for (const ligne of lignes) {
-      const materielIdLigne = ligne.materiel_id || ligne.materielId || null;
-      let materiel = null;
-      if (materielIdLigne) {
-        try {
-          materiel = await app.documents(MATERIEL_UID).findOne({
-            documentId: materielIdLigne,
-          });
-        } catch (e) {
-          materiel = null;
-        }
-        if (!materiel) {
-          return badRequest(
-            ctx,
-            `Matériel introuvable pour la ligne « ${ligne.designation || materielIdLigne} ».`
-          );
-        }
-      } else if (ligne.designation && String(ligne.designation).trim()) {
-        materiel = await findMaterielByDesignation(app, ligne.designation);
-      }
-      if (!materiel) {
-        return badRequest(
-          ctx,
-          'Matériel obligatoire : fournissez materiel_id ou designation pour chaque ligne.'
-        );
-      }
-
-      // Refuser la ligne si valeur_unitaire est absente ou ≤ 0 — contrôlé ICI,
-      // avant toute écriture. Le prix vient TOUJOURS de la fiche (jamais du
-      // client) : sans prix positif, aucun montant n'est calculable.
-      const valeurUnitaire = Number(materiel.valeur_unitaire) || 0;
-      if (!valeurUnitaire || valeurUnitaire <= 0) {
-        return badRequest(
-          ctx,
-          `Valeur unitaire manquante sur la fiche de ${materiel.designation || materiel.documentId}.`
-        );
-      }
-      materielResolus.push(materiel);
-    }
-
-    // --- Génération automatique de la référence SOR-AAAA-NNN ---------------
-    // Ignorer toujours body.reference : la référence est toujours générée par le serveur
-    let reference = '';
-    let referenceGeneree = false;
-    const annee = new Date(body.date_sortie).getFullYear();
-    const prefixe = `SOR-${annee}-`;
-
-    // Essayer jusqu'à 3 fois en cas de violation d'unicité (collision)
-    for (let tentative = 0; tentative < 3; tentative++) {
-      const existantes = await app.documents(SORTIE_UID).findMany({
-        filters: { reference: { $startsWith: prefixe } },
-        limit: -1,
-      });
-      const numeros = (existantes || [])
-        .map((row) => Number((row.reference || '').slice(prefixe.length)))
-        .filter((n) => Number.isFinite(n));
-      const suivant = (numeros.length ? Math.max(...numeros) : 0) + 1;
-      reference = `${prefixe}${String(suivant).padStart(3, '0')}`;
-
-      // Vérifier si cette référence est déjà utilisée (dans cette même transaction ou en base)
-      const existeDeja = existantes.some(row => row.reference === reference);
-      if (!existeDeja) {
-        referenceGeneree = true;
-        break;
-      }
-      // Si c'est la dernière tentative et qu'il y a toujours collision, on continue quand même
-      // (la contrainte d'unicité en base déclenchera une erreur qui sera gérée)
-    }
-
-    if (!referenceGeneree) {
-      // Après 3 tentatives, on garde la dernière référence générée
-      // L'unicité sera vérifiée par la contrainte en base
-    }
-
-    // --- Création de la sortie et des lignes dans une seule transaction -------
-    let sortie;
+    // --- Contrôles + résolution des lignes (LOGIQUE PARTAGÉE) ---------------
+    // Le même code sert la voie « formulaire de distribution » et la voie
+    // « depuis une demande approuvée » : un ordre ne peut jamais être
+    // fabriqué par un chemin plus permissif que l'autre.
+    let prepare;
     try {
-      await app.db.transaction(async ({ trx }) => {
-        // Création de la sortie
-        sortie = await app.documents(SORTIE_UID).create({
-          data: {
-            reference,
-            date_sortie: body.date_sortie,
-            statut: 'en_preparation',
-            direction: body.direction_id || body.direction || null,
-            service: body.service_id || body.service || null,
-            demande: body.demande_id || body.demande || null,
-            beneficiaire: body.beneficiaire || null,
-            responsable: body.responsable || null,
-            justificatif: body.justificatif || null,
-            observations: body.observations || null,
-          },
-        });
+      prepare = await preparerSortie(app, body);
+    } catch (e) {
+      if (e instanceof ErreurCreationSortie) {
+        return e.status === 409
+          ? forbid(ctx, e.message, 409)
+          : badRequest(ctx, e.message);
+      }
+      throw e;
+    }
 
-    // --- Création des lignes -------------------------------------------------
-    for (let i = 0; i < lignes.length; i += 1) {
-      const ligne = lignes[i];
-      const materiel = materielResolus[i];
-
-      // Ignorer valeur_unitaire envoyée par le client, prendre celle de la fiche matériel
-      // (déjà contrôlée positive avant la transaction : aucune écriture n'est
-      //  engagée tant qu'une fiche est incomplète).
-      const valeurUnitaire = Number(materiel.valeur_unitaire) || 0;
-
-      // Calculer le montant : quantité × valeur unitaire
-      const montant = Number(ligne.quantite) * valeurUnitaire;
-
-      await app.documents(SORTIE_LIGNE_UID).create({
-        data: {
-          sortie: sortie.documentId,
-          materiel: materiel.documentId,
-          designation: ligne.designation || null,
-          quantite: Number(ligne.quantite),
-          valeur_unitaire: valeurUnitaire,
-          montant: montant, // Champ ajouté, calculé par le serveur
-          observations: ligne.observations || null,
-        }
-      });
-      } // Fin de la boucle for
-    }); // Fin de la transaction
-  } catch (e) {
-    // Si une erreur se produit lors de la transaction (sortie ou lignes),
-    // tout est annulé et nous retournons une erreur 400
-    return badRequest(ctx, `Création impossible : ${e.message}`);
-  }
-
+    // --- Création (transaction unique) --------------------------------------
+    const sortie = await creerSortieEtLignes(app, prepare);
     const sortieComplete = await loadSortie(app, sortie.documentId);
     await tracerMouvementSortie(
       app,

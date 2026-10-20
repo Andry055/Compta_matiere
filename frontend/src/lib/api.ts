@@ -131,13 +131,44 @@ export function getStrapiAuthUser(): StrapiAuthUser | null {
   }
 }
 
-// Envoi automatique du jeton sur chaque requête Content API
+/**
+ * Session Strapi ABSENTE : la requête n'est pas envoyée.
+ *
+ * En mode DÉMONSTRATION local (LoginScreen, repli hors ligne) l'interface
+ * n'a AUCUN jeton : interroger la Content API renvoyait alors 403 sur
+ * `/api/sorties`, `/api/entrees` et `/api/entree-lignes` — un flot de 403
+ * dans la console qui fait croire à une panne du serveur alors qu'il
+ * répond parfaitement. La requête est désormais arrêtée ICI, avant le
+ * réseau : aucun 403 n'est produit, et l'appelant bascule sur ses données
+ * locales comme prévu.
+ *
+ * Seule la CONNEXION (`POST /api/auth/local`) est autorisée sans jeton.
+ */
+export class ErreurSessionAbsente extends Error {
+  readonly code = "session_absente";
+  constructor(message = "Session Strapi absente : requête non envoyée") {
+    super(message);
+    this.name = "ErreurSessionAbsente";
+  }
+}
+
+/** Requêtes autorisées SANS jeton (la connexion, forcément). */
+const REQUETES_SANS_JETON = ["/api/auth/local"];
+
+// Envoi automatique du jeton sur chaque requête Content API.
+// SANS jeton, la requête ne PART PAS (ErreurSessionAbsente) : pas de 403.
 api.interceptors.request.use((config) => {
   const jwt = getStrapiJwt();
   if (jwt) {
     config.headers.set("Authorization", `Bearer ${jwt}`);
+    return config;
   }
-  return config;
+  const url = config.url ?? "";
+  if (REQUETES_SANS_JETON.some((prefixe) => url.startsWith(prefixe))) {
+    return config;
+  }
+  throw new ErreurSessionAbsente();
+  // NEUTRALISATION TEMPORAIRE (preuve RED) : return config;
 });
 
 /**
@@ -537,6 +568,9 @@ export type EchecApi =
 
 /** Traduit une erreur axios en cause exploitable par l'appelant. */
 export function classerEchecApi(err: unknown): EchecApi {
+  // Requête arrêtée AVANT le réseau faute de jeton (intercepteur de
+  // requête) : c'est une session absente, pas une panne ni un refus d'accès.
+  if (err instanceof ErreurSessionAbsente) return "session_absente";
   if (axios.isAxiosError(err)) {
     if (err.response?.status === 401) return "session_expiree";
     if (err.response?.status === 403) return "acces_refuse";
@@ -1519,7 +1553,63 @@ export async function fetchOrdresAAutoriser(): Promise<SortieRecord[] | null> {
   } catch {
     return null;
   }
-}// ---------------------------------------------------------------------------
+}
+
+/**
+ * Liste LÉGÈRE des ordres ACCEPTÉS par le chef logistique (3ᵉ signature,
+ * statut serveur `validee`) et pas encore remis : c'est ce déclenchement qui
+ * alimente la notification du dépositaire (« le chef log a accepté la sortie »)
+ * et l'écriture au journal comptable. Filtre SERVEUR, aucun populate.
+ */
+export async function fetchOrdresValidesPourDepositaire(): Promise<
+  SortieRecord[] | null
+> {
+  const pageSize = 100;
+  let page = 1;
+  let pageCount = 1;
+  const ordres: SortieRecord[] = [];
+
+  try {
+    do {
+      const { data } = await api.get("/api/sorties", {
+        timeout: 5000,
+        params: {
+          // ⚠️ Valeur de l'ÉNUM SERVEUR (`validee`), jamais le libellé affiché.
+          "filters[statut][$eq]": "validee",
+          "filters[logistique_signed][$eq]": true,
+          "sort": "date_sortie:desc",
+          "pagination[page]": page,
+          "pagination[pageSize]": pageSize,
+          fields: [
+            "documentId",
+            "reference",
+            "date_sortie",
+            "statut",
+            "magasinier_signed",
+            "depositaire_signed",
+            "logistique_signed",
+            "date_signature_logistique",
+          ],
+        },
+      });
+
+      const rows: StrapiEntity[] = data?.data ?? [];
+      ordres.push(...rows.map(mapSortie));
+
+      const pagination = data?.meta?.pagination;
+      pageCount =
+        pagination && typeof pagination.pageCount === "number"
+          ? pagination.pageCount
+          : 1;
+      page++;
+    } while (page <= pageCount);
+
+    return ordres;
+  } catch {
+    return null;
+  }
+}
+// ---------------------------------------------------------------------------
 // Types exposés au frontend (structure attendue par les composants)
 // ---------------------------------------------------------------------------
 export interface OrgEmployee {

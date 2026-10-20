@@ -15,6 +15,7 @@ import {
   Send,
   Save,
   RotateCcw,
+  XCircle,
 } from "lucide-react";
 import { User } from "../App";
 import {
@@ -31,6 +32,7 @@ import {
   nextDemandeReference,
   persistDemande,
   fetchDemandes,
+  fetchDemandesDetail,
   statutDemandeBadge,
   prioriteDemandeBadge,
   formatDateCourt,
@@ -39,7 +41,8 @@ import {
   splitDepartementDemandeur,
 } from "../lib/demandes";
 import { Message } from "./ui/message";
-import { mockEquipment } from "./Equipment";
+import { useMaterialsLive } from "../lib/useMaterialsLive";
+import type { MaterialOption } from "../lib/api";
 
 interface MyRequestsProps {
   user?: User;
@@ -55,7 +58,32 @@ const EMPTY_LIGNE: DemandeLigne = {
   materiel: "",
   quantite: 1,
   motif: "",
+  materielDocumentId: undefined,
 };
+
+/**
+ * Extrait le message d'erreur renvoyé par l'API Strapi.
+ *
+ * Une erreur HTTP porte un message métier (« Stock insuffisant pour … ») :
+ * il doit être AFFICHÉ à l'écran, jamais avalé.
+ */
+function messageErreurApi(erreur: unknown): string {
+  const e = erreur as {
+    response?: { data?: { error?: { message?: string } } };
+    message?: string;
+  };
+  return (
+    e?.response?.data?.error?.message ||
+    e?.message ||
+    "La demande n'a pas pu être enregistrée."
+  );
+}
+
+/** Une erreur SANS réponse HTTP = backend injoignable (pas un refus métier). */
+function estErreurReseau(erreur: unknown): boolean {
+  const e = erreur as { response?: unknown };
+  return !e?.response;
+}
 
 function splitNomPrenom(name?: string): { nom: string; prenom: string } {
   const parts = (name || "").trim().split(/\s+/);
@@ -81,6 +109,10 @@ export function MyRequests({
   const [dataOrigin, setDataOrigin] = useState<"chargement" | "api" | "local">(
     "chargement"
   );
+  // Cause exacte du repli local (session expirée, droits insuffisants,
+  // backend injoignable…) : sans elle, l'utilisateur ne sait pas pourquoi
+  // la liste affichée n'est pas celle de la base.
+  const [origineDetail, setOrigineDetail] = useState<string | null>(null);
 
   // Formulaire nouvelle demande
   const [showForm, setShowForm] = useState(false);
@@ -89,21 +121,58 @@ export function MyRequests({
   const [priorite, setPriorite] = useState<PrioriteDemande>("Normal");
   const [observation, setObservation] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
+  const [formWarning, setFormWarning] = useState<string | null>(null);
+
+  // Étape 1 : le matériel proposé vient du STOCK RÉEL (fiches `material`),
+  // jamais d'une liste de démonstration ni d'une saisie libre.
+  const {
+    materials,
+    isLoading: stockEnCours,
+    isInitialError: stockIndisponible,
+    messageErreur: stockErreur,
+  } = useMaterialsLive();
+
+  const stockDisponible = useMemo(
+    () =>
+      materials.filter(
+        (m: MaterialOption) =>
+          m.statut !== "reforme" &&
+          m.statut !== "sortie" &&
+          (m.quantiteStock ?? 0) > 0
+      ),
+    [materials]
+  );
 
   // Détail / timeline
   const [detailDemande, setDetailDemande] = useState<DemandeRecord | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    fetchDemandes().then((rows) => {
+    fetchDemandesDetail().then((resultat) => {
       if (cancelled) return;
-      if (rows && rows.length > 0) {
-        setApiDemandes(rows);
+      if (resultat.ok) {
+        // Le serveur a RÉPONDU : c'est la base qui fait foi, y compris quand
+        // elle ne contient aucune demande pour ce profil (`[]`).
+        setApiDemandes(resultat.demandes);
         setDataOrigin("api");
-      } else {
-        setApiDemandes(null);
-        setDataOrigin("local");
+        setOrigineDetail(null);
+        return;
       }
+      // ÉCHEC : repli sur les données locales, et la CAUSE est affichée.
+      setApiDemandes(null);
+      setDataOrigin("local");
+      setOrigineDetail(
+        {
+          session_absente:
+            "Aucune session serveur : reconnectez-vous pour lire vos demandes en base.",
+          session_expiree:
+            "Session expirée : reconnectez-vous pour lire vos demandes en base.",
+          acces_refuse:
+            "Votre rôle ne permet pas de lire les demandes : la liste affichée est locale.",
+          reseau:
+            "Backend injoignable : la liste affichée est locale, pas celle de la base.",
+        }[resultat.echec] ?? null
+      );
     });
     return () => {
       cancelled = true;
@@ -112,7 +181,16 @@ export function MyRequests({
 
   // Demandes du profil connecté
   const demandes = useMemo(() => {
-    const source = apiDemandes ?? getDemandesForUser(user);
+    // Données lues sur le SERVEUR : le filtrage par profil est déjà fait côté
+    // serveur (le contrôleur ne renvoie que les demandes de l'utilisateur
+    // connecté). Le RE-filtrer ici vidait le tableau : le serveur ne renvoie
+    // pas la relation `demandeur` (le sanitizer la retire) et les libellés
+    // de direction sont les NOMS COMPLETS (« Direction des Ressources
+    // Humaines ») alors que le compte porte l'abréviation (« DRH »).
+    if (apiDemandes) return apiDemandes;
+    // Repli LOCAL (serveur injoignable) : ces données n'ont pas été
+    // filtrées par le serveur, le filtrage par périmètre reste nécessaire.
+    const source = getDemandesForUser(user);
     if (!user) return source;
     if (user.role !== "demandeur") return source;
     const { direction, service } = splitDepartementDemandeur(
@@ -156,15 +234,6 @@ export function MyRequests({
     });
   }, [demandes, searchTerm, statusFilter, priorityFilter]);
 
-  const categories = useMemo(
-    () => Array.from(new Set(mockEquipment.map((e) => e.category))),
-    []
-  );
-  const materiels = useMemo(
-    () => mockEquipment.map((e) => e.name),
-    []
-  );
-
   const resetFilters = () => {
     setSearchTerm("");
     setStatusFilter("Tous");
@@ -176,6 +245,7 @@ export function MyRequests({
     setPriorite("Normal");
     setObservation("");
     setFormError(null);
+    setFormWarning(null);
     setFormStep("form");
     setShowForm(true);
   };
@@ -192,12 +262,31 @@ export function MyRequests({
       prev.length > 1 ? prev.filter((_, i) => i !== index) : prev
     );
 
+  /** Sélectionne une fiche du STOCK : la ligne porte son `documentId`. */
+  const choisirMateriel = (index: number, documentId: string) => {
+    const materiel = stockDisponible.find((m) => m.documentId === documentId);
+    updateLigne(index, {
+      materielDocumentId: documentId || undefined,
+      materiel: materiel?.designation || "",
+      categorie: materiel?.categorie || "",
+    });
+  };
+
+  /** Quantité maximale proposée : le stock disponible de la fiche choisie. */
+  const stockDeLaLigne = (ligne: DemandeLigne): number | undefined =>
+    stockDisponible.find((m) => m.documentId === ligne.materielDocumentId)
+      ?.quantiteStock;
+
   const validateForm = (): boolean => {
+    // Étape 1 : une ligne valide pointe une FICHE DE STOCK (jamais un texte
+    // libre) et demande une quantité entière supérieure à zéro.
     const valides = lignes.filter(
-      (l) => l.materiel.trim() && Number(l.quantite) > 0
+      (l) => l.materielDocumentId && Number(l.quantite) > 0
     );
     if (valides.length === 0) {
-      setFormError("Indiquez au moins un matériel avec une quantité valide.");
+      setFormError(
+        "Choisissez au moins un matériel du stock avec une quantité valide."
+      );
       return false;
     }
     setFormError(null);
@@ -208,9 +297,16 @@ export function MyRequests({
     if (validateForm()) setFormStep("resume");
   };
 
-  /** Crée la demande (envoi ou brouillon) */
+  /**
+   * Crée la demande (envoi ou brouillon).
+   *
+   * Étape 1 : TOUTES les lignes partent dans UNE SEULE requête
+   * (`data.lignes`), chaque ligne pointant une fiche du stock réel. La
+   * direction, le service, la référence et la possession sont calculés par le
+   * SERVEUR : l'écran ne les envoie jamais.
+   */
   const submitDemande = async (statut: "Brouillon" | "En attente") => {
-    if (statut === "En attente" && !validateForm()) return;
+    if (!validateForm()) return;
 
     const all = getAllDemandes();
     const reference = nextDemandeReference(all);
@@ -218,7 +314,7 @@ export function MyRequests({
     const today = new Date().toISOString().slice(0, 10);
     const id = Math.max(0, ...all.map((d) => d.id)) + 1;
     const lignesValidées = lignes.filter(
-      (l) => l.materiel.trim() && Number(l.quantite) > 0
+      (l) => l.materielDocumentId && Number(l.quantite) > 0
     );
 
     const record: DemandeRecord = {
@@ -236,57 +332,70 @@ export function MyRequests({
       fonction: "Fonction non renseignée",
     };
 
-    // Tentative d'enregistrement côté API (repli local si le backend est
-    // hors ligne ou si l'authentification n'est pas encore branchée)
+    setFormError(null);
+    setFormWarning(null);
+
     try {
       const { api } = await import("../lib/api");
-      for (const ligne of record.lignes) {
-        await api.post("/api/demandes", {
-          data: {
-            reference:
-              record.lignes.length > 1
-                ? `${reference}-${record.lignes.indexOf(ligne) + 1}`
-                : reference,
-            groupe: reference,
-            type: "sortie",
-            designation_materiel: ligne.materiel,
-            quantite: ligne.quantite,
-            motif: ligne.motif || undefined,
-            priorite:
-              priorite === "Urgent"
-                ? "urgent"
-                : priorite === "Critique"
-                ? "critique"
-                : "normal",
-            statut: statut === "Brouillon" ? "brouillon" : "en_attente",
-            date_demande: today,
-            date_envoi: statut === "En attente" ? today : undefined,
-            fonction: record.fonction,
-            observation: record.observation,
-          },
-        });
-      }
-      fetchDemandes().then((rows) => {
-        if (rows && rows.length > 0) {
-          setApiDemandes(rows);
-          setDataOrigin("api");
-        }
+      const reponse = await api.post("/api/demandes", {
+        data: {
+          type: "sortie",
+          priorite:
+            priorite === "Urgent"
+              ? "urgent"
+              : priorite === "Critique"
+              ? "critique"
+              : "normal",
+          statut: statut === "Brouillon" ? "brouillon" : "en_attente",
+          date_demande: today,
+          date_envoi: statut === "En attente" ? today : undefined,
+          motif: observation.trim() || undefined,
+          // Lignes : le matériel du STOCK RÉEL (documentId), la quantité, le
+          // motif. C'est le SEUL contenu propre à la demande.
+          lignes: lignesValidées.map((ligne) => ({
+            materiel: ligne.materielDocumentId,
+            quantite: Number(ligne.quantite),
+            motif: ligne.motif.trim() || undefined,
+          })),
+        },
       });
-    } catch {
-      // repli local : la demande reste consultable dans l'application
+
+      // La demande est enregistrée : on relit la liste depuis le serveur.
+      const rows = await fetchDemandes();
+      if (rows) {
+        setApiDemandes(rows);
+        setDataOrigin("api");
+        setOrigineDetail(null);
+      }
+      const referenceServeur = reponse?.data?.data?.reference as
+        | string
+        | undefined;
+      setSuccessMessage(
+        statut === "Brouillon"
+          ? `Demande ${referenceServeur || reference} enregistrée comme brouillon.`
+          : `Demande ${
+              referenceServeur || reference
+            } envoyée — statut « En attente » de validation.`
+      );
+      setTimeout(() => setSuccessMessage(null), 5000);
+      setShowForm(false);
+      setFormStep("form");
+    } catch (erreur) {
+      // REFUS du serveur (400/403) : le message métier est AFFICHÉ, aucune
+      // demande n'est enregistrée, le formulaire reste ouvert pour corriger.
+      if (!estErreurReseau(erreur)) {
+        setFormError(messageErreurApi(erreur));
+        return;
+      }
+      // Backend INJOIGNABLE (pas de réponse HTTP) : repli local, mais
+      // l'écran le dit — un échec n'est jamais présenté comme une réussite.
+      persistDemande(record);
+      setLocalVersion((v) => v + 1);
+      setFormWarning(
+        "Backend injoignable : la demande a été enregistrée localement, " +
+          "mais elle n'est pas encore connue du serveur."
+      );
     }
-
-    persistDemande(record);
-    setLocalVersion((v) => v + 1);
-
-    setShowForm(false);
-    setFormStep("form");
-    setSuccessMessage(
-      statut === "Brouillon"
-        ? `Demande ${reference} enregistrée comme brouillon.`
-        : `Demande ${reference} envoyée — statut « En attente » de validation.`
-    );
-    setTimeout(() => setSuccessMessage(null), 5000);
   };
 
   const statCards = [
@@ -343,7 +452,8 @@ export function MyRequests({
             {dataOrigin === "chargement" && "Connexion au serveur..."}
             {dataOrigin === "api" && "Source : API Strapi (backend en ligne)"}
             {dataOrigin === "local" &&
-              "Source : données locales (backend hors ligne ou vide)"}
+              (origineDetail ??
+                "Source : données locales (backend injoignable ou non connecté)")}
           </div>
         </div>
         <button
@@ -676,6 +786,11 @@ export function MyRequests({
                   {formError}
                 </Message>
               )}
+              {formWarning && (
+                <Message variant="warning" size="sm" icon={X}>
+                  {formWarning}
+                </Message>
+              )}
 
               {/* Informations du demandeur (profil connecté) */}
               <div>
@@ -750,41 +865,38 @@ export function MyRequests({
                               key={index}
                               className="border-b border-border last:border-b-0"
                             >
+                              <td className="py-2 px-2 text-sm text-muted-foreground">
+                                {ligne.categorie || "—"}
+                              </td>
                               <td className="py-2 px-2">
                                 <select
-                                  value={ligne.categorie}
+                                  aria-label={`Matériel de la ligne ${index + 1}`}
+                                  value={ligne.materielDocumentId || ""}
                                   onChange={(e) =>
-                                    updateLigne(index, {
-                                      categorie: e.target.value,
-                                    })
+                                    choisirMateriel(index, e.target.value)
                                   }
-                                  className="w-36 px-2 py-1.5 border border-border rounded bg-background text-sm"
+                                  className="w-full min-w-40 px-2 py-1.5 border border-border rounded bg-background text-sm"
                                 >
-                                  <option value="">Catégorie...</option>
-                                  {categories.map((cat) => (
-                                    <option key={cat} value={cat}>
-                                      {cat}
+                                  <option value="">
+                                    {stockEnCours
+                                      ? "Chargement du stock..."
+                                      : "Choisir un matériel du stock..."}
+                                  </option>
+                                  {stockDisponible.map((m) => (
+                                    <option key={m.documentId} value={m.documentId}>
+                                      {m.designation}
+                                      {m.categorie ? ` (${m.categorie})` : ""} —
+                                      stock {m.quantiteStock ?? 0}
                                     </option>
                                   ))}
                                 </select>
                               </td>
                               <td className="py-2 px-2">
                                 <input
-                                  list="materiels-demandes"
-                                  value={ligne.materiel}
-                                  onChange={(e) =>
-                                    updateLigne(index, {
-                                      materiel: e.target.value,
-                                    })
-                                  }
-                                  placeholder="Ex. Ordinateur portable HP"
-                                  className="w-full min-w-40 px-2 py-1.5 border border-border rounded bg-background text-sm"
-                                />
-                              </td>
-                              <td className="py-2 px-2">
-                                <input
                                   type="number"
                                   min={1}
+                                  max={stockDeLaLigne(ligne)}
+                                  aria-label={`Quantité de la ligne ${index + 1}`}
                                   value={ligne.quantite}
                                   onChange={(e) =>
                                     updateLigne(index, {
@@ -796,6 +908,7 @@ export function MyRequests({
                               </td>
                               <td className="py-2 px-2">
                                 <input
+                                  aria-label={`Motif de la ligne ${index + 1}`}
                                   value={ligne.motif}
                                   onChange={(e) =>
                                     updateLigne(index, {
@@ -822,11 +935,27 @@ export function MyRequests({
                       </table>
                     </div>
 
-                    <datalist id="materiels-demandes">
-                      {materiels.map((m) => (
-                        <option key={m} value={m} />
-                      ))}
-                    </datalist>
+                    {stockIndisponible && (
+                      <Message variant="danger" size="sm" icon={X}>
+                        Stock illisible : la liste des matériels n'a pas pu être
+                        chargée depuis le serveur. Vérifiez votre connexion
+                        (ou reconnectez-vous) avant de saisir une demande.
+                      </Message>
+                    )}
+                    {stockErreur && (
+                      <Message variant="danger" size="sm" icon={X}>
+                        {stockErreur}
+                      </Message>
+                    )}
+                    {!stockEnCours &&
+                      !stockIndisponible &&
+                      !stockErreur &&
+                      stockDisponible.length === 0 && (
+                        <Message variant="warning" size="sm" icon={X}>
+                          Aucun matériel disponible en stock : impossible de saisir
+                          une demande pour le moment.
+                        </Message>
+                      )}
                   </div>
 
                   {/* Priorité + observation */}
@@ -925,7 +1054,7 @@ export function MyRequests({
                       </thead>
                       <tbody>
                         {lignes
-                          .filter((l) => l.materiel.trim())
+                          .filter((l) => l.materielDocumentId)
                           .map((ligne, index) => (
                             <tr
                               key={index}
@@ -1208,6 +1337,16 @@ export function MyRequests({
                             </td>
                             <td className="py-2 px-3 text-sm text-card-foreground">
                               {ligne.quantite}
+                              {/* Étape 2 : le Dépositaire peut ajuster la
+                                  quantité ; la quantité demandée reste
+                                  visible pour que le demandeur comprenne
+                                  l'écart. */}
+                              {typeof ligne.quantiteDemandee === "number" &&
+                              ligne.quantiteDemandee !== ligne.quantite ? (
+                                <span className="block text-xs text-muted-foreground">
+                                  demandée : {ligne.quantiteDemandee}
+                                </span>
+                              ) : null}
                             </td>
                             <td className="py-2 px-3 text-sm text-card-foreground">
                               {ligne.motif || "—"}
@@ -1217,6 +1356,20 @@ export function MyRequests({
                       </tbody>
                     </table>
                   </div>
+
+                  {/* Étape 2 « Décision » : le motif de rejet est
+                      communiqué au demandeur (sinon le refus est opaque). */}
+                  {detailDemande.motifRejet && (
+                    <div className="p-4 border border-destructive/50 rounded-lg bg-destructive/5">
+                      <h4 className="text-sm text-card-foreground mb-1 flex items-center gap-2">
+                        <XCircle className="h-4 w-4 text-destructive" />
+                        Motif du rejet
+                      </h4>
+                      <p className="text-sm text-muted-foreground">
+                        {detailDemande.motifRejet}
+                      </p>
+                    </div>
+                  )}
 
                   {detailDemande.observation && (
                     <div className="p-4 border border-border rounded-lg bg-muted/20">

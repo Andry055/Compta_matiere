@@ -1,0 +1,31 @@
+{
+  "collectionName": "components_demande_lignes",
+  "info": {
+    "displayName": "Ligne de demande",
+    "description": "Matériel du stock réel demandé, avec sa quantité et son motif."
+  },
+  "options": {},
+  "attributes": {
+    "materiel": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::material.material"
+    },
+    "designation": {
+      "type": "string"
+    },
+    "quantite": {
+      "type": "integer",
+      "required": true,
+      "min": 1,
+      "default": 1
+    },
+    "quantite_demandee": {
+      "type": "integer",
+      "min": 1
+    },
+    "motif": {
+      "type": "text"
+    }
+  }
+}

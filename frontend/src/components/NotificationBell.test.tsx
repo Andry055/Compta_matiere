@@ -3,7 +3,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { NotificationBell } from "./NotificationBell";
 import { ENTREE_ADMIN_VIDE, type EntreeRecord } from "../lib/movements";
-import { fetchEntrees } from "../lib/api";
+import { fetchEntrees, fetchOrdresValidesPourDepositaire } from "../lib/api";
+import type { SortieRecord } from "../lib/movements";
 import type { User } from "../App";
 
 vi.mock("../lib/api", () => ({
@@ -17,6 +18,8 @@ vi.mock("../lib/api", () => ({
   countSortiesAAutoriser: vi.fn(async () => 0),
   fetchOrdresAAutoriser: vi.fn(async () => []),
   fetchAllSortiesOrThrow: vi.fn(async () => []),
+  // Flux DU DÉPOSITAIRE : ordres acceptés par le chef logistique (3ᵉ sig.).
+  fetchOrdresValidesPourDepositaire: vi.fn(async () => []),
 }));
 
 afterEach(cleanup);
@@ -24,6 +27,8 @@ beforeEach(() => {
   localStorage.clear();
   vi.mocked(fetchEntrees).mockReset();
   vi.mocked(fetchEntrees).mockResolvedValue([]);
+  vi.mocked(fetchOrdresValidesPourDepositaire).mockReset();
+  vi.mocked(fetchOrdresValidesPourDepositaire).mockResolvedValue([]);
 });
 
 function utilisateur(role: User["role"]): User {
@@ -164,5 +169,93 @@ describe("Cloche du navbar — point unique de notifications", () => {
     expect(
       screen.getByText("Entrée contrôlée — signature logistique attendue"),
     ).toBeTruthy();
+  });
+});
+
+/**
+ * Flux du DÉPOSITAIRE : la 3ᵉ signature du chef logistique déclenche la
+ * notification « sortie acceptée » (et, côté Journal, l'écriture comptable).
+ */
+describe("Cloche — notification « sortie acceptée par le chef logistique »", () => {
+  function sortieValidee(id: string, reference: string): SortieRecord {
+    return {
+      id,
+      reference,
+      dateSortie: "2026-10-14",
+      materiel: "Ordinateur portable",
+      categorie: "Informatique",
+      quantite: 2,
+      serviceDemandeur: "—",
+      direction: "—",
+      beneficiaire: "—",
+      responsable: "—",
+      statut: "Validée",
+      logistique_signed: true,
+      dateSignatureLogistique: "2026-10-15T09:30:00.000Z",
+      justificatif: "—",
+      documents: [],
+    } as SortieRecord;
+  }
+
+  it("le dépositaire voit l'acceptation et le badge la compte", async () => {
+    vi.mocked(fetchOrdresValidesPourDepositaire).mockResolvedValue([
+      sortieValidee("sor-1", "SOR-2026-007"),
+    ]);
+
+    render(<NotificationBell user={utilisateur("depositaire")} />);
+    ouvrirPanel();
+
+    expect(
+      await screen.findByText("Sortie acceptée par le chef logistique"),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(/La sortie SOR-2026-007 a été acceptée/),
+    ).toBeTruthy();
+    expect(screen.getByText(/journal comptable/)).toBeTruthy();
+    // 1 notification de sortie acceptée + les 3 notifications d'information
+    // non lues : badge à 4.
+    expect(badge()).toContain("4");
+  });
+
+  it("un clic ouvre l'espace Distribution (jamais Arrivée Matériel)", async () => {
+    vi.mocked(fetchOrdresValidesPourDepositaire).mockResolvedValue([
+      sortieValidee("sor-1", "SOR-2026-007"),
+    ]);
+    const onOpenSortie = vi.fn();
+    const onOpenEntree = vi.fn();
+
+    render(
+      <NotificationBell
+        user={utilisateur("depositaire")}
+        onOpenSortie={onOpenSortie}
+        onOpenEntree={onOpenEntree}
+      />,
+    );
+    ouvrirPanel();
+
+    fireEvent.click(
+      await screen.findByText("Sortie acceptée par le chef logistique"),
+    );
+    expect(onOpenSortie).toHaveBeenCalledTimes(1);
+    expect(onOpenEntree).not.toHaveBeenCalled();
+    expect(
+      screen.queryByText("Sortie acceptée par le chef logistique"),
+    ).toBeNull();
+  });
+
+  it("le magasinier ne voit PAS ce flux (son flux reste « à préparer »)", async () => {
+    vi.mocked(fetchOrdresValidesPourDepositaire).mockResolvedValue([
+      sortieValidee("sor-1", "SOR-2026-007"),
+    ]);
+
+    render(<NotificationBell user={utilisateur("magasinier")} />);
+    ouvrirPanel();
+
+    await screen.findByText("Informations");
+    expect(
+      screen.queryByText("Sortie acceptée par le chef logistique"),
+    ).toBeNull();
+    // Rôle hors dépositaire : aucune requête de ce flux.
+    expect(fetchOrdresValidesPourDepositaire).not.toHaveBeenCalled();
   });
 });

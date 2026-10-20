@@ -5,7 +5,7 @@ import {
   trierLignesJournal,
   statistiquesRegistre,
 } from "../lib/journal-registre";
-import type { EntreeRecord } from "../lib/movements";
+import type { EntreeRecord, SortieRecord } from "../lib/movements";
 
 // Entrées de test simulées (représentent ce que retournerait fetchEntrees()
 // avec des données réelles du backend). Ces données sont en mémoire, jamais
@@ -624,5 +624,124 @@ describe("journal-registre : état vide", () => {
     expect(entreesEnCour.length).toBe(2);
     expect(entreesEnCour.map((e) => e.statut)).toContain("En attente");
     expect(entreesEnCour.map((e) => e.statut)).toContain("Vérifiée");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Sorties : le journal est DÉCLENCHÉ par la 3ᵉ signature (chef logistique),
+// pas par la remise — c'est à la validation que le stock est débité.
+// ---------------------------------------------------------------------------
+
+function sortie(
+  partiel: Partial<SortieRecord> & {
+    id: string;
+    statut: SortieRecord["statut"];
+  }
+): SortieRecord {
+  return {
+    reference: `SOR-2026-${partiel.id.toUpperCase()}`,
+    dateSortie: "2026-10-12",
+    materiel: "Ordinateur portable, Écran Dell",
+    categorie: "Informatique",
+    quantite: 5,
+    serviceDemandeur: "Service Informatique",
+    direction: "DAF",
+    beneficiaire: "Service Informatique",
+    responsable: "Rakoto",
+    justificatif: "BL-SOR-2026-001",
+    documents: [],
+    ...partiel,
+  } as SortieRecord;
+}
+
+describe("journal-registre : les sorties comptabilisées", () => {
+  it("une sortie validée par le chef logistique entre au registre", () => {
+    const lignes = creerRegistreComptable(
+      [],
+      [
+        sortie({
+          id: "s1",
+          statut: "Validée",
+          logistique_signed: true,
+          dateSignatureLogistique: "2026-10-15T09:30:00.000Z",
+        }),
+      ]
+    );
+
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0].sens).toBe("Sortie");
+    expect(lignes[0].reference).toBe("SOR-2026-S1");
+    // L'écriture porte la date de la 3ᵉ signature (débit du stock), pas la
+    // date de remise.
+    expect(lignes[0].dateValidation).toBe("2026-10-15T09:30:00.000Z");
+    expect(lignes[0].numeroOrdre).toBe("2026-0001");
+  });
+
+  it("une sortie encore en préparation n'est pas comptabilisée", () => {
+    const lignes = creerRegistreComptable([], [
+      sortie({ id: "s2", statut: "En préparation" }),
+      sortie({ id: "s3", statut: "Demandée" }),
+      sortie({ id: "s4", statut: "Annulée" }),
+    ]);
+
+    expect(lignes).toHaveLength(0);
+  });
+
+  it("après la remise, la sortie reste au registre en UNE seule ligne", () => {
+    const remise = sortie({
+      id: "s5",
+      statut: "Sortie effectuée",
+      logistique_signed: true,
+      dateSignatureLogistique: "2026-10-15T09:30:00.000Z",
+      dateRemise: "2026-10-16",
+    });
+
+    // Le statut change (Validée → Sortie effectuée) mais l'écriture ne bouge
+    // pas : ni doublon, ni date réécrite à la remise.
+    const lignes = creerRegistreComptable([], [remise]);
+    expect(lignes).toHaveLength(1);
+    expect(lignes[0].dateValidation).toBe("2026-10-15T09:30:00.000Z");
+  });
+
+  it("valorise l'écriture à partir des lignes peuplées (montant serveur)", () => {
+    const lignes = creerRegistreComptable([], [
+      sortie({
+        id: "s6",
+        statut: "Validée",
+        dateSignatureLogistique: "2026-10-15T09:30:00.000Z",
+        lignes: [
+          {
+            documentId: "l1",
+            designation: "Ordinateur portable",
+            quantite: 2,
+            valeurUnitaire: 1_000_000,
+            montant: 2_000_000,
+            etat: "neuf",
+            observations: null,
+          },
+          {
+            documentId: "l2",
+            designation: "Écran Dell",
+            quantite: 3,
+            valeurUnitaire: 300_000,
+            montant: 900_000,
+            etat: "bon",
+            observations: null,
+          },
+        ],
+      }),
+    ]);
+
+    expect(lignes[0].montant).toBe(2_900_000);
+    const stats = statistiquesRegistre(lignes);
+    expect(stats.totalValeurSorties).toBe(2_900_000);
+  });
+
+  it("sans lignes peuplées : montant 0, jamais de montant inventé", () => {
+    const lignes = creerRegistreComptable([], [
+      sortie({ id: "s7", statut: "Validée" }),
+    ]);
+
+    expect(lignes[0].montant).toBe(0);
   });
 });

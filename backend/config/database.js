@@ -44,7 +44,13 @@ module.exports = ({ env }) => {
     },
     sqlite: {
       connection: {
-        filename: path.join(__dirname, '..', env('DATABASE_FILENAME', '.tmp/data.db')),
+        // DATABASE_FILENAME accepte un chemin RELATIF (défaut : .tmp/data.db,
+        // dans le dossier backend) ou un chemin ABSOLU (base temporaire des
+        // tests, placée dans le dossier temporaire du système).
+        filename: (() => {
+          const fichier = env('DATABASE_FILENAME', '.tmp/data.db');
+          return path.isAbsolute(fichier) ? fichier : path.join(__dirname, '..', fichier);
+        })(),
       },
       useNullAsDefault: true,
     },

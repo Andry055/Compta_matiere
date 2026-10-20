@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
-import type { EntreeRecord } from "./movements";
-import { compterNotifications, notificationsPourRole } from "./notificationEtapes";
+import type { EntreeRecord, SortieRecord } from "./movements";
+import {
+  compterNotifications,
+  compterNotificationsSortie,
+  notificationsPourRole,
+  notificationsPourRoleSortie,
+} from "./notificationEtapes";
 
 function entree(partiel: Partial<EntreeRecord> & { id: string }): EntreeRecord {
   return {
@@ -91,5 +96,89 @@ describe("notificationsPourRole — calcul dérivé (Étape 5)", () => {
     // rien — la fonction est pure (pas d'accès global). On vérifie juste le
     // contrat : liste vide si aucune entrée.
     expect(notificationsPourRole("magasinier", [])).toEqual([]);
+  });
+});
+
+function sortie(
+  partiel: Partial<SortieRecord> & { id: string; statut: SortieRecord["statut"] }
+): SortieRecord {
+  return {
+    reference: `SOR-2026-${partiel.id.toUpperCase()}`,
+    dateSortie: "2026-10-14",
+    materiel: "Ordinateur portable",
+    categorie: "Informatique",
+    quantite: 2,
+    serviceDemandeur: "—",
+    direction: "—",
+    beneficiaire: "—",
+    responsable: "—",
+    justificatif: "—",
+    documents: [],
+    ...partiel,
+  } as SortieRecord;
+}
+
+describe("notificationsPourRoleSortie — 3ᵉ signature du chef logistique", () => {
+  const acceptee = sortie({
+    id: "acc",
+    statut: "Validée",
+    logistique_signed: true,
+    dateSignatureLogistique: "2026-10-15T09:30:00.000Z",
+  });
+  const enPreparation = sortie({ id: "prep", statut: "En préparation" });
+  const remise = sortie({
+    id: "rem",
+    statut: "Sortie effectuée",
+    logistique_signed: true,
+    dateSignatureLogistique: "2026-10-10T09:30:00.000Z",
+  });
+
+  it("dépositaire : NOTIFIE l'acceptation par le chef logistique (3/3)", () => {
+    const items = notificationsPourRoleSortie("depositaire", [
+      enPreparation,
+      acceptee,
+      remise,
+    ]);
+
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe("sortie-acc-acc");
+    expect(items[0].title).toBe("Sortie acceptée par le chef logistique");
+    expect(items[0].body).toContain(acceptee.reference);
+    expect(items[0].body).toContain("journal comptable");
+    // Date affichée = horodatage de la 3ᵉ signature, posé par le serveur.
+    expect(items[0].date).toBe("2026-10-15T09:30:00.000Z");
+  });
+
+  it("dépositaire : rien avant la 3ᵉ signature ni après la remise", () => {
+    expect(notificationsPourRoleSortie("depositaire", [enPreparation])).toEqual(
+      []
+    );
+    expect(notificationsPourRoleSortie("depositaire", [remise])).toEqual([]);
+    expect(notificationsPourRoleSortie("depositaire", [])).toEqual([]);
+  });
+
+  it("magasinier : inchangé — la sortie acceptée n'est plus à préparer", () => {
+    const items = notificationsPourRoleSortie("magasinier", [
+      enPreparation,
+      acceptee,
+    ]);
+    expect(items).toHaveLength(1);
+    expect(items[0].id).toBe("sortie-mag-prep");
+    expect(items[0].title).toBe("Sortie à préparer");
+  });
+
+  it("autres rôles (logistique, comptable, demandeur) : aucun flux", () => {
+    expect(
+      notificationsPourRoleSortie("logistique", [acceptee, enPreparation])
+    ).toEqual([]);
+    expect(notificationsPourRoleSortie("comptable", [acceptee])).toEqual([]);
+    expect(notificationsPourRoleSortie("demandeur", [acceptee])).toEqual([]);
+  });
+
+  it("compteur = taille de la liste (badge cloche)", () => {
+    expect(
+      compterNotificationsSortie("depositaire", [enPreparation, acceptee, remise])
+    ).toBe(1);
+    expect(compterNotificationsSortie("depositaire", [])).toBe(0);
   });
 });

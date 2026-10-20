@@ -16,7 +16,10 @@ module.exports = guardedCoreController(createCoreController, 'api::material.mate
     // Apply populate and filter security for demandeur
     if (ctx.state && ctx.state.user) {
       const { getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
-      const userRoleCode = await getRoleCode(this.strapi, ctx.state.user.id);
+      // Instance Strapi globale (comme les autres contrôleurs) : `this.strapi`
+      // n'existe pas sur un contrôleur custom, et l'erreur était avalée par
+      // getRoleCode -> le garde-fou du demandeur ne s'exécutait JAMAIS.
+      const userRoleCode = await getRoleCode(strapi, ctx.state.user.id);
       if (userRoleCode === DEMANDEUR_ROLE) {
         const { securePopulateAndFilters } = require('../../../utils/populateSecurise');
         securePopulateAndFilters(ctx);
@@ -30,7 +33,7 @@ module.exports = guardedCoreController(createCoreController, 'api::material.mate
     // Apply populate and filter security for demandeur
     if (ctx.state && ctx.state.user) {
       const { getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
-      const userRoleCode = await getRoleCode(this.strapi, ctx.state.user.id);
+      const userRoleCode = await getRoleCode(strapi, ctx.state.user.id);
       if (userRoleCode === DEMANDEUR_ROLE) {
         const { securePopulateAndFilters } = require('../../../utils/populateSecurise');
         securePopulateAndFilters(ctx);

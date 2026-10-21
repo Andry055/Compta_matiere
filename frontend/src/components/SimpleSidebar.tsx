@@ -40,6 +40,12 @@ const navItems = [
     description: "Registre officiel"
   },
   {
+    title: "Mini-journal Direction",
+    icon: BookOpen,
+    key: "journalDirection",
+    description: "Sorties remises de ma direction"
+  },
+  {
     title: "Équipements",
     icon: Package,
     key: "equipment",
@@ -190,13 +196,15 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
           {visibleItems.map((item) => {
             const IconComponent = item.icon
             const isActive = activeSection === item.key
-            // Libellé propre au magasinier (une seule ligne de plus).
+            // Libellé propre au magasinier et au demandeur.
             const titreAffiche =
               item.key === "distribution" && userRole === "magasinier"
                 ? "Préparation sorties"
                 : item.key === "distribution" && userRole === "logistique"
                   ? "Autorisation sorties"
-                  : item.title
+                  : item.key === "entries" && userRole === "demandeur"
+                    ? "Réceptions"
+                    : item.title
             return (
               <button
                 key={item.key}
@@ -212,7 +220,9 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
                     <div className="text-xs text-sidebar-foreground/50 mt-0.5 truncate hidden sm:block">
                       {item.key === "requests" && user?.role === "demandeur"
                         ? "Gestion de mes demandes"
-                        : item.description}
+                        : item.key === "entries" && user?.role === "demandeur"
+                          ? "Réceptions de votre direction"
+                          : item.description}
                     </div>
                   )}
                   {/* Badge for Distribution menu item */}

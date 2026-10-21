@@ -306,7 +306,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
         if (!l.designation.trim()) return "Chaque matériel doit avoir une désignation.";
         if (!(Number(l.quantite) > 0))
           return `Quantité invalide pour « ${l.designation} » : elle doit être supérieure à 0.`;
-        if (!(Number(l.prixUnitaire) >= 0))
+        if (!(Number(l.prixUnitaire) > 0))
           return `Prix unitaire invalide pour « ${l.designation} ».`;
       }
     }

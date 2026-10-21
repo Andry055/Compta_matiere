@@ -125,15 +125,15 @@ export function Distribution({ initialDemande, onInitialDemandeConsumed }: Distr
 
   // ── ÉTAPE 3 : ouverture automatique sur une demande à transformer ──────
   // Le dépositaire clique sur « Créer l'ordre de sortie » dans l'écran
-  // Décision : on bascule TOUT SEUL sur l'onglet « Ordres de sortie » et le
-  // formulaire est prérempli avec la demande (voir NouvelOrdreSortie).
+  // Décision : on bascule TOUT SEUL sur l'onglet « Demandes de distribution »
+  // et le formulaire est prérempli avec la demande (voir NouvelOrdreSortie).
   useEffect(() => {
     if (!initialDemande) return;
     setDemandeAPreRemplir(initialDemande);
     // La demande prime sur un éventuel matériel choisi dans l'inventaire.
     setSelectedMaterialForNouvelOrdre(null);
-    // Bascule vers l'onglet « Ordres de sortie » où se trouve le formulaire.
-    setActiveTab("ordres");
+    // Bascule vers l'onglet « Demandes de distribution » où se trouve le formulaire.
+    setActiveTab("requests");
     onInitialDemandeConsumed?.();
   }, [initialDemande, onInitialDemandeConsumed]);
 
@@ -145,6 +145,10 @@ export function Distribution({ initialDemande, onInitialDemandeConsumed }: Distr
     setSelectedMaterialForNouvelOrdre(null);
     setDemandeAPreRemplir(null);
     setFiltreSorties((prev) => ({ statut: "en_preparation", version: prev.version + 1 }));
+    // Après la création depuis l'onglet « Demandes de distribution », basculer
+    // sur « Ordres de sortie » pour afficher le message de succès et le filtre
+    // « En préparation » de la liste des ordres.
+    setActiveTab("ordres");
 
     // Show success toast
     toast.success("Ordre de sortie créé", {
@@ -418,10 +422,10 @@ export function Distribution({ initialDemande, onInitialDemandeConsumed }: Distr
                             onClick={() => {
                               setSelectedMaterialForNouvelOrdre(material);
                               setShowNouvelOrdre(true);
-                              // Bascule vers l'onglet « Ordres de sortie » où se trouve le formulaire
-                              setActiveTab("ordres");
+                              // Bascule vers l'onglet « Demandes de distribution » où se trouve le formulaire
+                              setActiveTab("requests");
                               toast.info("Ajout à l'ordre de sortie", {
-                                description: `${material.designation} a été pré-rempli dans le formulaire de l'onglet « Ordres de sortie ».`
+                                description: `${material.designation} a été pré-rempli dans le formulaire de l'onglet « Demandes de distribution ».`
                               });
                             }}
                             className="flex-1 lg:flex-none"
@@ -463,16 +467,9 @@ export function Distribution({ initialDemande, onInitialDemandeConsumed }: Distr
             </Card>
           </TabsContent>
 
-          {/* Requests Tab */}
-          <TabsContent value="requests">
-            <DistributionRequests />
-          </TabsContent>
-
-          {/* Ordres de sortie Tab */}
-          <TabsContent value="ordres" className="space-y-6">
-            {/* Formulaire de création : réservé au dépositaire. Un rôle sans
-                droit de création ne voit simplement pas le formulaire (plus de
-                message « Accès réservé »). */}
+          {/* Requests Tab — Demandes de distribution */}
+          <TabsContent value="requests" className="space-y-6">
+            {/* Formulaire de création d'ordre de sortie : réservé au dépositaire. */}
             {userRole === "depositaire" && (
               <NouvelOrdreSortie
                 onSuccess={handleNouvelOrdreSuccess}
@@ -484,7 +481,15 @@ export function Distribution({ initialDemande, onInitialDemandeConsumed }: Distr
               />
             )}
 
-            {/* Divider */}
+            {/* Rôle sans droit de création : historique des sorties à valider. */}
+            {userRole !== "depositaire" && (
+              <DistributionRequests />
+            )}
+          </TabsContent>
+
+          {/* Ordres de sortie Tab */}
+          <TabsContent value="ordres" className="space-y-6">
+            {/* Divider — affiché uniquement quand il y a un résultat à montrer. */}
             {showNouvelOrdre || nouvelOrdreReference || nouvelOrdreError ? (
               <div className="border-t border-border/50 my-6"></div>
             ) : null}

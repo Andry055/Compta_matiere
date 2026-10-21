@@ -238,6 +238,8 @@ interface StrapiEntity {
   date_remise?: string | null;
   detenteur_nom?: string | null;
   detenteur_fonction?: string | null;
+  /** Mandataire mandaté par le détenteur pour retirer le matériel (optionnel). */
+  mandataire_nom?: string | null;
   responsable?: string | null;
   beneficiaire?: string | null;
   justificatif?: string | null;
@@ -276,6 +278,8 @@ interface StrapiEntity {
        *  saisie après confirmation du rapprochement). */
       documentId?: string | null;
       designation?: string | null;
+      /** Nomenclature de la fiche matériel (champ scalaire de la relation). */
+      nomenclature?: string | null;
       /** Stock courant de la fiche — affiché au magasinier avant signature. */
       quantiteStock?: number | null;
       /** Stock courant en snake_case (réponse REST Strapi standard). */
@@ -504,6 +508,8 @@ function mapSortie(row: StrapiEntity): SortieRecord {
     dateSignatureLogistique: row.date_signature_logistique || undefined,
     dateRemise: row.date_remise || undefined,
     detenteurNom: row.detenteur_nom || undefined,
+    detenteurFonction: row.detenteur_fonction || undefined,
+    mandataireNom: row.mandataire_nom || undefined,
     stockImpacte: row.stock_impacte === true,
     justificatif: row.justificatif || "—",
     documents: row.justificatif
@@ -542,6 +548,9 @@ function mapSortie(row: StrapiEntity): SortieRecord {
                       (ligne.materiel as any)?.quantite_stock ??
                       ligne.materiel?.quantiteStock ??
                       undefined,
+                    // Nomenclature de la fiche matériel (champ scalaire de la
+                    // relation) : affichée dans le bon de sortie si elle existe.
+                    nomenclature: ligne.materiel?.nomenclature ?? null,
                   },
                 }
               : {}),
@@ -760,6 +769,54 @@ export async function rejeterSortie(documentId: string, motif: string): Promise<
     data: { motif },
   });
   return mapSortie(data.data);
+}
+
+/**
+ * Payload de la remise — QUATRE champs, jamais un statut, jamais le stock.
+ * Le serveur refuse tout le reste de toute façon ; l'envoyer ne serait
+ * qu'une occasion de dévier du contrat.
+ */
+export interface PayloadRemise {
+  detenteur_nom: string;
+  detenteur_fonction: string;
+  mandataire_nom?: string;
+  date_remise: string;
+}
+
+/**
+ * Enregistre la remise du matériel au détenteur.
+ * POST /api/sorties/:documentId/remise — rôle magasinier ou dépositaire
+ * comptable, sortie obligatoirement validée.
+ *
+ * Le stock n'est PAS touché ici : il a déjà été débité à la validation
+ * logistique. La remise ne fait qu'enregistrer qui a reçu le matériel
+ * (et, le cas échéant, le mandataire), et quand.
+ */
+export async function remettreSortie(
+  documentId: string,
+  payload: PayloadRemise
+): Promise<SortieRecord> {
+  // Transaction serveur : délai généreux, la valeur par défaut de
+  // l'instance (8 s) tronquerait la requête.
+  const { data: reponse } = await api.post(
+    `/api/sorties/${documentId}/remise`,
+    { data: payload },
+    { timeout: 30000 }
+  );
+  return mapSortie(reponse.data);
+}
+
+/**
+ * Recharge une sortie depuis le serveur : sert à conclure sur l'ÉTAT RÉEL
+ * quand l'envoi d'une remise est INCERTAIN (délai dépassé, coupure).
+ *
+ * Aucune relance automatique de l'ENVOI : seule la LECTURE est rejouée.
+ * Renvoie `null` si l'ordre est introuvable ; lève si le serveur est
+ * injoignable (état alors toujours inconnu).
+ */
+export async function rechargerSortie(documentId: string): Promise<SortieRecord | null> {
+  const sorties = await fetchAllSortiesOrThrow();
+  return sorties.find((sortie) => sortie.id === documentId) ?? null;
 }
 
 /**

@@ -321,7 +321,7 @@ function DemandeurDashboard({
                 <div className="cm-kpi-body">
                   <span className="cm-metric-label truncate">{card.label}</span>
                   <span className="cm-kpi-value">{card.value}</span>
-                  <span className="text-xs text-muted-foreground truncate hidden sm:block">
+                  <span className="cm-kpi-foot text-xs text-muted-foreground truncate hidden sm:block">
                     {card.foot}
                   </span>
                 </div>
@@ -462,6 +462,67 @@ export function Dashboard({ user }: { user?: User }) {
   );
   const recentActivity = getRecentActivity(mockRequests);
 
+  // Indicateurs de pilotage : chaque carte porte son propre accent coloré,
+  // appliqué par variable CSS (--cm-kpi-accent) — jamais un aplat saturé.
+  const indicateurs = [
+    {
+      label: "Entrées Journal",
+      value: "1,247",
+      icon: BookOpen,
+      kpiAccent: "oklch(0.62 0.19 258)",
+      foot: "+12% ce mois | Conformité 98%",
+    },
+    {
+      label: "Valeur Inventaire",
+      value: `${valeurInventaire.toLocaleString()} Ar`,
+      icon: Euro,
+      kpiAccent: "oklch(0.66 0.15 210)",
+      foot: "Valorisation complète",
+    },
+    {
+      label: "Matériels en Stock",
+      value: String(materielsEnStock),
+      icon: Package,
+      kpiAccent: "oklch(0.68 0.17 150)",
+      foot: "Disponibles distribution",
+    },
+    {
+      label: "Score Conformité",
+      value: "96%",
+      icon: Shield,
+      kpiAccent: "oklch(0.7 0.19 45)",
+      foot: "Audit & Traçabilité",
+    },
+  ];
+
+  // Indicateurs secondaires : même grammaire, densité réduite.
+  const indicateursSecondaires = [
+    {
+      label: "Entrées Mois",
+      value: "124",
+      icon: TrendingUp,
+      kpiAccent: "oklch(0.68 0.17 150)",
+    },
+    {
+      label: "Fournisseurs",
+      value: "47",
+      icon: Building,
+      kpiAccent: "oklch(0.62 0.19 258)",
+    },
+    {
+      label: "Nomenclatures",
+      value: "89",
+      icon: Hash,
+      kpiAccent: "oklch(0.6 0.22 300)",
+    },
+    {
+      label: "Alertes",
+      value: "3",
+      icon: AlertTriangle,
+      kpiAccent: "oklch(0.7 0.19 45)",
+    },
+  ];
+
   const demandeurCards = [
     {
       label: "Mes demandes",
@@ -553,17 +614,18 @@ export function Dashboard({ user }: { user?: User }) {
     <div className="p-6 space-y-6">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl tracking-tight mb-2 text-foreground">
+        <div className="min-w-0">
+          <p className="cm-eyebrow cm-eyebrow-accent mb-1.5">Pilotage</p>
+          <h1 className="cm-title text-2xl sm:text-3xl mb-2">
             Tableau de Bord - ComptaMatière
           </h1>
-          <p className="text-muted-foreground">
+          <p className="cm-subtitle">
             Vue d'ensemble du système de comptabilité matière avec traçabilité
             complète
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground hidden sm:inline">
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs text-muted-foreground hidden lg:inline whitespace-nowrap">
             {derniereSync
               ? formatDelaiSyncExact(derniereSync)
               : "Non synchronisé"}
@@ -591,101 +653,58 @@ export function Dashboard({ user }: { user?: User }) {
       )}
 
       {/* Key Metrics Cards */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        {/* Total Journal Entries */}
-        <div className="cm-panel cm-panel-solid rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm text-muted-foreground">Entrées Journal</h3>
-            <BookOpen className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div className="text-2xl text-card-foreground mb-2">1,247</div>
-          <p className="text-xs text-muted-foreground">
-            +12% ce mois | Conformité 98%
-          </p>
-        </div>
-
-        {/* Total Value */}
-        <div className="cm-panel cm-panel-solid rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm text-muted-foreground">Valeur Inventaire</h3>
-            <Euro className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div className="text-2xl text-card-foreground mb-2">
-            {valeurInventaire.toLocaleString()} Ar
-          </div>
-          <p className="text-xs text-muted-foreground">Valorisation complète</p>
-        </div>
-
-        {/* In Stock */}
-        <div className="cm-panel cm-panel-solid rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm text-muted-foreground">
-              Matériels en Stock
-            </h3>
-            <Package className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div className="text-2xl text-card-foreground mb-2">
-            {materielsEnStock}
-          </div>
-          <p className="text-xs text-muted-foreground">
-            Disponibles distribution
-          </p>
-        </div>
-
-        {/* Compliance Score */}
-        <div className="cm-panel cm-panel-solid rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm text-muted-foreground">Score Conformité</h3>
-            <Shield className="h-6 w-6 text-muted-foreground" />
-          </div>
-          <div className="text-2xl text-card-foreground mb-2">96%</div>
-          <p className="text-xs text-muted-foreground">
-            Audit &amp; Traçabilité
-          </p>
-        </div>
+      <div className="grid gap-3 sm:gap-4 grid-cols-1 sm:grid-cols-2 lg:grid-cols-4">
+        {indicateurs.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.label}
+              className="cm-kpi"
+              style={
+                { ["--cm-kpi-accent" as string]: card.kpiAccent } as CSSProperties
+              }
+            >
+              <div className="flex items-start gap-3">
+                <span className="cm-kpi-icon">
+                  <Icon className="h-4 w-4" aria-hidden />
+                </span>
+                <div className="cm-kpi-body">
+                  <span className="cm-metric-label truncate">{card.label}</span>
+                  <span className="cm-kpi-value">{card.value}</span>
+                  <span className="cm-kpi-foot text-xs text-muted-foreground truncate hidden sm:block">
+                    {card.foot}
+                  </span>
+                </div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {/* Secondary Metrics */}
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-        <div className="cm-panel cm-panel-solid rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <TrendingUp className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
-            <div>
-              <div className="text-sm text-muted-foreground">Entrées Mois</div>
-              <div className="text-xl text-card-foreground">124</div>
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        {indicateursSecondaires.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.label}
+              className="cm-kpi cm-kpi-compact"
+              style={
+                { ["--cm-kpi-accent" as string]: card.kpiAccent } as CSSProperties
+              }
+            >
+              <div className="flex items-center gap-3">
+                <span className="cm-kpi-icon">
+                  <Icon className="h-4 w-4" aria-hidden />
+                </span>
+                <div className="cm-kpi-body">
+                  <span className="cm-metric-label truncate">{card.label}</span>
+                  <span className="cm-kpi-value text-xl">{card.value}</span>
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-
-        <div className="cm-panel cm-panel-solid rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <Building className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
-            <div>
-              <div className="text-sm text-muted-foreground">Fournisseurs</div>
-              <div className="text-xl text-card-foreground">47</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="cm-panel cm-panel-solid rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <Hash className="h-8 w-8 p-2 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400" />
-            <div>
-              <div className="text-sm text-muted-foreground">Nomenclatures</div>
-              <div className="text-xl text-card-foreground">89</div>
-            </div>
-          </div>
-        </div>
-
-        <div className="cm-panel cm-panel-solid rounded-lg p-4">
-          <div className="flex items-center gap-3">
-            <AlertTriangle className="h-8 w-8 p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400" />
-            <div>
-              <div className="text-sm text-muted-foreground">Alertes</div>
-              <div className="text-xl text-card-foreground">3</div>
-            </div>
-          </div>
-        </div>
+          );
+        })}
       </div>
 
       {/* Espace Demandeur */}

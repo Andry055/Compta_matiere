@@ -293,7 +293,9 @@ export function NotificationBell({
   const nbNonLues = unread.length;
   const total =
     nbNonLues + etapes.length + etapesSortie.length + etapesValidation.length;
-  const roleLabel = role ? ROLES_CONFIG[role].label : "";
+  // Rôle hors nomenclature métier (ex. « admin », « staff ») : pas de libellé
+  // dans ROLES_CONFIG, on n'affiche simplement pas de bandeau contextualisé.
+  const roleLabel = role ? (ROLES_CONFIG[role]?.label ?? "") : "";
 
   return (
     <div ref={containerRef} className="relative">

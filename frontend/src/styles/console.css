@@ -11,8 +11,12 @@
    écrit en CSS "maison" : il surcharge les tokens de thème (`:root` / `.dark`)
    et définit une famille de classes `.cm-*` réutilisées par les composants.
 
-   Ces règles sont NON empilées (hors @layer) : elles priment sur les
-   utilitaires Tailwind compilés, qui le sont.
+   Les jetons de thème (`:root` / `.dark`) restent NON empilés : ils doivent
+   primer sur ceux de l'artefact figé. Les classes `.cm-*` sont, elles,
+   empilées dans la couche « components » : les utilitaires Tailwind
+   (couche « utilities ») gardent alors la priorité, condition pour que
+   `hidden`, `lg:flex` ou `absolute` restent effectifs sur un élément
+   portant aussi une classe `.cm-*`.
    ========================================================================== */
 
 /* ==========================================================================
@@ -153,6 +157,62 @@
 }
 
 /* ==========================================================================
+   ANIMATIONS — Images clés globales (hors couche : portée universelle)
+   ========================================================================== */
+
+@keyframes cm-ping {
+  0% {
+    transform: scale(1);
+    opacity: 0.75;
+  }
+  75%,
+  100% {
+    transform: scale(2.6);
+    opacity: 0;
+  }
+}
+
+@keyframes cm-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cm-sweep {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(100%);
+  }
+}
+
+@keyframes cm-fade {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* ==========================================================================
+   CLASSES `.cm-*` — SYSTÈME VISUEL
+   ------------------------------------------------------------------------
+   Ces règles sont empilées dans la couche « components » : les utilitaires
+   Tailwind (couche « utilities », déclarée après) gardent la priorité. Sans
+   cela, `hidden`, `lg:flex` ou `absolute` seraient ignorés sur un élément
+   portant aussi une classe `.cm-*`.
+   ========================================================================== */
+
+@layer components {
+
+/* ==========================================================================
    2. BASE — Typographie, sélection, focus, ascenseurs
    ========================================================================== */
 
@@ -249,12 +309,15 @@ input[type="radio"] {
   background-attachment: fixed;
 }
 
-/* Grille technique en surimpression, attenuée vers les bords. */
+/* Grille technique en surimpression, attenuée vers les bords.
+   z-index: -1 : la trame passe sous le contenu (au-dessus du fond du shell
+   uniquement). Aucune règle ne force `position` sur les enfants, afin de ne
+   pas ecraser les utilitaires Tailwind `fixed` / `absolute` / `z-50`. */
 .cm-shell::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   background-image:
     linear-gradient(var(--cm-grid) 1px, transparent 1px),
@@ -270,12 +333,6 @@ input[type="radio"] {
     #000 10%,
     transparent 78%
   );
-}
-
-/* Le contenu reste au-dessus de la surimpression. */
-.cm-shell > * {
-  position: relative;
-  z-index: 1;
 }
 
 /* ==========================================================================
@@ -846,9 +903,16 @@ input[type="radio"] {
 
 .cm-kpi-body {
   min-width: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 0.125rem;
+}
+
+/* Pied de carte : aligné sur la ligne de base commune de la rangée. */
+.cm-kpi-foot {
+  margin-top: auto;
+  padding-top: 0.375rem;
 }
 
 .cm-kpi-value {
@@ -859,6 +923,18 @@ input[type="radio"] {
   line-height: 1.1;
   letter-spacing: -0.03em;
   color: var(--foreground);
+}
+
+/* Variante compacte : indicateurs secondaires, sur une seule ligne. */
+.cm-kpi-compact {
+  gap: 0;
+  padding: 0.75rem 0.875rem;
+}
+
+.cm-kpi-compact .cm-kpi-icon {
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.55rem;
 }
 
 /* Carte d'action rapide : surface neutre + accent porté par l'icône.
@@ -931,47 +1007,6 @@ input[type="radio"] {
    12. ANIMATIONS
    ========================================================================== */
 
-@keyframes cm-ping {
-  0% {
-    transform: scale(1);
-    opacity: 0.75;
-  }
-  75%,
-  100% {
-    transform: scale(2.6);
-    opacity: 0;
-  }
-}
-
-@keyframes cm-rise {
-  from {
-    opacity: 0;
-    transform: translateY(8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes cm-sweep {
-  from {
-    transform: translateX(-100%);
-  }
-  to {
-    transform: translateX(100%);
-  }
-}
-
-@keyframes cm-fade {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
-}
-
 /* Entrée en scène, avec décalage piloté par --cm-i. */
 .cm-rise {
   animation: cm-rise 0.45s var(--cm-ease) both;
@@ -1030,4 +1065,6 @@ input[type="radio"] {
     -webkit-backdrop-filter: blur(10px) saturate(140%);
     backdrop-filter: blur(10px) saturate(140%);
   }
+}
+
 }

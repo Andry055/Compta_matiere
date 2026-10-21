@@ -227,6 +227,8 @@ export interface SortieLigne {
     documentId?: string;
     designation?: string;
     quantiteStock?: number;
+    /** Nomenclature de la fiche matériel (si renseignée côté serveur). */
+    nomenclature?: string | null;
   };
 }
 
@@ -259,6 +261,10 @@ export interface SortieRecord {
   /** Date de remise au détenteur (après validation) et détenteur concerné. */
   dateRemise?: string;
   detenteurNom?: string;
+  /** Fonction du détenteur — renseignée lors de la remise (bon de sortie). */
+  detenteurFonction?: string;
+  /** Mandataire mandaté par le détenteur pour retirer le matériel (optionnel). */
+  mandataireNom?: string;
   /** true quand le stock a bien été débité (une seule fois, côté serveur). */
   stockImpacte?: boolean;
   justificatif: string;

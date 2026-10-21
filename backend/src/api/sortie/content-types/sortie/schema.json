@@ -115,6 +115,9 @@
     },
     "date_remise": {
       "type": "text"
+    },
+    "mandataire_nom": {
+      "type": "text"
     }
   }
 }

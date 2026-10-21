@@ -3,20 +3,21 @@ import { PackageCheck, RefreshCw } from "lucide-react";
 import { SortieRecord } from "@/lib/api";
 import { useSortiesLive } from "@/lib/useSortiesLive";
 import { estAPreparerPourMagasinier } from "@/lib/sortieControle";
+import { estARemettre, estRemise } from "@/lib/remiseSortie";
 import { CarteOrdrePreparation } from "./CarteOrdrePreparation";
-import { PreparationOrdreSortie } from "./PreparationOrdreSortie";
+import { CarteOrdreRemise, RemiseOrdreSortie } from "./RemiseOrdreSortie";
 import { toast } from "sonner";
 import "./EspaceMagasinierSorties.css";
 
 /**
- * Espace magasinier dans Distribution — préparation et SIGNATURE 1.
+ * Espace magasinier dans Distribution — préparation, SIGNATURE 1 et REMISE.
  *
- * Une seule colonne de cartes, deux compteurs, deux onglets. Aucune création
- * d'ordre, aucun accès à l'inventaire, aucun message d'accès refusé. Les
- * données viennent du sondage partagé existant (useSortiesLive) : AUCUN
+ * Une seule colonne de cartes, des compteurs et quatre onglets. Aucune
+ * création d'ordre, aucun accès à l'inventaire, aucun message d'accès refusé.
+ * Les données viennent du sondage partagé existant (useSortiesLive) : AUCUN
  * nouveau sondage n'est créé ici.
  */
-type Onglet = "a_preparer" | "traites";
+type Onglet = "a_preparer" | "traites" | "a_remettre" | "remises";
 
 export function EspaceMagasinierSorties() {
   const {
@@ -29,7 +30,6 @@ export function EspaceMagasinierSorties() {
   } = useSortiesLive();
 
   const [onglet, setOnglet] = useState<Onglet>("a_preparer");
-  const [ordreOuvert, setOrdreOuvert] = useState<string | null>(null);
 
   // Onglet « À préparer » : en_preparation ET signature 1 absente (fonction
   // pure partagée) — jamais le statut « Demandée ».
@@ -44,19 +44,65 @@ export function EspaceMagasinierSorties() {
     [sorties]
   );
 
-  const listeCourante = onglet === "a_preparer" ? aPreparer : traites;
+  // Onglet « À remettre » : sorties VALIDÉES, prêtes à quitter le magasin.
+  // Le stock a déjà été débité à la validation logistique : la remise ne fait
+  // qu'enregistrer qui a reçu le matériel.
+  const aRemettre = useMemo(() => sorties.filter(estARemettre), [sorties]);
+
+  // Onglet « Remises » : sorties déjà remises (lecture seule).
+  const remises = useMemo(() => sorties.filter(estRemise), [sorties]);
+
+  // Ordre dont la remise vient d'être enregistrée : il quitte l'onglet
+  // « À remettre » au rafraîchissement, mais sa carte reste affichée le temps
+  // que l'utilisateur imprime le bon signé.
+  const [remiseRecemmentEnregistree, setRemiseRecemmentEnregistree] =
+    useState<SortieRecord | null>(null);
+  const [remiseOuverte, setRemiseOuverte] = useState<string | null>(null);
+
+  const listeCourante =
+    onglet === "a_preparer"
+      ? aPreparer
+      : onglet === "traites"
+        ? traites
+        : onglet === "a_remettre"
+          ? aRemettre
+          : remises;
   const premiereChargement = isLoading && sorties.length === 0;
   const premiereErreur = isInitialError && sorties.length === 0;
 
   const apresSignature = () => {
-    setOrdreOuvert(null);
     void refresh();
   };
 
   const apresRejet = () => {
-    setOrdreOuvert(null);
     void refresh();
   };
+
+  /** Remise enregistrée : on rafraîchit la liste et on garde la carte en
+   *  tête de l'onglet pour permettre l'impression du bon signé. */
+  const apresRemise = (remise: SortieRecord) => {
+    setRemiseOuverte(null);
+    setRemiseRecemmentEnregistree(remise);
+    void refresh();
+  };
+
+  // Carte épinglée : l'ordre vient d'être remis, il a quitté « À remettre »
+  // au rafraîchissement — on le garde affiché pour imprimer le bon signé.
+  const cartePincee =
+    onglet === "a_remettre" &&
+    remiseRecemmentEnregistree &&
+    !aRemettre.some((sortie) => sortie.id === remiseRecemmentEnregistree.id)
+      ? remiseRecemmentEnregistree
+      : null;
+
+  const messageOngletVide =
+    onglet === "a_preparer"
+      ? "Aucun ordre à préparer pour le moment"
+      : onglet === "traites"
+        ? "Aucun ordre signé pour le moment"
+        : onglet === "a_remettre"
+          ? "Aucun ordre à remettre pour le moment"
+          : "Aucune remise enregistrée pour le moment";
 
   return (
     <div className="msa-page">
@@ -79,6 +125,9 @@ export function EspaceMagasinierSorties() {
           <span className="msa-compteur-valeur">
             Signés par moi, en attente des autres ({traites.length})
           </span>
+        </div>
+        <div className="msa-compteur">
+          <span className="msa-compteur-valeur">À remettre ({aRemettre.length})</span>
         </div>
       </div>
 
@@ -105,6 +154,34 @@ export function EspaceMagasinierSorties() {
           onClick={() => setOnglet("traites")}
         >
           Déjà traités ({traites.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="msa-onglet-a-remettre"
+          aria-selected={onglet === "a_remettre"}
+          aria-controls="msa-panneau-a-remettre"
+          className={`msa-onglet${onglet === "a_remettre" ? " msa-onglet--actif" : ""}`}
+          onClick={() => {
+            setRemiseOuverte(null);
+            setOnglet("a_remettre");
+          }}
+        >
+          À remettre ({aRemettre.length})
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="msa-onglet-remises"
+          aria-selected={onglet === "remises"}
+          aria-controls="msa-panneau-remises"
+          className={`msa-onglet${onglet === "remises" ? " msa-onglet--actif" : ""}`}
+          onClick={() => {
+            setRemiseOuverte(null);
+            setOnglet("remises");
+          }}
+        >
+          Remises ({remises.length})
         </button>
       </div>
 
@@ -143,44 +220,86 @@ export function EspaceMagasinierSorties() {
         </div>
       )}
 
-      {!premiereChargement && !premiereErreur && listeCourante.length === 0 && (
+      {!premiereChargement && !premiereErreur && listeCourante.length === 0 && !cartePincee && (
         <div className="msa-etat">
           <PackageCheck style={{ width: 22, height: 22, opacity: 0.6 }} aria-hidden="true" />
-          <p>
-            {onglet === "a_preparer"
-              ? "Aucun ordre à préparer pour le moment"
-              : "Aucun ordre signé pour le moment"}
-          </p>
+          <p>{messageOngletVide}</p>
         </div>
       )}
 
-      {!premiereChargement && !premiereErreur && listeCourante.length > 0 && (
-        <ul
-          className="msa-liste"
-          role="tabpanel"
-          id={onglet === "a_preparer" ? "msa-panneau-a-preparer" : "msa-panneau-traites"}
-          aria-labelledby={onglet === "a_preparer" ? "msa-onglet-a-preparer" : "msa-onglet-traites"}
-        >
-          {listeCourante.map((sortie) => (
-            <CarteOrdrePreparation
-              key={sortie.id}
-              sortie={sortie}
-              lectureSeule={onglet === "traites"}
-              onPreparer={(ouverte) => setOrdreOuvert(ouverte.id)}
-              onRejetee={apresRejet}
-              panneau={
-                onglet === "a_preparer" && ordreOuvert === sortie.id ? (
-                  <PreparationOrdreSortie
-                    sortie={sortie}
-                    onSuccess={apresSignature}
-                    onError={(message) => toast.error(message)}
-                  />
-                ) : undefined
-              }
-            />
-          ))}
-        </ul>
-      )}
+      {/* Préparation / signatures (onglets historiques) */}
+      {!premiereChargement &&
+        !premiereErreur &&
+        (onglet === "a_preparer" || onglet === "traites") &&
+        listeCourante.length > 0 && (
+          <ul
+            className="msa-liste"
+            role="tabpanel"
+            id={onglet === "a_preparer" ? "msa-panneau-a-preparer" : "msa-panneau-traites"}
+            aria-labelledby={onglet === "a_preparer" ? "msa-onglet-a-preparer" : "msa-onglet-traites"}
+          >
+            {listeCourante.map((sortie) => (
+              <CarteOrdrePreparation
+                key={sortie.id}
+                sortie={sortie}
+                lectureSeule={onglet === "traites"}
+                onSuccess={apresSignature}
+                onRejetee={apresRejet}
+                onError={(message) => toast.error(message)}
+              />
+            ))}
+          </ul>
+        )}
+
+      {/* À remettre : sortie validée, bon de sortie à faire signer. */}
+      {!premiereChargement &&
+        !premiereErreur &&
+        onglet === "a_remettre" &&
+        (aRemettre.length > 0 || Boolean(cartePincee)) && (
+          <ul
+            className="msa-liste"
+            role="tabpanel"
+            id="msa-panneau-a-remettre"
+            aria-labelledby="msa-onglet-a-remettre"
+          >
+            {cartePincee && (
+              <CarteOrdreRemise key={cartePincee.id} sortie={cartePincee} lectureSeule />
+            )}
+            {aRemettre.map((sortie) => (
+              <CarteOrdreRemise
+                key={sortie.id}
+                sortie={sortie}
+                onRemettre={(ouverte) => setRemiseOuverte(ouverte.id)}
+                panneau={
+                  remiseOuverte === sortie.id ? (
+                    <RemiseOrdreSortie
+                      sortie={sortie}
+                      onSuccess={apresRemise}
+                      onError={(message) => toast.error(message)}
+                    />
+                  ) : undefined
+                }
+              />
+            ))}
+          </ul>
+        )}
+
+      {/* Remises : lecture seule (détenteur, mandataire, date). */}
+      {!premiereChargement &&
+        !premiereErreur &&
+        onglet === "remises" &&
+        remises.length > 0 && (
+          <ul
+            className="msa-liste"
+            role="tabpanel"
+            id="msa-panneau-remises"
+            aria-labelledby="msa-onglet-remises"
+          >
+            {remises.map((sortie) => (
+              <CarteOrdreRemise key={sortie.id} sortie={sortie} lectureSeule />
+            ))}
+          </ul>
+        )}
 
       {derniereSync && (
         <p className="msa-sous-titre">

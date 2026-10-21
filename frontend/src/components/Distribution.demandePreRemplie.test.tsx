@@ -131,7 +131,7 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Distribution — demande transformée en ordre de sortie prérempli", () => {
-  it("ouvre l'onglet « Ordres de sortie » et préremplit le formulaire", async () => {
+  it("ouvre l'onglet « Demandes de distribution » et préremplit le formulaire", async () => {
     const onConsume = vi.fn();
     render(
       <Distribution
@@ -140,10 +140,11 @@ describe("Distribution — demande transformée en ordre de sortie prérempli", 
       />
     );
 
-    // Bascule AUTOMATIQUE vers l'onglet « Ordres de sortie » (le formulaire
-    // n'existe que dans cet onglet : sans bascule, le bouton serait « mort »).
+    // Bascule AUTOMATIQUE vers l'onglet « Demandes de distribution » (le
+    // formulaire n'existe que dans cet onglet : sans bascule, le bouton serait
+    // « mort »).
     const ongletOrdres = await screen.findByRole("tab", {
-      name: /Ordres de sortie/i,
+      name: /Demandes de Distribution/i,
     });
     expect(ongletOrdres.getAttribute("data-state")).toBe("active");
     expect(await screen.findByText("Nouvel ordre de sortie")).toBeTruthy();

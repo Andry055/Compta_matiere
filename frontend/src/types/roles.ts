@@ -65,7 +65,7 @@ export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
     description: "Exprime les besoins en matériel pour son service ou sa direction et assure le suivi direct de ses demandes.",
     // « affectations » : rubrique propre à l'espace Demandeur (spécification)
     // Le transfert inter-Directions se fait depuis Entrées → Nouvelle entrée.
-    pages: ['dashboard', 'equipment', 'entries', 'affectations', 'exits', 'requests', 'reports'],
+    pages: ['dashboard', 'equipment', 'entries', 'affectations', 'exits', 'requests', 'reports', 'journalDirection'],
     signRole: null,
     canApprove: false,
     levelLock: 'dynamic',

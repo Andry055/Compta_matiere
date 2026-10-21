@@ -2,16 +2,17 @@ import React from "react";
 import { FileText, PenLine } from "lucide-react";
 import { SortieRecord } from "@/lib/api";
 import { RejeterOrdreDialog } from "./RejeterOrdreDialog";
+import { PreparationOrdreSortie } from "./PreparationOrdreSortie";
 import "./EspaceMagasinierSorties.css";
 
 interface CarteOrdrePreparationProps {
   sortie: SortieRecord;
-  /** Ouvre le panneau de vérification sous la carte (onglet « À préparer »). */
-  onPreparer?: (sortie: SortieRecord) => void;
   /** Appelé après un rejet enregistré : l'ordre quitte « À préparer ». */
   onRejetee?: (sortie: SortieRecord) => void;
-  /** Panneau de vérification à afficher sous la carte. */
-  panneau?: React.ReactNode;
+  /** Appelé après la signature 1 (magasinier) enregistrée. */
+  onSuccess?: (sortie: SortieRecord) => void;
+  /** Appelé quand la signature n'a pas pu être enregistrée. */
+  onError?: (error: string) => void;
   /** Lecture seule (onglet « Déjà traités ») : aucune action proposée. */
   lectureSeule?: boolean;
 }
@@ -32,9 +33,9 @@ function destinationDe(sortie: SortieRecord): string {
 
 export function CarteOrdrePreparation({
   sortie,
-  onPreparer,
   onRejetee,
-  panneau,
+  onSuccess,
+  onError,
   lectureSeule = false,
 }: CarteOrdrePreparationProps) {
   const lignes = sortie.lignes ?? [];
@@ -83,15 +84,13 @@ export function CarteOrdrePreparation({
 
       {!lectureSeule && (
         <div className="msa-actions">
-          <button
-            type="button"
-            className="msa-bouton msa-bouton--primaire"
-            onClick={() => onPreparer?.(sortie)}
-            aria-expanded={Boolean(panneau)}
-          >
-            <PenLine style={{ width: 15, height: 15 }} aria-hidden="true" />
-            Préparer et signer
-          </button>
+          {/* Le déclencheur « Préparer et signer » ouvre la fenêtre modale de signature 1. */}
+          <PreparationOrdreSortie
+            sortie={sortie}
+            onSuccess={onSuccess}
+            onError={onError}
+            lectureSeule={lectureSeule}
+          />
           <RejeterOrdreDialog
             sortie={sortie}
             onSortieRejectee={(rejetee) => onRejetee?.(rejetee)}
@@ -114,8 +113,6 @@ export function CarteOrdrePreparation({
           </div>
         </div>
       )}
-
-      {panneau}
     </li>
   );
 }

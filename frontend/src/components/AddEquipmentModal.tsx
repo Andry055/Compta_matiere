@@ -166,7 +166,7 @@ export function AddEquipmentModal({
   const isStep3Valid = () => {
     return (
       formData.uniteNombre > 0 &&
-      formData.prixUnitaire >= 0 &&
+      formData.prixUnitaire > 0 &&
       qualite.etat &&
       qualite.controlePar
     );

@@ -25,8 +25,10 @@ import { fetchSessionRole, SortieRecord } from "@/lib/api";
 import { mapStrapiUser } from "@/lib/session";
 import { preparerSortie } from "@/lib/api";
 import { estAPreparerPourMagasinier, ordresAAutoriser } from "@/lib/sortieControle";
+import { estARemettre } from "@/lib/remiseSortie";
 import { toast } from "sonner";
 import { DepositaireOrdreSortie } from "./DepositaireOrdreSortie";
+import { RemiseOrdreSortie } from "./RemiseOrdreSortie";
 
 interface ListeOrdresSortieProps {
   /** Fonction appelée lorsqu'une sortie est sélectionnée (optionnel) */
@@ -45,19 +47,13 @@ export function ListeOrdresSortie({
   const [isLoadingRole, setIsLoadingRole] = useState<boolean>(true);
   const statutInitial = typeof filtreStatut === "object" ? filtreStatut?.statut : filtreStatut;
   const [activeTab, setActiveTab] = useState<string>(statutInitial || "toutes");
-  const [depositaireOuvert, setDepositaireOuvert] = useState<string | null>(null);
-  const handleDepositaireOpen = (sortie: SortieRecord) => {
-    setDepositaireOuvert(sortie.id);
-  };
-
-  const handleDepositaireSuccess = () => {
-    setDepositaireOuvert(null);
-  };
-
-  const handleDepositaireError = () => {
-    setDepositaireOuvert(null);
-  };
-
+  // Remise du matériel au détenteur (dépôtaire comptable uniquement).
+  const [remiseOuverte, setRemiseOuverte] = useState<string | null>(null);
+  // Ordre dont la remise vient d'être enregistrée : il quitte l'onglet
+  // « À remettre » au rafraîchissement, mais sa carte reste affichée le temps
+  // que l'utilisateur imprime le bon signé.
+  const [remiseRecemmentEnregistree, setRemiseRecemmentEnregistree] =
+    useState<SortieRecord | null>(null);
   useEffect(() => {
     if (filtreStatut) {
       const nouveauStatut = typeof filtreStatut === "object" ? filtreStatut.statut : filtreStatut;
@@ -96,7 +92,8 @@ export function ListeOrdresSortie({
     isInitialError,
     isRefreshing,
     messageErreur,
-    totalEnPreparation
+    totalEnPreparation,
+    refresh
   } = useSortiesLive();
   // Badge « À préparer (n) » : TOTAL SERVEUR FILTRÉ (statut = en_preparation,
   // magasinier_signed = false, requête pageSize=1 + withCount=true), transmis
@@ -104,6 +101,15 @@ export function ListeOrdresSortie({
   // carte ne déclenche donc que le sondage partagé, pas une requête de plus.
   const magasinerAPreparedCount = totalEnPreparation ?? 0;
   const isLoadingCount = totalEnPreparation === null;
+
+  // Carte épinglée : l'ordre vient d'être remis, il a quitté « À remettre »
+  // au rafraîchissement — on le garde affiché pour imprimer le bon signé.
+  const carteRemisePincee =
+    activeTab === "a_remettre" &&
+    remiseRecemmentEnregistree &&
+    !sortiesLive.some((sortie) => sortie.id === remiseRecemmentEnregistree.id)
+      ? remiseRecemmentEnregistree
+      : null;
 
   const sortiesFiltrees = sortiesLive.filter((sortie) => {
     // Magasinier : fonction pure (en_preparation ET signature 1 absente).
@@ -121,6 +127,10 @@ export function ListeOrdresSortie({
         return sortie.statut === "En préparation";
       case "validees":
         return sortie.statut === "Validée";
+      case "a_remettre":
+        // Remise du matériel : réservée au DÉPOSITAIRE COMPTABLE. Aucun autre
+        // rôle ne voit cette action.
+        return userRole === "depositaire" && estARemettre(sortie);
       case "a_autoriser":
         // Logistique : règle pure partagée (sig. 1 + 2 posées, 3e absente).
         return userRole === "logistique" && ordresAAutoriser([sortie]).length === 1;
@@ -250,6 +260,15 @@ export function ListeOrdresSortie({
                 >
                   <CheckCircle className="h-3 w-3 mr-2" /> Validées
                 </TabsTrigger>
+                {userRole === "depositaire" && (
+                  <TabsTrigger
+                    value="a_remettre"
+                    className="flex items-center justify-center px-3 py-2"
+                    style={{ flex: "1 1 auto", minWidth: "120px" }}
+                  >
+                    <Truck className="h-3 w-3 mr-2" /> À remettre
+                  </TabsTrigger>
+                )}
                 {userRole === "logistique" && (
                   <>
                     <TabsTrigger
@@ -278,12 +297,32 @@ export function ListeOrdresSortie({
             <div className="text-center py-8">
               <p>Interface de vérification pour le magasinier (à implémenter)</p>
             </div>
-          ) : sortiesFiltrees.length === 0 ? (
+          ) : sortiesFiltrees.length === 0 && !carteRemisePincee ? (
             <div className="text-center py-8 text-muted-foreground">
               <p>Aucune sortie trouvée pour ce filtre</p>
             </div>
           ) : (
             <div>
+              {carteRemisePincee && (
+                <Card
+                  key={carteRemisePincee.id}
+                  className="border border-border mb-3"
+                >
+                  <CardContent className="p-4 space-y-3">
+                    <div className="flex items-center justify-between space-x-4">
+                      <h3 className="font-medium">{carteRemisePincee.reference}</h3>
+                      <span className="px-2 py-0.5 bg-green-100 text-green-900 text-xs font-medium rounded">
+                        Remise enregistrée
+                      </span>
+                    </div>
+                    <RemiseOrdreSortie
+                      sortie={carteRemisePincee}
+                      onSuccess={() => undefined}
+                      onError={(message) => toast.error(message)}
+                    />
+                  </CardContent>
+                </Card>
+              )}
               {sortiesFiltrees.map(sortie => (
                 <Card
                   key={sortie.id}
@@ -348,31 +387,49 @@ export function ListeOrdresSortie({
                         </div>
                       </div>
                       {userRole === "depositaire" && sortie.statut === "En préparation" && (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDepositaireOpen(sortie);
-                          }}
-                        >
-                          Signer
-                        </Button>
+                        <DepositaireOrdreSortie
+                          sortie={sortie}
+                          onSuccess={() => void refresh()}
+                          onError={(message) => toast.error(message)}
+                        />
                       )}
+                      {userRole === "depositaire" &&
+                        activeTab === "a_remettre" &&
+                        estARemettre(sortie) && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setRemiseOuverte(remiseOuverte === sortie.id ? null : sortie.id);
+                            }}
+                            aria-expanded={remiseOuverte === sortie.id}
+                          >
+                            Remettre
+                          </Button>
+                        )}
                     </div>
+
+                    {/* Panneau de remise (dépositaire comptable, onglet « À remettre »). */}
+                    {remiseOuverte === sortie.id && (
+                      <div onClick={(e) => e.stopPropagation()}>
+                        <RemiseOrdreSortie
+                          sortie={sortie}
+                          onSuccess={(remise) => {
+                            setRemiseOuverte(null);
+                            setRemiseRecemmentEnregistree(remise);
+                            void refresh();
+                          }}
+                          onError={(message) => toast.error(message)}
+                        />
+                      </div>
+                    )}
                   </CardContent>
                 </Card>
               ))}
             </div>
           )}
         </div>
-        {depositaireOuvert && (
-          <DepositaireOrdreSortie
-            sortie={sortiesLive.find(s => s.id === depositaireOuvert) ?? null}
-            onSuccess={handleDepositaireSuccess}
-            onError={handleDepositaireError}
-          />
-        )}
       </CardContent>
     </Card>
   );

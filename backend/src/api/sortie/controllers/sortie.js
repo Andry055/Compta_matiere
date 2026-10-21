@@ -34,6 +34,9 @@ const {
   filtreAppropriation,
   verifierAccesSortie,
 } = require('../../../utils/sortieAcces');
+// Définition unique du « jour » métier : le fuseau applicatif (Madagascar),
+// indépendant de la configuration du serveur.
+const { dateDuJour } = require('../../../utils/horloge');
 // Création d'un ordre de sortie : logique PARTAGÉE avec la voie
 // « depuis une demande approuvée » (utils/creationSortie.js). Un seul chemin
 // de création : mêmes contrôles, même transaction, mêmes messages.
@@ -920,7 +923,7 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     }
 
     // Validation des champs obligatoires
-    const { detenteur_nom, detenteur_fonction, date_remise } = body.data || body;
+    const { detenteur_nom, detenteur_fonction, date_remise, mandataire_nom } = body.data || body;
 
     if (!detenteur_nom || typeof detenteur_nom !== 'string' || detenteur_nom.trim() === '') {
       return badRequest(ctx, 'detenteur_nom obligatoire (non vide).');
@@ -936,39 +939,52 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       return badRequest(ctx, 'detenteur_fonction limité à 150 caractères maximum.');
     }
 
+    // Mandataire (OPTIONNEL) : la personne que le détenteur a mandatée pour
+    // retirer le matériel à sa place. Le détenteur reste responsable. Un
+    // mandataire vide n'écrit RIEN (le champ reste non renseigné).
+    let mandataireFinal = null;
+    if (mandataire_nom !== undefined && mandataire_nom !== null) {
+      if (typeof mandataire_nom !== 'string') {
+        return badRequest(ctx, 'mandataire_nom doit être un texte.');
+      }
+      const mandataireTaille = mandataire_nom.trim();
+      if (mandataireTaille.length > 150) {
+        return badRequest(ctx, 'mandataire_nom limité à 150 caractères maximum.');
+      }
+      if (mandataireTaille !== '') {
+        mandataireFinal = mandataireTaille;
+      }
+    }
+
     // Validation de la date_remise (optionnelle)
+    //
+    // Le contrôle porte sur des DATES (AAAA-MM-JJ), jamais sur des instants :
+    // « aujourd'hui » est le jour de l'application (Indian/Antananarivo),
+    // pas celui du serveur. Deux chaînes AAAA-MM-JJ se comparent
+    // lexicographiquement, ce qui est l'ordre chronologique.
     let dateRemiseFinal = null;
     if (date_remise !== undefined && date_remise !== null && date_remise !== '') {
       if (typeof date_remise !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date_remise)) {
         return badRequest(ctx, 'date_remise doit être au format YYYY-MM-DD.');
       }
-      // Parsing en heure LOCALE (new Date('AAAA-MM-JJ') interprète en UTC :
-      // dans un fuseau positif (UTC+3 à Madagascar), la date DU JOUR était
-      // rejetée comme « postérieure à aujourd'hui », alors que l'omission de
-      // la date acceptait le même jour).
-      const [annee, mois, jour] = date_remise.split('-').map(Number);
-      const dateRemiseObj = new Date(annee, mois - 1, jour);
-      if (Number.isNaN(dateRemiseObj.getTime())) {
-        return badRequest(ctx, 'date_remise invalide (date inexistante).');
-      }
-      const aujourdhui = new Date();
-      aujourdhui.setHours(0, 0, 0, 0);
-      if (dateRemiseObj > aujourdhui) {
+      const jourAujourdhui = dateDuJour(new Date());
+      if (jourAujourdhui && date_remise > jourAujourdhui) {
         return badRequest(ctx, 'date_remise ne peut pas être postérieure à aujourd\'hui.');
       }
 
-      // Vérification : date_remise ne peut pas être antérieure à la date de validation logistique
+      // Vérification : date_remise ne peut pas être antérieure à la date de
+      // validation logistique (signature 3), exprimée dans le MÊME fuseau.
+      // Une date de signature illisible ne produit aucune borne.
       if (sortie.date_signature_logistique) {
-        const dateValidationLogistique = new Date(sortie.date_signature_logistique);
-        dateValidationLogistique.setHours(0, 0, 0, 0);
-        if (dateRemiseObj < dateValidationLogistique) {
+        const jourValidation = dateDuJour(sortie.date_signature_logistique);
+        if (jourValidation && date_remise < jourValidation) {
           return badRequest(ctx, 'date_remise ne peut pas être antérieure à la date de validation logistique.');
         }
       }
       dateRemiseFinal = date_remise;
     } else {
-      // Par défaut : aujourd'hui
-      dateRemiseFinal = new Date().toISOString().slice(0, 10);
+      // Par défaut : aujourd'hui, dans le fuseau de l'application.
+      dateRemiseFinal = dateDuJour(new Date());
     }
 
     // Transaction pour l'atomicité de la remise
@@ -976,13 +992,18 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     try {
       await app.db.transaction(async ({ trx }) => {
         // 1. Enregistrement du détenteur et date de remise
+        const donneesRemise = {
+          detenteur_nom: detenteur_nom.trim(),
+          detenteur_fonction: detenteur_fonction.trim(),
+          date_remise: dateRemiseFinal,
+        };
+        // Un mandataire vide n'écrit RIEN : le champ n'est pas touché.
+        if (mandataireFinal) {
+          donneesRemise.mandataire_nom = mandataireFinal;
+        }
         await app.documents(SORTIE_UID).update({
           documentId,
-          data: {
-            detenteur_nom: detenteur_nom.trim(),
-            detenteur_fonction: detenteur_fonction.trim(),
-            date_remise: dateRemiseFinal,
-          },
+          data: donneesRemise,
         });
 
         // 2. Mise à jour éventuelle de la demande liée

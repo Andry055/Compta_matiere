@@ -1171,6 +1171,7 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
       Schema.Attribute.DefaultTo<false>;
     magasinier_signed: Schema.Attribute.Boolean &
       Schema.Attribute.DefaultTo<false>;
+    mandataire_nom: Schema.Attribute.Text;
     motif_rejet: Schema.Attribute.Text;
     mouvements: Schema.Attribute.Relation<
       'oneToMany',

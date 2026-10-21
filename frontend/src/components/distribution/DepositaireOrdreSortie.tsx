@@ -1,23 +1,21 @@
 import React, { useState, useEffect } from "react";
+import { RefreshCw, PenLine } from "lucide-react";
+import { SortieRecord } from "@/lib/api";
+import { ControleSortieLignePayload } from "@/lib/sortieControle";
+import { signerSortie } from "@/lib/api";
 import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle
-} from "@/components/ui/card";
-import {
-  Button
-} from "@/components/ui/button";
+  Dialog,
+  DialogTrigger,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import {
   Textarea
 } from "@/components/ui/textarea";
 import { toast } from "sonner";
-import { RefreshCw } from "lucide-react";
-import { SortieRecord } from "@/lib/api";
-import { ControleSortieLignePayload } from "@/lib/sortieControle";
-// Signature 2 : rôle `depositaire` + contrôles des lignes (payload inchangé).
-import { signerSortie } from "@/lib/api";
-import "./EspaceMagasinierSorties.css"; // reuse same styles (msa- prefixed) – adjust if needed
+import "./EspaceMagasinierSorties.css"; // reuse same styles (msa- prefixed)
 
 interface DepositaireOrdreSortieProps {
   sortie: SortieRecord;
@@ -25,6 +23,14 @@ interface DepositaireOrdreSortieProps {
   onError: (error: string) => void;
 }
 
+/**
+ * Signature 2/3 (rôle dépositaire) — contrôles des lignes pré-remplis
+ * avec les données constatées par le magasinier à la signature 1.
+ *
+ * Rend désormais une fenêtre modale (popup) professionnelle au lieu d'une
+ * carte inline. Le bouton d'ouverture « Signer (2/3) » est le déclencheur
+ * du dialogue ; le contenu est portailé au-dessus de la page.
+ */
 export function DepositaireOrdreSortie({
   sortie,
   onSuccess,
@@ -36,22 +42,23 @@ export function DepositaireOrdreSortie({
   const [verifiees, setVerifiees] = useState<Record<string, boolean>>({});
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+  const [ouverte, setOuverte] = useState(false);
 
-  // Initialize contrôles based on sortie lines
+  // Initialise les contrôles à partir des données déjà constatées par le
+  // magasinier (état + observations par ligne), pré-remplies dans le formulaire.
   useEffect(() => {
     if (sortie.lignes?.length) {
       const initialControles = sortie.lignes.map((ligne, index) => ({
         ligne: ligne.documentId || String(index + 1),
-        // Aucun état imposé : le dépositaire doit CONSTATER l'état réel.
-        etat: "",
-        observations: "",
+        // Pré-remplir avec l'état constaté par le magasinier (signature 1).
+        etat: ligne.etat || "",
+        observations: ligne.observations || "",
       }));
       setControles(initialControles);
       setVerifiees({});
     }
   }, [sortie]);
 
-  // Handle etat change for a specific line
   const handleEtatChange = (ligneId: string, etat: string) => {
     setControles(prevControles =>
       prevControles.map(controle =>
@@ -62,7 +69,6 @@ export function DepositaireOrdreSortie({
     );
   };
 
-  // Handle observations change for a specific line
   const handleObservationsChange = (ligneId: string, observations: string) => {
     setControles(prevControles =>
       prevControles.map(controle =>
@@ -73,12 +79,10 @@ export function DepositaireOrdreSortie({
     );
   };
 
-  // Handle verification checkbox change (écran seul, hors payload)
   const handleVerificationChange = (ligneId: string, cochee: boolean) => {
     setVerifiees(prev => ({ ...prev, [ligneId]: cochee }));
   };
 
-  // Toutes les lignes ont un état, sont confirmées, et un défaut est motivé ?
   const controleComplet = controles.length > 0 && controles.every(controle => {
     const etatRenseigne = !!controle.etat && controle.etat.trim() !== "";
     const cochee = verifiees[controle.ligne] === true;
@@ -88,9 +92,7 @@ export function DepositaireOrdreSortie({
     return etatRenseigne && cochee && remarqueSiDefaillant;
   });
 
-  // Handle signature 2
   const handleSigner = async () => {
-    // Vérifier que toutes les lignes ont un état défini
     const allLinesHaveEtat = controles.every(controle => controle.etat && controle.etat.trim() !== "");
 
     if (!allLinesHaveEtat) {
@@ -114,18 +116,15 @@ export function DepositaireOrdreSortie({
     setIsLoading(true);
     setError(null);
     try {
-      // Signature 2/3 : rôle depositaire + contrôles des lignes. La case de
-      // vérification reste hors payload (aide d'écran uniquement).
-      // SortieRecord.id EST le documentId servi par mapSortie.
       const signedSortie = await signerSortie(sortie.id, "depositaire", controles);
       setIsLoading(false);
+      setOuverte(false);
       onSuccess(signedSortie);
       toast.success("Signature 2/3 enregistrée", {
         description: `Référence : ${signedSortie.reference}`
       });
     } catch (err: any) {
       setIsLoading(false);
-      // Handle API error
       if (err.response?.status === 403) {
         setError("Vous n'avez pas la permission de signer cette sortie");
       } else if (err.response?.status === 409) {
@@ -139,124 +138,129 @@ export function DepositaireOrdreSortie({
     }
   };
 
-  if (isLoading) {
-    return (
-      <Card className="w-full">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base font-medium">Signature de la sortie</CardTitle>
-        </CardHeader>
-        <CardContent className="flex min-h-[200px] items-center justify-center">
-          <button className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" />
-            <span className="text-sm">Signature en cours...</span>
-          </button>
-        </CardContent>
-      </Card>
-    );
-  }
-
   return (
-    <Card className="w-full">
-      <CardHeader className="pb-2">
-        <CardTitle className="text-base font-medium">Signature de la sortie #{sortie.reference}</CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
-        <p className="msa-aide">
-          Si le matériel ou la quantité ne correspond pas, rejetez l'ordre en
-          indiquant le motif.
-        </p>
-        <div className="space-y-4">
-          {controles.map((controle, index) => {
-            const ligne = sortie.lignes?.[index];
-            const cochee = verifiees[controle.ligne] === true;
-            const manqueRemarque =
-              controle.etat === "defaillant" && !(controle.observations ?? "").trim();
-            return (
-              <div key={controle.ligne} className="msa-panneau-ligne">
-                <div className="msa-carte-entete">
-                  <h3 className="msa-ref">Ligne {index + 1}</h3>
-                  {ligne?.designation && (
-                    <span className="msa-badge">{ligne.designation}</span>
-                  )}
-                </div>
+    <Dialog open={ouverte} onOpenChange={setOuverte}>
+      <DialogTrigger asChild>
+        <button type="button" className="msa-bouton msa-bouton--primaire msa-bouton--compact">
+          <PenLine style={{ width: 14, height: 14 }} aria-hidden="true" />
+          Signer (2/3)
+        </button>
+      </DialogTrigger>
+      <DialogContent className="msa-dialogue">
+        <DialogHeader>
+          <DialogTitle className="msa-dialogue-titre">
+            Signature de la sortie #{sortie.reference}
+          </DialogTitle>
+          <DialogDescription className="msa-dialogue-texte">
+            Si le matériel ou la quantité ne correspond pas, rejetez l'ordre en
+            indiquant le motif.
+          </DialogDescription>
+        </DialogHeader>
 
-                <div className="msa-champs">
-                  <div className="msa-champ">
-                    <p className="msa-champ-cle">Quantité demandée :</p>
-                    <p className="msa-champ-valeur">{ligne?.quantite ?? sortie.quantite}</p>
+        {isLoading ? (
+          <div className="msa-dialogue-corps" style={{ alignItems: "center", padding: "1rem 0" }}>
+            <button className="flex items-center gap-2" disabled>
+              <RefreshCw className="h-4 w-4 text-muted-foreground animate-spin" aria-hidden="true" />
+              <span className="text-sm">Signature en cours…</span>
+            </button>
+          </div>
+        ) : (
+          <>
+            <div className="space-y-4">
+              {controles.map((controle, index) => {
+                const ligne = sortie.lignes?.[index];
+                const cochee = verifiees[controle.ligne] === true;
+                const manqueRemarque =
+                  controle.etat === "defaillant" && !(controle.observations ?? "").trim();
+                return (
+                  <div key={controle.ligne} className="msa-panneau-ligne">
+                    <div className="msa-carte-entete">
+                      <h3 className="msa-ref">Ligne {index + 1}</h3>
+                      {ligne?.designation && (
+                        <span className="msa-badge">{ligne.designation}</span>
+                      )}
+                    </div>
+
+                    <div className="msa-champs">
+                      <div className="msa-champ">
+                        <p className="msa-champ-cle">Quantité demandée :</p>
+                        <p className="msa-champ-valeur">
+                          {ligne?.quantite ?? sortie.quantite}
+                        </p>
+                      </div>
+                      <div className="msa-champ">
+                        <p className="msa-champ-cle">Stock actuel :</p>
+                        <p className="msa-champ-valeur">
+                          {ligne?.materiel?.quantiteStock ?? "—"}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="msa-panneau-champ">
+                      <label className="msa-panneau-libelle" htmlFor={`etat-${controle.ligne}`}>
+                        État à constater :
+                      </label>
+                      <select
+                        id={`etat-${controle.ligne}`}
+                        className="msa-select"
+                        value={controle.etat}
+                        onChange={(e) => handleEtatChange(controle.ligne, e.target.value)}
+                        disabled={isLoading}
+                      >
+                        <option value="">Sélectionner un état</option>
+                        <option value="neuf">Neuf</option>
+                        <option value="bon">Bon</option>
+                        <option value="moyen">Moyen</option>
+                        <option value="defaillant">Défaillant</option>
+                      </select>
+                    </div>
+
+                    <div className="msa-panneau-champ">
+                      <label className="msa-panneau-libelle" htmlFor={`obs-${controle.ligne}`}>
+                        Remarque :
+                      </label>
+                      <Textarea
+                        id={`obs-${controle.ligne}`}
+                        value={controle.observations || ""}
+                        onChange={(e) => handleObservationsChange(controle.ligne, e.target.value)}
+                        placeholder={
+                          controle.etat === "defaillant"
+                            ? "Remarque obligatoire (ligne défaillante)…"
+                            : "Remarque éventuelle…"
+                        }
+                        className="msa-textarea h-20"
+                      />
+                      {manqueRemarque && (
+                        <p className="msa-erreur">Une ligne « Défaillant » exige une remarque.</p>
+                      )}
+                    </div>
+
+                    <label className="msa-case">
+                      <input
+                        type="checkbox"
+                        checked={cochee}
+                        onChange={(e) => handleVerificationChange(controle.ligne, e.target.checked)}
+                      />
+                      <span>Matériel présent et quantité vérifiée</span>
+                    </label>
                   </div>
-                  <div className="msa-champ">
-                    <p className="msa-champ-cle">Stock actuel :</p>
-                    <p className="msa-champ-valeur">
-                      {ligne?.materiel?.quantiteStock ?? "—"}
-                    </p>
-                  </div>
-                </div>
-
-                <div className="msa-panneau-champ">
-                  <label className="msa-panneau-libelle" htmlFor={`etat-${controle.ligne}`}>
-                    État à constater :
-                  </label>
-                  {/* Liste native : le CSS du projet est figé, les styles
-                      viennent de EspaceMagasinierSorties.css (msa-select). */}
-                  <select
-                    id={`etat-${controle.ligne}`}
-                    className="msa-select"
-                    value={controle.etat}
-                    onChange={(e) => handleEtatChange(controle.ligne, e.target.value)}
-                    disabled={isLoading}
-                  >
-                    <option value="">Sélectionner un état</option>
-                    <option value="neuf">Neuf</option>
-                    <option value="bon">Bon</option>
-                    <option value="moyen">Moyen</option>
-                    <option value="defaillant">Défaillant</option>
-                  </select>
-                </div>
-
-                <div className="msa-panneau-champ">
-                  <label className="msa-panneau-libelle" htmlFor={`obs-${controle.ligne}`}>
-                    Remarque :
-                  </label>
-                  <Textarea
-                    id={`obs-${controle.ligne}`}
-                    value={controle.observations || ""}
-                    onChange={(e) => handleObservationsChange(controle.ligne, e.target.value)}
-                    placeholder={
-                      controle.etat === "defaillant"
-                        ? "Remarque obligatoire (ligne défaillante)…"
-                        : "Remarque éventuelle…"
-                    }
-                    className="msa-textarea h-20"
-                  />
-                  {manqueRemarque && (
-                    <p className="msa-erreur">Une ligne « Défaillant » exige une remarque.</p>
-                  )}
-                </div>
-
-                <label className="msa-case">
-                  <input
-                    type="checkbox"
-                    checked={cochee}
-                    onChange={(e) => handleVerificationChange(controle.ligne, e.target.checked)}
-                  />
-                  <span>Matériel présent et quantité vérifiée</span>
-                </label>
-              </div>
-            );
-          })}
-        </div>
-        <div className="msa-actions">
-          <button
-            type="button"
-            className="msa-bouton msa-bouton--primaire"
-            onClick={handleSigner}
-            disabled={isLoading || !controleComplet}
-          >
-            {isLoading ? "Signature en cours..." : "Signer (2/3)"}
-          </button>
-        </div>
-      </CardContent>
-    </Card>
+                );
+              })}
+            </div>
+            {error && <p className="msa-erreur">{error}</p>}
+            <div className="msa-actions">
+              <button
+                type="button"
+                className="msa-bouton msa-bouton--primaire msa-bouton--compact"
+                onClick={handleSigner}
+                disabled={isLoading || !controleComplet}
+              >
+                {isLoading ? "Signature en cours…" : "Signer (2/3)"}
+              </button>
+            </div>
+          </>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }

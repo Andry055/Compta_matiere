@@ -26,6 +26,7 @@ import {
   getSignaturesEntree,
   getStatutEntreeAffiche,
   formatMontant,
+  splitDepartement,
 } from "../lib/movements";
 import { fetchEntrees } from "../lib/api";
 import { getEntreesTransfert } from "../lib/transfers";
@@ -101,10 +102,13 @@ export function EntriesPage({ user }: EntriesPageProps) {
   );
   const [flash, setFlash] = useState("");
 
-  // Le Demandeur peut enregistrer une entrée (démarre « En attente » 0/3) :
-  // les signatures restent réservées aux responsables habilités.
-  const canCreate = !!user;
-
+  // Le Demandeur consulte en lecture seule (pas de création, pas d'export) :
+  // les signatures et la création restent réservées aux responsables habilités.
+  const isDemandeur = user?.role === "demandeur";
+  const canCreate = !!user && user?.role !== "demandeur";
+  const canExport = !!user && (user.permissions?.includes("all") || user.role !== "demandeur");
+  // Le demandeur peut imprimer le bon de sortie (lecture seule, pas d'export)
+  const canPrint = isDemandeur || canExport;
   const charger = () => {
     fetchEntrees().then((data) => {
       if (data && data.length > 0) {
@@ -132,9 +136,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
     };
   }, []);
 
-  // Le Demandeur consulte sans pouvoir valider (validation réservée au responsable)
-  const isDemandeur = user?.role === "demandeur";
-  const canExport = !!user && (user.permissions?.includes("all") || user.role !== "demandeur");
+  const { direction: directionUtilisateur } = splitDepartement(user?.department || "");
 
   const categories = useMemo(
     () => ["Toutes", ...Array.from(new Set(records.map((e) => e.categorie)))],
@@ -167,12 +169,15 @@ export function EntriesPage({ user }: EntriesPageProps) {
       const matchesService = serviceFilter === "Tous" || entry.service === serviceFilter;
       const matchesDebut = !dateDebut || entry.dateEntree >= dateDebut;
       const matchesFin = !dateFin || entry.dateEntree <= dateFin;
+      const matchesDirectionDemandeur =
+        !isDemandeur || entry.direction === directionUtilisateur;
       return (
         matchesSearch &&
         matchesStatus &&
         matchesCategory &&
         matchesDirection &&
         matchesService &&
+        matchesDirectionDemandeur &&
         matchesDebut &&
         matchesFin
       );
@@ -186,6 +191,8 @@ export function EntriesPage({ user }: EntriesPageProps) {
     serviceFilter,
     dateDebut,
     dateFin,
+    isDemandeur,
+    directionUtilisateur,
   ]);
 
   const stats = getStatistiquesEntrees(records);
@@ -315,10 +322,12 @@ export function EntriesPage({ user }: EntriesPageProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
-            Entrées
+            {isDemandeur ? "Réceptions" : "Entrées"}
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Suivi des entrées de matériels
+            {isDemandeur
+              ? "Réceptions de votre direction"
+              : "Suivi des entrées de matériels"}
           </p>
           <div className="mt-1 text-xs text-muted-foreground">
             {dataOrigin === "chargement" && "Connexion au serveur..."}
@@ -365,15 +374,31 @@ export function EntriesPage({ user }: EntriesPageProps) {
               Exporter
             </button>
           )}
+          {canPrint && !canExport && (
+            <button
+              onClick={() => {
+                const impressions = visibleRows
+                  .map((e) => `${e.reference} — ${e.materiel}`)
+                  .join("\n");
+                window.print();
+              }}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors text-sm"
+            >
+              <Printer className="h-4 w-4" />
+              Imprimer
+            </button>
+          )}
         </div>
       </div>
 
       {isDemandeur && (
         <Message variant="info" size="sm" icon={BadgeCheck}>
-          Vous pouvez enregistrer une nouvelle entrée : elle démarre « En
-          attente » (0/3) et n'est VALIDÉE qu'après les 3 signatures obligatoires
-          (Dépositaire, Chef de service 1, Chef de service 2). Vous ne pouvez
-          jamais signer à la place d'un responsable.
+          Consultez en lecture seule les entrées de votre direction
+          ({directionUtilisateur}). Vous pouvez imprimer le bon de sortie de
+          chaque entrée. Aucune création ni exportation n’est autorisée.
+          <br />
+          Consultez également le <b>Mini-journal Direction</b> pour suivre les
+          sorties remises de votre direction.
         </Message>
       )}
 
@@ -683,7 +708,7 @@ export function EntriesPage({ user }: EntriesPageProps) {
                           >
                             <FileText className="h-4 w-4" />
                           </button>
-                          {canExport && (
+                          {canPrint && (
                             <button
                               title="Générer l'Ordre d'entrée (imprimable)"
                               onClick={() => openDetail(entry, "signatures")}

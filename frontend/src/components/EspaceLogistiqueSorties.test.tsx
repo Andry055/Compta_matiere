@@ -203,8 +203,8 @@ describe("Espace du chef logistique — page et onglets", () => {
     render(<Distribution />);
 
     expect(await screen.findByRole("tab", { name: /Inventaire Stock/ })).toBeTruthy();
-    await fireEvent.mouseDown(screen.getByRole("tab", { name: /Ordres de sortie/ }));
-    fireEvent.click(screen.getByRole("tab", { name: /Ordres de sortie/ }));
+    await fireEvent.mouseDown(screen.getByRole("tab", { name: /Demandes de Distribution/ }));
+    fireEvent.click(screen.getByRole("tab", { name: /Demandes de Distribution/ }));
     expect(await screen.findByText("Nouvel ordre de sortie")).toBeTruthy();
     expect(screen.queryByText("Autorisation des sorties")).toBeNull();
   });

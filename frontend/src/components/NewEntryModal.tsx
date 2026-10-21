@@ -150,7 +150,7 @@ export function NewEntryModal({ open, user, onClose, onCreated }: NewEntryModalP
       for (const l of lignes) {
         if (!l.designation.trim()) return "Chaque matériel doit avoir une désignation.";
         if (!(Number(l.quantite) > 0)) return `Quantité invalide pour « ${l.designation} » : elle doit être supérieure à 0.`;
-        if (!(Number(l.prixUnitaire) >= 0)) return `Prix unitaire invalide pour « ${l.designation} ».`;
+        if (!(Number(l.prixUnitaire) > 0)) return `Prix unitaire invalide pour « ${l.designation} ».`;
       }
     }
     return "";

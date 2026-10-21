@@ -1,0 +1,323 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   Remise de matériel au détenteur — panneau de remise et bon de sortie.
+   Styles LOCAUX préfixés `rms-` : le CSS du projet est figé (les utilitaires
+   Tailwind courants comme `grid`, `mb-4`, `sm:p-6` n'existent pas dans
+   index.css), donc mise en page 100 % ici, sur les variables du thème pour un
+   rendu correct en mode clair ET sombre.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.rms-panneau {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  padding: 0.875rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--card-foreground);
+}
+
+.rms-titre {
+  margin: 0;
+  font-size: 0.9375rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* ── En-tête de carte ─────────────────────────────────────────────────── */
+
+.rms-entete {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.rms-ref {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.rms-badge {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: var(--muted);
+  color: var(--muted-foreground);
+}
+
+/* ── Résumé du matériel à remettre ────────────────────────────────────── */
+
+.rms-resume {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--muted);
+}
+
+.rms-resume-ligne {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.rms-resume-ligne span {
+  color: var(--muted-foreground);
+}
+
+.rms-lignes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.rms-ligne {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.375rem;
+  padding-top: 0.375rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.8125rem;
+}
+
+.rms-ligne:first-child {
+  padding-top: 0;
+  border-top: 0;
+}
+
+.rms-ligne-designation {
+  font-weight: 500;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.rms-ligne-detail {
+  color: var(--muted-foreground);
+}
+
+/* ── Champs de saisie ─────────────────────────────────────────────────── */
+
+.rms-champs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin: 0;
+}
+
+.rms-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rms-libelle {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+
+.rms-input,
+.rms-select {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border: 1px solid var(--input);
+  border-radius: 0.375rem;
+  background: var(--background);
+  color: var(--foreground);
+  font-size: 0.875rem;
+  font-family: inherit;
+}
+
+.rms-input:disabled,
+.rms-select:disabled {
+  opacity: 0.6;
+}
+
+.rms-input:focus-visible,
+.rms-select:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 1px;
+}
+
+.rms-case {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--muted);
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.rms-case input {
+  margin-top: 0.125rem;
+}
+
+.rms-aide {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+.rms-erreur {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--destructive);
+}
+
+/* ── Actions ──────────────────────────────────────────────────────────── */
+
+.rms-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+@media (min-width: 480px) {
+  .rms-actions {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+.rms-bouton {
+  flex: 1 1 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.375rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid transparent;
+  border-radius: 0.375rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.rms-bouton:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.rms-bouton--primaire {
+  background: var(--primary);
+  color: var(--primary-foreground);
+}
+
+.rms-bouton--fantome {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.rms-bouton:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+/* ── Overlay du popup de confirmation ─────────────────────────────────── */
+
+.rms-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: color-mix(in oklab, var(--background) 75%, transparent);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+/* ── Confirmation de la remise (action irréversible, centrée) ─────────── */
+
+.rms-confirmation {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 50;
+  width: min(92vw, 28rem);
+  max-height: 85vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  padding: 1rem;
+  border: 1px solid var(--destructive);
+  border-left-width: 3px;
+  border-radius: 0.5rem;
+  background: var(--card);
+  color: var(--card-foreground);
+  box-shadow: 0 25px 50px -12px color-mix(in oklab, var(--color-black) 30%, transparent);
+}
+
+.rms-confirmation-texte {
+  margin: 0;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* ── Succès ───────────────────────────────────────────────────────────── */
+
+.rms-succes {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.75rem;
+  border: 1px solid oklch(0.64 0.16 155);
+  border-left-width: 3px;
+  border-radius: 0.375rem;
+  background: var(--muted);
+}
+
+.rms-succes-texte {
+  margin: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+/* ── Récapitulatif d'une remise déjà effectuée (lecture seule) ─────────── */
+
+.rms-recap {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.625rem;
+  border: 1px solid var(--border);
+  border-radius: 0.375rem;
+  background: var(--muted);
+}
+
+.rms-recap-ligne {
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--foreground);
+  overflow-wrap: anywhere;
+}
+
+.rms-recap-ligne span {
+  color: var(--muted-foreground);
+}
+
+.rms-badge--success {
+  padding: 0.125rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  background: oklch(0.64 0.16 155);
+  color: oklch(0.99 0.01 150);
+}

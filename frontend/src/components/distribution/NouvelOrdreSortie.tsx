@@ -584,8 +584,8 @@ export function NouvelOrdreSortie({
   }
 
   return (
-    <Card className="w-full space-y-4">
-      <CardHeader className="pb-2">
+    <Card className="w-full space-y-3">
+      <CardHeader className="pb-1">
         <div className="flex items-center gap-2">
           <Truck className="h-4 w-4" />
           <CardTitle className="text-base font-medium">Nouvel ordre de sortie</CardTitle>
@@ -594,39 +594,39 @@ export function NouvelOrdreSortie({
           Création d'un ordre de sortie (étape 1 du circuit : dépositaire)
         </CardDescription>
       </CardHeader>
-      <CardContent className="space-y-4">
-        {/* Date */}
-        <div className="space-y-2">
-          <Label htmlFor="date-sortie">Date de sortie</Label>
-          <Input
-            id="date-sortie"
-            type="date"
-            value={dateSortie}
-            onChange={(e) => setDateSortie(e.target.value)}
-            required
-            disabled={isSubmitting}
-          />
-        </div>
-
-        {/* Justificatif */}
-        <div className="space-y-2">
-          <Label htmlFor="justificatif">Pièce justificative *</Label>
-          <Textarea
-            id="justificatif"
-            value={justificatif}
-            onChange={(e) => setJustificatif(e.target.value)}
-            rows={3}
-            placeholder="Numéro de bon de commande, référé décision, etc."
-            required
-            disabled={isSubmitting}
-          />
-          {validationErrors.includes("Pièce justificative obligatoire.") && (
-            <p className="text-sm text-destructive">Pièce justificative obligatoire.</p>
-          )}
+      <CardContent className="space-y-3">
+        {/* Date + Pièce justificatif sur une même ligne pour réduire la hauteur du formulaire */}
+        <div className="flex flex-wrap gap-4">
+          <div className="flex-1 min-w-0 space-y-2">
+            <Label htmlFor="date-sortie">Date de sortie</Label>
+            <Input
+              id="date-sortie"
+              type="date"
+              value={dateSortie}
+              onChange={(e) => setDateSortie(e.target.value)}
+              required
+              disabled={isSubmitting}
+            />
+          </div>
+          <div className="flex-1 min-w-0 space-y-2">
+            <Label htmlFor="justificatif">Pièce justificative *</Label>
+            <Textarea
+              id="justificatif"
+              value={justificatif}
+              onChange={(e) => setJustificatif(e.target.value)}
+              rows={2}
+              placeholder="Numéro de bon de commande, référé décision, etc."
+              required
+              disabled={isSubmitting}
+            />
+            {validationErrors.includes("Pièce justificative obligatoire.") && (
+              <p className="text-sm text-destructive">Pièce justificative obligatoire.</p>
+            )}
+          </div>
         </div>
 
         {/* Destination */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="space-y-2">
             <Label>Destination *</Label>
             <p className="text-sm text-muted-foreground">
@@ -634,9 +634,9 @@ export function NouvelOrdreSortie({
             </p>
           </div>
 
-          <div className="space-y-4">
-            {/* Direction */}
-            <div className="space-y-2">
+          {/* Direction et Service côte à côte pour gagner de la hauteur */}
+          <div className="flex flex-wrap gap-4">
+            <div className="flex-1 min-w-0 space-y-2">
               <Label htmlFor="direction-select">Direction</Label>
               <Select
                 id="direction-select"
@@ -661,8 +661,7 @@ export function NouvelOrdreSortie({
               )}
             </div>
 
-            {/* Service */}
-            <div className="space-y-2">
+            <div className="flex-1 min-w-0 space-y-2">
               <Label htmlFor="service-select">Service</Label>
               <Select
                 id="service-select"
@@ -691,18 +690,18 @@ export function NouvelOrdreSortie({
                 <p className="text-xs text-muted-foreground italic">Chargement...</p>
               )}
             </div>
+          </div>
 
-            {/* Bénéficiaire */}
-            <div className="space-y-2">
-              <Label htmlFor="beneficiaire-input">Bénéficiaire</Label>
-              <Input
-                id="beneficiaire-input"
-                value={beneficiaire}
-                onChange={(e) => setBeneficiaire(e.target.value)}
-                placeholder="Nom et fonction du bénéficiaire"
-                disabled={isSubmitting}
-              />
-            </div>
+          {/* Bénéficiaire */}
+          <div className="space-y-2">
+            <Label htmlFor="beneficiaire-input">Bénéficiaire</Label>
+            <Input
+              id="beneficiaire-input"
+              value={beneficiaire}
+              onChange={(e) => setBeneficiaire(e.target.value)}
+              placeholder="Nom et fonction du bénéficiaire"
+              disabled={isSubmitting}
+            />
           </div>
 
           {/* Validation for destination */}
@@ -733,7 +732,7 @@ export function NouvelOrdreSortie({
         </div>
 
         {/* Lignes de matériel */}
-        <div className="space-y-4">
+        <div className="space-y-3">
           <div className="flex items-center justify-between">
             <h3 className="text-lg font-medium">Lignes de matériel</h3>
             <Button
@@ -753,7 +752,7 @@ export function NouvelOrdreSortie({
 
           {lignes.map((ligne, index) => (
             <Card key={index} className="border border-border/50">
-              <CardContent className="space-y-3 pb-4">
+              <CardContent className="space-y-2 pb-3">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium">Ligne {index + 1}</span>
                   <Button
@@ -870,7 +869,7 @@ export function NouvelOrdreSortie({
         </div>
 
         {/* Summary */}
-        <div className="border-t pt-4">
+        <div className="border-t pt-2">
           <div className="flex items-center justify-between text-sm font-medium">
             <span>Total estimé</span>
             <span>{totalEstime.toLocaleString()} FCFA</span>
@@ -880,7 +879,7 @@ export function NouvelOrdreSortie({
           </p>
         </div>
       </CardContent>
-      <CardFooter className="flex flex-col items-end gap-2 pt-4">
+      <CardFooter className="flex flex-col items-end gap-2 pt-3">
         {/* Raison bloquante affichée : le bouton est désactivé tant que le
             brouillon est invalide, sans quoi il est impossible de savoir
             pourquoi il l'est. */}

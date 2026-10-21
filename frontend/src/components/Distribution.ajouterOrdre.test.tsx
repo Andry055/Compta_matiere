@@ -146,10 +146,11 @@ describe("Inventaire → « Ajouter à l'ordre de sortie »", () => {
   it("re-bascule vers En préparation lors d'une seconde création même si le filtre avait été changé manuellement", async () => {
     render(<Distribution />);
 
-    // Aller sur Ordres de sortie
-    const ongletOrdres = await screen.findByRole("tab", { name: /Ordres de sortie/i });
-    fireEvent.mouseDown(ongletOrdres);
-    fireEvent.click(ongletOrdres);
+    // Aller sur Demandes de distribution (le formulaire de création s'y trouve
+    // désormais).
+    const ongletDemandes = await screen.findByRole("tab", { name: /Demandes de Distribution/i });
+    fireEvent.mouseDown(ongletDemandes);
+    fireEvent.click(ongletDemandes);
 
     // Remplir et créer le premier ordre
     fireEvent.change(screen.getByLabelText(/Pièce justificative/), { target: { value: "Bon 1" } });
@@ -176,6 +177,11 @@ describe("Inventaire → « Ajouter à l'ordre de sortie »", () => {
     // Fermer le bandeau de succès précédent
     fireEvent.click(screen.getByRole("button", { name: /Fermer/i }));
 
+    // Revenir sur Demandes de distribution pour le second formulaire de création
+    const ongletDemandes2 = await screen.findByRole("tab", { name: /Demandes de Distribution/i });
+    fireEvent.mouseDown(ongletDemandes2);
+    fireEvent.click(ongletDemandes2);
+
     // Remplir et créer le second ordre
     fireEvent.change(screen.getByLabelText(/Pièce justificative/), { target: { value: "Bon 2" } });
     fireEvent.change(screen.getByLabelText(/Bénéficiaire/), { target: { value: "Dir 2" } });
@@ -188,6 +194,7 @@ describe("Inventaire → « Ajouter à l'ordre de sortie »", () => {
 
     // Succès 2 : re-basculement automatique vers En préparation grâce à la version incrémentée
     expect(await screen.findByText(/Ordre de sortie créé avec succès/i)).toBeTruthy();
-    expect(tabPrep.getAttribute("data-state")).toBe("active");
+    const tabPrepSecond = await screen.findByRole("tab", { name: /En préparation/i });
+    expect(tabPrepSecond.getAttribute("data-state")).toBe("active");
   });
 });

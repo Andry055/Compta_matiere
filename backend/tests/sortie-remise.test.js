@@ -29,6 +29,8 @@ const CONTROLEUR = path.join(RACINE, 'src', 'api', 'sortie', 'controllers', 'sor
 const ROUTES = path.join(RACINE, 'src', 'api', 'sortie', 'routes', 'sortie.js');
 const SCHEMA = path.join(RACINE, 'src', 'api', 'sortie', 'content-types', 'sortie', 'schema.json');
 const INDEX = path.join(RACINE, 'src', 'index.js');
+// Définition canonique du jour métier (fuseau de l'application).
+const { dateDuJour } = require(path.join(RACINE, 'src', 'utils', 'horloge.js'));
 
 const lire = (f) => fs.readFileSync(f, 'utf8');
 
@@ -707,8 +709,11 @@ test('remise : date_remise par défaut à aujourd\'hui', async () => {
   const reponse = await controleur.remise(ctx);
 
   assert.strictEqual(ctx.status, 200);
-  // La date_remise doit être aujourd'hui (ou très proche)
-  const aujourdhui = new Date().toISOString().slice(0, 10);
+  // La date_remise par défaut est « aujourd'hui » AU FUSEAU DE L'APPLICATION
+  // (Indian/Antananarivo), et non le jour UTC : entre 21:00 et 24:00 UTC les
+  // deux jours diffèrent. On aligne l'assertion sur la définition canonique
+  // du jour métier (src/utils/horloge.js) au lieu du jour UTC brut.
+  const aujourdhui = dateDuJour(new Date());
   assert.strictEqual(reponse.data.date_remise, aujourdhui, 'date_remise par défaut à aujourd\'hui');
 });
 

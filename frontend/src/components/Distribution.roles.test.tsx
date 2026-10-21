@@ -83,7 +83,10 @@ describe("Distribution — aiguillage par rôle", () => {
     expect(await screen.findByRole("tab", { name: /Inventaire Stock/ })).toBeTruthy();
     expect(screen.getByRole("tab", { name: /Demandes de Distribution/ })).toBeTruthy();
 
-    await ouvrirOngletOrdres();
+    // Le formulaire de création se trouve désormais dans l'onglet « Demandes de distribution ».
+    const ongletDemandes = await screen.findByRole("tab", { name: /Demandes de Distribution/ });
+    fireEvent.mouseDown(ongletDemandes);
+    fireEvent.click(ongletDemandes);
     expect(await screen.findByText("Nouvel ordre de sortie")).toBeTruthy();
     expect(screen.queryByText(/Accès réservé au rôle dépositaire/)).toBeNull();
   });

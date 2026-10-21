@@ -352,8 +352,8 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
         return badRequest(ctx, 'Quantité invalide : elle doit être supérieure à 0.');
       }
       const prix = Number(ligne.valeur_unitaire);
-      if (!Number.isFinite(prix) || prix < 0) {
-        return badRequest(ctx, 'Prix unitaire invalide : il doit être positif ou nul.');
+      if (!Number.isFinite(prix) || prix <= 0) {
+        return badRequest(ctx, 'Prix unitaire invalide : il doit être strictement positif.');
       }
       // Cohérence : montant recalculé serveur (jamais pris du client)
       ligne.montant = Math.round(quantite * prix * 100) / 100;

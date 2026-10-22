@@ -1,0 +1,66 @@
+{
+  "kind": "collectionType",
+  "collectionName": "receptions",
+  "info": {
+    "singularName": "reception",
+    "pluralName": "receptions",
+    "displayName": "Réception physique"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "sortie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie.sortie",
+      "required": true
+    },
+    "numero": {
+      "type": "integer",
+      "required": true
+    },
+    "date_reception": {
+      "type": "date",
+      "required": true
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": ["en_cours", "partielle", "complete", "annulee"],
+      "required": true
+    },
+    "version": {
+      "type": "integer",
+      "required": true,
+      "default": 1
+    },
+    "depositaire_nom": {
+      "type": "text",
+      "required": true
+    },
+    "depositaire_fonction": {
+      "type": "text",
+      "required": true
+    },
+    "direction": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::direction.direction",
+      "required": true
+    },
+    "observations": {
+      "type": "text"
+    },
+    "createdBy": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    },
+    "updatedBy": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

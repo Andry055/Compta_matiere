@@ -1,0 +1,48 @@
+{
+  "kind": "collectionType",
+  "collectionName": "journal-actions",
+  "info": {
+    "singularName": "journal-action",
+    "pluralName": "journal-actions",
+    "displayName": "Journal d'action"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "anomalie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::anomalie.anomalie",
+      "required": true
+    },
+    "action": {
+      "type": "enumeration",
+      "enum": ["ouverte", "prise_en_charge", "resolue", "rejetee"],
+      "required": true
+    },
+    "auteur": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "required": true
+    },
+    "date": {
+      "type": "date",
+      "required": true
+    },
+    "ancien_statut": {
+      "type": "enumeration",
+      "enum": ["ouverte", "en_cours", "resolue", "rejetee"]
+    },
+    "nouveau_statut": {
+      "type": "enumeration",
+      "enum": ["ouverte", "en_cours", "resolue", "rejetee"],
+      "required": true
+    },
+    "commentaire": {
+      "type": "text"
+    }
+  }
+}

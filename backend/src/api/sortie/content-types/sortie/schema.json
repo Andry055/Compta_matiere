@@ -118,6 +118,11 @@
     },
     "mandataire_nom": {
       "type": "text"
+    },
+    "notifications_validee_envoyees": {
+      "type": "boolean",
+      "default": false,
+      "description": "Empêche le renvoi des notifications SSE de validation après une première émission réussie."
     }
   }
 }

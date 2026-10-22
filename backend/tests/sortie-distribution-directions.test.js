@@ -41,18 +41,22 @@ const CONTENEURS = {
   'api::service.service': [],
   'api::employee.employee': [],
   'api::demande.demande': [],
+  'api::notification-outbox.notification-outbox': [],
 };
 
 let compteur = 0;
 let journalAvertissements = [];
+let notificationAppels = [];
 
-/** Utilisateurs de simulation : id → rôle (codé `type`, lu par getRoleCode). */
+/** Utilisateurs de simulation : id → rôle (codé `type`, lu par getRoleCode).
+ *  Le champ `direction` rattache explicitement l'utilisateur à une direction.
+ */
 const UTILISATEURS = [
-  { id: 21, roleType: 'magasinier', username: 'Andriamampianina Fara', email: 'fara.andriam@mtefop.gov.mg', documentId: 'u-maga' },
-  { id: 22, roleType: 'depositaire', username: 'Rakotomalala Hery', email: 'hery.rakoto@mtefop.gov.mg', documentId: 'u-depo' },
-  { id: 23, roleType: 'logistique', username: 'Razafindrakoto Tojo', email: 'tojo.razaf@mtefop.gov.mg', documentId: 'u-log' },
-  { id: 24, roleType: 'demandeur', username: 'Randriamampionona Tolotra', email: 'tolotra.randria@mtefop.gov.mg', documentId: 'u-dem' },
-  { id: 25, roleType: 'comptable', username: 'Rasoa Naina', email: 'naina.rasoa@mtefop.gov.mg', documentId: 'u-comp' },
+  { id: 21, roleType: 'magasinier', username: 'Andriamampianina Fara', email: 'fara.andriam@mtefop.gov.mg', documentId: 'u-maga', direction: 'dlog' },
+  { id: 22, roleType: 'depositaire', username: 'Rakotomalala Hery', email: 'hery.rakoto@mtefop.gov.mg', documentId: 'u-depo', direction: 'dlog' },
+  { id: 23, roleType: 'logistique', username: 'Razafindrakoto Tojo', email: 'tojo.razaf@mtefop.gov.mg', documentId: 'u-log', direction: 'dlog' },
+  { id: 24, roleType: 'demandeur', username: 'Randriamampionona Tolotra', email: 'tolotra.randria@mtefop.gov.mg', documentId: 'u-dem', direction: 'dlog' },
+  { id: 25, roleType: 'comptable', username: 'Rasoa Naina', email: 'naina.rasoa@mtefop.gov.mg', documentId: 'u-comp', direction: 'drh' },
 ];
 
 /** Matcher filtres simplifié : court-circuit $startsWith / $eqi / $in,
@@ -205,6 +209,10 @@ function documents(uid) {
         documentId: data.documentId || `document-${compteur}`,
         ...data,
       };
+      // L'outbox utilise un id numérique comme clé primaire (SERIAL en SQL)
+      if (uid === 'api::notification-outbox.notification-outbox') {
+        entite.id = compteur;
+      }
       stock.push(entite);
       if (journalEcritures) journalEcritures.push({ uid, entite, avant: null });
       return peuple(uid, entite);
@@ -232,6 +240,7 @@ function versSql(valeur) {
 const TABLES_KNEX = {
   sorties: 'api::sortie.sortie',
   materials: 'api::material.material',
+  notification_outboxes: 'api::notification-outbox.notification-outbox',
 };
 
 /** Mini-moteur knex : where({}) / where(col, op, v) / first / update /
@@ -283,9 +292,22 @@ function builderKnex(nomTable) {
         const avant = {};
         for (const cle of Object.keys(champs)) avant[cle] = row[cle];
         if (journalEcritures) journalEcritures.push({ uid, entite: row, avant });
-        for (const [cle, valeur] of Object.entries(champs)) row[cle] = versSql(valeur);
+        for (const [cle, valeur] of Object.entries(champs)) {
+          if (valeur && valeur.__raw === 'attempts + 1') {
+            row[cle] = Number(row[cle] || 0) + 1;
+          } else {
+            row[cle] = versSql(valeur);
+          }
+        }
       }
-      return Promise.resolve(modifiees.length);
+      // Thenable : await donne le nombre de lignes modifiées, .returning() donne les lignes.
+      const thenable = {
+        then: (resolve) => resolve(modifiees.length),
+        returning: (cols) => ({
+          then: (resolve) => resolve(modifiees),
+        }),
+      };
+      return thenable;
     },
     decrement(colonne, pas = 1) {
       const champ = col(colonne);
@@ -312,6 +334,12 @@ function builderKnex(nomTable) {
 
 const appSimule = {
   documents,
+  log: {
+    debug: () => {},
+    info: () => {},
+    warn: () => {},
+    error: () => {},
+  },
   db: {
     // Transaction SÉRIELLE avec rollback réel (journal d'écritures) : si le
     // callback lève (pénurie, verrou, échec de traçage), les décrémentations
@@ -320,7 +348,11 @@ const appSimule = {
       const precedent = journalEcritures;
       journalEcritures = [];
       try {
-        const resultat = await cb({ trx: (table) => builderKnex(table) });
+        const trx = (table) => builderKnex(table);
+        // trx.raw est utilisé par le service outbox pour les expressions SQL brutes
+        // (ex. attempts + 1). Retourne un marqueur que update() interprète.
+        trx.raw = (sql) => ({ __raw: sql });
+        const resultat = await cb({ trx });
         journalEcritures = precedent;
         return resultat;
       } catch (e) {
@@ -338,17 +370,50 @@ const appSimule = {
       }
     },
     query(uid) {
-      if (uid !== 'plugin::users-permissions.user') {
-        throw new Error(`db.query non simulé pour : ${uid}`);
+      if (uid === 'plugin::users-permissions.user') {
+        return {
+          async findOne({ where } = {}) {
+            const user = UTILISATEURS.find((u) => u.id === where.id);
+            if (!user) return null;
+            // getRoleCode lit `role.code || role.type`.
+            return { id: user.id, role: { code: user.roleType, type: user.roleType } };
+          },
+          // findMany filtre par direction si spécifié dans where.direction.documentId
+          // (ou filters.direction.documentId pour compatibilité).
+          // Retourne les utilisateurs avec `role` peuplé (nécessaire par findUtilisateursParRoleEtDirection).
+          async findMany({ where, filters } = {}) {
+            let result = UTILISATEURS;
+            const criteres = where || filters;
+            if (criteres && criteres.direction && criteres.direction.documentId) {
+              const dirId = criteres.direction.documentId;
+              result = result.filter((u) => u.direction === dirId);
+            }
+            return result.map((u) => ({
+              id: u.id,
+              role: { code: u.roleType, type: u.roleType },
+              email: u.email,
+              username: u.username,
+              direction: u.direction ? { documentId: u.direction } : null,
+            }));
+          },
+        };
       }
-      return {
-        async findOne({ where } = {}) {
-          const user = UTILISATEURS.find((u) => u.id === where.id);
-          if (!user) return null;
-          // getRoleCode lit `role.code || role.type`.
-          return { id: user.id, role: { code: user.roleType, type: user.roleType } };
-        },
-      };
+
+      if (uid === 'api::sortie.sortie') {
+        return {
+          // Mise à jour conditionnelle : si notifications_validee_envoyees est déjà true,
+          // retourne null (aucune ligne affectée) pour garantir l'idempotence.
+          async update({ where, data } = {}) {
+            const sortie = CONTENEURS['api::sortie.sortie'].find((s) => s.documentId === where.documentId);
+            if (!sortie) return null;
+            if (sortie.notifications_validee_envoyees === true) return null;
+            Object.assign(sortie, data);
+            return sortie;
+          },
+        };
+      }
+
+      throw new Error(`db.query non simulé pour : ${uid}`);
     },
   },
   log: {
@@ -386,6 +451,24 @@ require.cache[cheminStrapi] = {
 // Le contrôleur accède à `strapi` comme identifiant GLOB (global.strapi) :
 // c'est ce que fait Strapi en production, on reproduit ici.
 global.strapi = appSimule;
+
+// Mock de sseBroadcastToUser pour capturer les appels de notification dans les tests.
+const cheminNotifications = path.join(RACINE, 'src', 'lib', 'notifications.js');
+require.cache[cheminNotifications] = {
+  id: cheminNotifications,
+  filename: cheminNotifications,
+  loaded: true,
+  exports: {
+    sseBroadcastToUser: (userId, event, data) => {
+      notificationAppels.push({ userId, event, data });
+      return 0; // aucun flux SSE ouvert dans le mock
+    },
+    sseCount: () => 0,
+    sseRegister: () => {},
+    sseUnregister: () => {},
+  },
+};
+
 const controleur = require(CONTROLEUR);
 
 /* ─────────────────────── Données de test réutilisables ──────────────────── */
@@ -602,6 +685,7 @@ function reinitialiser() {
     stock_impacte: false,
     direction: 'dlog', // Direction Logistique - C'est ce que nous voulons tester
     service: 'scompta', // Service Comptabilité Matière (appartient à la Direction Logistique)
+    demande: { documentId: 'd1' }, // Lien vers la demande (pour la notification demande_aboutie)
   });
 
   // Demande liée à la sortie
@@ -613,7 +697,7 @@ function reinitialiser() {
     quantite: 5,
     statut: 'approuvee',
     date_demande: '2026-10-01',
-    demandeur: 'u-dem',
+    demandeur: { documentId: 'u-dem', id: 24 }, // Référence vers l'utilisateur demandeur (id 24)
   });
 }
 
@@ -768,11 +852,12 @@ test('flux de distribution complet : sortie associée à une direction suit tout
   assert.strictEqual(mouvementSignatureLogistique.statut, 'validee');
 
   // --- ÉTAPE 4 : Remise au détenteur -------------------------
+  // date_remise n'est pas passée : le contrôleur la définit par défaut
+  // avec dateDuJour (fuseau Antananarivo), ce qui évite tout décalage UTC.
   const ctx4 = contexteAppel('s1', {
     data: {
       detenteur_nom: 'Jean Martin',
       detenteur_fonction: 'Ingénieur',
-      date_remise: AUJOURDHUI
     }
   }, 'magasinier');
 
@@ -783,7 +868,7 @@ test('flux de distribution complet : sortie associée à une direction suit tout
   assert.strictEqual(sortieApresRemise.statut, 'sortie_effectuee');
   assert.strictEqual(sortieApresRemise.detenteur_nom, 'Jean Martin');
   assert.strictEqual(sortieApresRemise.detenteur_fonction, 'Ingénieur');
-  assert.strictEqual(sortieApresRemise.date_remise, AUJOURDHUI);
+  assert.match(sortieApresRemise.date_remise, /^\d{4}-\d{2}-\d{2}$/, 'date_remise au format AAAA-MM-JJ');
 
   // Vérifier que la direction est toujours associée après la remise
   assert.strictEqual(sortieApresRemise.direction.nom_direction, 'Direction Logistique');
@@ -896,10 +981,7 @@ test('flux de distribution avec une autre direction : vérification de l\'isolat
     data: {
       detenteur_nom: 'Sophie Dubois',
       detenteur_fonction: 'Chargée de RH',
-      // Date du jour : la remise refuse une date antérieure à la validation
-      // logistique (posée « maintenant »), et une date figée finirait par
-      // devenir future — même règle que pour s1 plus haut.
-      date_remise: AUJOURDHUI
+      // date_remise non passée : valeur par défaut dateDuJour (fuseau Antananarivo)
     }
   }, 'magasinier');
 
@@ -962,3 +1044,244 @@ test('vérification que les directions du seed sont bien présentes dans la simu
 });
 
 // Test : l'API de la page de distribution retourne les bonnes données pour les sorties validées
+
+/* ─────────────────────── Tests des notifications de validation ─────────────────────── */
+
+test('notifications : ordre_pret_distribution envoyé aux dépositaires de la direction bénéficiaire', async () => {
+  reinitialiser();
+  notificationAppels.length = 0;
+
+  // s1 est associée à la Direction Logistique (dlog).
+  // L'utilisateur 22 (depositaire) a direction dlog.
+
+  const ctx1 = contexteAppel('s1', {
+    role: 'magasinier',
+    controles: [
+      { ligne: 'l1', etat: 'neuf' },
+      { ligne: 'l2', etat: 'bon' },
+    ],
+  }, 'magasinier');
+  await controleur.sign(ctx1);
+  assert.strictEqual(ctx1.status, 200);
+
+  const ctx2 = contexteAppel('s1', { role: 'depositaire' }, 'depositaire');
+  await controleur.sign(ctx2);
+  assert.strictEqual(ctx2.status, 200);
+
+  const ctx3 = contexteAppel('s1', { role: 'logistique' }, 'logistique');
+  const reponse3 = await controleur.sign(ctx3);
+  assert.strictEqual(ctx3.status, 200, 'signature logistique acceptée');
+  assert.strictEqual(reponse3.data.statut, 'validee');
+
+  // Un ordre_pret_distribution doit avoir été envoyé au dépositaire (id 22).
+  const appelsPret = notificationAppels.filter((a) => a.event === 'ordre_pret_distribution');
+  assert.strictEqual(appelsPret.length, 1, 'un seul ordre_pret_distribution doit être émis');
+  assert.strictEqual(appelsPret[0].userId, 22, 'destinataire : le dépositaire de la direction');
+  assert.strictEqual(appelsPret[0].data.reference, 'SOR-2026-001');
+  assert.strictEqual(appelsPret[0].data.direction, 'dlog');
+});
+
+test('notifications : ordre_sortie_autorise envoyé aux magasiniers autorisés', async () => {
+  reinitialiser();
+  notificationAppels.length = 0;
+
+  const ctx1 = contexteAppel('s1', {
+    role: 'magasinier',
+    controles: [
+      { ligne: 'l1', etat: 'neuf' },
+      { ligne: 'l2', etat: 'bon' },
+    ],
+  }, 'magasinier');
+  await controleur.sign(ctx1);
+  assert.strictEqual(ctx1.status, 200);
+
+  const ctx2 = contexteAppel('s1', { role: 'depositaire' }, 'depositaire');
+  await controleur.sign(ctx2);
+  assert.strictEqual(ctx2.status, 200);
+
+  const ctx3 = contexteAppel('s1', { role: 'logistique' }, 'logistique');
+  const reponse3 = await controleur.sign(ctx3);
+  assert.strictEqual(ctx3.status, 200);
+  assert.strictEqual(reponse3.data.statut, 'validee');
+
+  // Un ordre_sortie_autorise doit avoir été envoyé au magasinier (id 21).
+  const appelsAutorise = notificationAppels.filter((a) => a.event === 'ordre_sortie_autorise');
+  assert.strictEqual(appelsAutorise.length, 1, 'un seul ordre_sortie_autorise doit être émis');
+  assert.strictEqual(appelsAutorise[0].userId, 21, 'destinataire : le magasinier de la direction');
+  assert.strictEqual(appelsAutorise[0].data.reference, 'SOR-2026-001');
+  assert.strictEqual(appelsAutorise[0].data.direction, 'dlog');
+});
+
+test('notifications : aucun envoi vers une autre direction', async () => {
+  reinitialiser();
+  notificationAppels.length = 0;
+
+  // Créer une sortie associée à la Direction des Ressources Humaines (drh).
+  // Aucun utilisateur de test n'a direction drh (les utilisateurs dlog sont en dlog,
+  // seul le comptable id 25 est en drh mais son rôle n'est ni depositaire ni magasinier).
+  CONTENEURS['api::sortie.sortie'].push({
+    documentId: 's2',
+    reference: 'SOR-2026-002',
+    date_sortie: '2026-10-14',
+    statut: 'en_preparation',
+    magasinier_signed: false,
+    depositaire_signed: false,
+    logistique_signed: false,
+    stock_impacte: false,
+    direction: 'drh',
+    service: 'srh',
+  });
+
+  CONTENEURS['api::sortie-ligne.sortie-ligne'].push(
+    { documentId: 'l3', sortie: 's2', materiel: 'm1', designation: 'Tapis de souris', quantite: 1 }
+  );
+
+  const ctx1 = contexteAppel('s2', { role: 'magasinier', controles: [{ ligne: 'l3', etat: 'neuf' }] }, 'magasinier');
+  await controleur.sign(ctx1);
+  assert.strictEqual(ctx1.status, 200);
+
+  const ctx2 = contexteAppel('s2', { role: 'depositaire' }, 'depositaire');
+  await controleur.sign(ctx2);
+  assert.strictEqual(ctx2.status, 200);
+
+  const ctx3 = contexteAppel('s2', { role: 'logistique' }, 'logistique');
+  const reponse3 = await controleur.sign(ctx3);
+  assert.strictEqual(ctx3.status, 200);
+  assert.strictEqual(reponse3.data.statut, 'validee');
+
+  // Aucun utilisateur avec le rôle depositaire/magasinier dans la direction drh :
+  // aucune notification ne doit être émise.
+  assert.strictEqual(notificationAppels.length, 0, 'aucune notification vers une autre direction');
+});
+
+test('notifications : idempotence — pas de doublon si la sortie est déjà validée', async () => {
+  reinitialiser();
+  notificationAppels.length = 0;
+
+  // Première validation complète.
+  const ctx1 = contexteAppel('s1', {
+    role: 'magasinier',
+    controles: [
+      { ligne: 'l1', etat: 'neuf' },
+      { ligne: 'l2', etat: 'bon' },
+    ],
+  }, 'magasinier');
+  await controleur.sign(ctx1);
+  assert.strictEqual(ctx1.status, 200);
+
+  const ctx2 = contexteAppel('s1', { role: 'depositaire' }, 'depositaire');
+  await controleur.sign(ctx2);
+  assert.strictEqual(ctx2.status, 200);
+
+  const ctx3 = contexteAppel('s1', { role: 'logistique' }, 'logistique');
+  const reponse3 = await controleur.sign(ctx3);
+  assert.strictEqual(ctx3.status, 200);
+  assert.strictEqual(reponse3.data.statut, 'validee');
+
+  // Des entrées outbox doivent avoir été créées pour les destinataires.
+  const entreesApresPremiere = CONTENEURS['api::notification-outbox.notification-outbox'].length;
+  assert.ok(entreesApresPremiere > 0, 'des entrées outbox doivent être créées après la première validation');
+  const nbAppelsApresPremiere = notificationAppels.length;
+
+  // Deuxième tentative de validation sur la même sortie : le contrôleur refuse car
+  // le statut n'est plus 'en_preparation'. Aucune nouvelle entrée outbox ne doit être créée.
+  const ctx3bis = contexteAppel('s1', { role: 'logistique' }, 'logistique');
+  const reponse3bis = await controleur.sign(ctx3bis);
+  assert.notStrictEqual(ctx3bis.status, 200, 'la seconde validation est refusée (déjà validée)');
+
+  const entreesApresDeuxieme = CONTENEURS['api::notification-outbox.notification-outbox'].length;
+  assert.strictEqual(
+    entreesApresDeuxieme,
+    entreesApresPremiere,
+    'aucune nouvelle entrée outbox lors de la tentative répétée'
+  );
+
+  assert.strictEqual(
+    notificationAppels.length,
+    nbAppelsApresPremiere,
+    'aucune notification dupliquée lors de la tentative répétée'
+  );
+});
+
+test('notifications : demande_aboutie émis une seule fois lors de la remise', async () => {
+  reinitialiser();
+  notificationAppels.length = 0;
+
+  // Circuit complet jusqu'à la validation logistique.
+  const ctx1 = contexteAppel('s1', {
+    role: 'magasinier',
+    controles: [
+      { ligne: 'l1', etat: 'neuf' },
+      { ligne: 'l2', etat: 'bon' },
+    ],
+  }, 'magasinier');
+  await controleur.sign(ctx1);
+  assert.strictEqual(ctx1.status, 200);
+
+  const ctx2 = contexteAppel('s1', { role: 'depositaire' }, 'depositaire');
+  await controleur.sign(ctx2);
+  assert.strictEqual(ctx2.status, 200);
+
+  const ctx3 = contexteAppel('s1', { role: 'logistique' }, 'logistique');
+  await controleur.sign(ctx3);
+
+  // Remise au détenteur (étape 5).
+  // date_remise non passée : le contrôleur la définit par défaut avec dateDuJour.
+  const ctx4 = contexteAppel('s1', {
+    data: {
+      detenteur_nom: 'Jean Martin',
+      detenteur_fonction: 'Ingénieur',
+    },
+  }, 'magasinier');
+  const reponse4 = await controleur.remise(ctx4);
+  assert.strictEqual(ctx4.status, 200, 'remise acceptée');
+  assert.strictEqual(reponse4.data.statut, 'sortie_effectuee');
+
+  // Une seule demande_aboutie doit être envoyée au demandeur (id 24).
+  const appelsDemande = notificationAppels.filter((a) => a.event === 'demande_aboutie');
+  assert.strictEqual(
+    appelsDemande.length,
+    1,
+    'demande_aboutie doit être émis exactement une fois lors de la remise'
+  );
+  assert.strictEqual(appelsDemande[0].userId, 24, 'destinataire : le demandeur');
+  assert.strictEqual(appelsDemande[0].data.sortieReference, 'SOR-2026-001');
+});
+
+test('notifications : direction manquante — aucun envoi, pas de crash', async () => {
+  reinitialiser();
+  notificationAppels.length = 0;
+
+  // Sortie sans direction (champ absent).
+  CONTENEURS['api::sortie.sortie'].push({
+    documentId: 's3',
+    reference: 'SOR-2026-003',
+    date_sortie: '2026-10-15',
+    statut: 'en_preparation',
+    magasinier_signed: false,
+    depositaire_signed: false,
+    logistique_signed: false,
+    stock_impacte: false,
+    service: 'scompta',
+  });
+
+  CONTENEURS['api::sortie-ligne.sortie-ligne'].push(
+    { documentId: 'l5', sortie: 's3', materiel: 'm1', designation: 'Tapis de souris', quantite: 1 }
+  );
+
+  const ctx1 = contexteAppel('s3', { role: 'magasinier', controles: [{ ligne: 'l5', etat: 'neuf' }] }, 'magasinier');
+  await controleur.sign(ctx1);
+  assert.strictEqual(ctx1.status, 200);
+
+  const ctx2 = contexteAppel('s3', { role: 'depositaire' }, 'depositaire');
+  await controleur.sign(ctx2);
+  assert.strictEqual(ctx2.status, 200);
+
+  const ctx3 = contexteAppel('s3', { role: 'logistique' }, 'logistique');
+  const reponse3 = await controleur.sign(ctx3);
+  assert.strictEqual(ctx3.status, 200, 'validation doit réussir même sans direction');
+  assert.strictEqual(reponse3.data.statut, 'validee');
+
+  // Aucune notification (pas de direction → aucun destinataire résolu).
+  assert.strictEqual(notificationAppels.length, 0, 'aucune notification sans direction');
+});

@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react"
-import { clearStrapiSession, fetchSessionRole } from "./lib/api"
+import { clearStrapiSession, fetchSessionRole, getStrapiJwt } from "./lib/api"
 import { mapStrapiUser } from "./lib/session"
 import { DashboardLayout } from "./components/DashboardLayout"
 import { StaffDashboardLayout } from "./components/StaffDashboardLayout"
 import { LoginScreen } from "./components/LoginScreen"
 import { AuthGuard } from "./components/AuthGuard"
 import { AppRole, DemandeurLevel } from "./types/roles"
+import { connectSSE, disconnectSSE, onSSEEvent } from "./lib/sseNotifications"
+import { pushRealtimeNotification } from "./lib/notifications"
+import { toast } from "sonner"
 
 export type UserRole = AppRole | 'admin' | 'staff' | null
 
@@ -25,6 +28,7 @@ export default function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState<string | null>(null)
+  const [notificationVersion, setNotificationVersion] = useState(0)
 
   useEffect(() => {
     // Simulate checking for saved login
@@ -75,6 +79,85 @@ export default function App() {
     checkSavedLogin()
   }, [])
 
+  // Connexion/déconnexion SSE pour les utilisateurs concernés (demandeur, dépositaire, magasinier).
+  useEffect(() => {
+    const rolesSSE = ['demandeur', 'depositaire', 'magasinier']
+    if (currentUser?.role && rolesSSE.includes(currentUser.role)) {
+      const jwt = getStrapiJwt()
+      if (jwt) {
+        connectSSE(Number(currentUser.id), jwt)
+      }
+    } else {
+      disconnectSSE()
+    }
+    return () => {
+      disconnectSSE()
+    }
+  }, [currentUser])
+
+  // Gestion des événements SSE reçus (demande_aboutie, ordre_pret_distribution, ordre_sortie_autorise).
+  useEffect(() => {
+    const rolesSSE = ['demandeur', 'depositaire', 'magasinier']
+    if (!currentUser?.role || !rolesSSE.includes(currentUser.role)) return
+
+    const unsubscribe = onSSEEvent((event) => {
+      if (event.type === 'demande_aboutie' && currentUser.role === 'demandeur') {
+        const { message, date, demandeReference, sortieReference } = event.data
+
+        // Notification push persistée dans localStorage (visible dans la cloche).
+        pushRealtimeNotification(
+          'sortie',
+          message || `Votre demande ${demandeReference || ''} est maintenant aboutie.`,
+          date || new Date().toISOString()
+        )
+
+        // Toast d'alerte immédiate.
+        toast.success("Demande aboutie", {
+          description:
+            message ||
+            `Votre demande ${demandeReference || sortieReference || ''} est passée en sortie effectuée.`,
+        })
+
+        // Rafraîchit la cloche (incrémente la version pour forcer le re-rendu).
+        setNotificationVersion((v) => v + 1)
+      } else if (event.type === 'ordre_pret_distribution' && currentUser.role === 'depositaire') {
+        const { reference, date_sortie, direction, message } = event.data
+
+        pushRealtimeNotification(
+          'sortie',
+          message || `Un ordre de sortie (${reference || ''}) est prêt à être distribué vers votre direction.`,
+          date_sortie || new Date().toISOString()
+        )
+
+        toast.success("Ordre prêt à distribuer", {
+          description:
+            message ||
+            `L'ordre ${reference || ''} est validé et peut être acheminé vers votre direction.`,
+        })
+
+        setNotificationVersion((v) => v + 1)
+      } else if (event.type === 'ordre_sortie_autorise' && currentUser.role === 'magasinier') {
+        const { reference, date_sortie, direction, message } = event.data
+
+        pushRealtimeNotification(
+          'sortie',
+          message || `Un ordre de sortie (${reference || ''}) est autorisé à la sortie.`,
+          date_sortie || new Date().toISOString()
+        )
+
+        toast.success("Ordre autorisé", {
+          description:
+            message ||
+            `L'ordre ${reference || ''} est autorisé : préparez les matériels pour l'expédition.`,
+        })
+
+        setNotificationVersion((v) => v + 1)
+      }
+    })
+
+    return unsubscribe
+  }, [currentUser?.role])
+
   const handleLogin = (user: User) => {
     setCurrentUser(user)
     setAuthError(null)
@@ -91,7 +174,10 @@ export default function App() {
     const logoutUser = currentUser
     setCurrentUser(null)
     setAuthError(null)
-    
+
+    // Déconnecte le flux SSE s'il est ouvert.
+    disconnectSSE()
+
     // Clear all stored authentication data
     localStorage.removeItem('currentUser')
     localStorage.removeItem('loginTime')
@@ -148,7 +234,7 @@ export default function App() {
         {isSpecialStaff ? (
           <StaffDashboardLayout user={currentUser} onLogout={handleLogout} />
         ) : (
-          <DashboardLayout user={currentUser} onLogout={handleLogout} />
+          <DashboardLayout user={currentUser} onLogout={handleLogout} notificationVersion={notificationVersion} />
         )}
       </AuthGuard>
     </div>

@@ -96,6 +96,29 @@ export function pushNotification(
   writeAll(notifs.slice(0, 50));
 }
 
+/**
+ * Ajoute une notification push temps réel (SSE) pour le demandeur.
+ * Écrite dans le même localStorage que les notifications par rôle, avec
+ * `targetRole: 'demandeur'`, afin d'apparaître dans la cloche du header.
+ */
+export function pushRealtimeNotification(
+  type: AppNotification["type"],
+  message: string,
+  date: string
+): void {
+  const notifs = readAll();
+  notifs.unshift({
+    id: `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    type,
+    message,
+    date,
+    targetRole: 'demandeur',
+    read: false,
+  });
+  // Garde-fou : on conserve les 50 plus récentes.
+  writeAll(notifs.slice(0, 50));
+}
+
 /** Notifications d'un rôle, triées du plus récent au plus ancien. */
 export function getNotificationsForRole(role: AppRole): AppNotification[] {
   return readAll()
@@ -226,6 +249,11 @@ function getNotificationsDemandeur(user: User): AppNotification[] {
     message: "Le matériel demandé est disponible en stock.",
     date: "2025-01-08",
   });
+
+  // Notifications push temps réel (SSE) reçues pour ce demandeur.
+  items.push(
+    ...readAll().filter((n) => n.targetRole === 'demandeur')
+  );
 
   return items.sort((a, b) => (a.date < b.date ? 1 : -1));
 }

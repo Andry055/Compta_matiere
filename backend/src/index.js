@@ -217,6 +217,8 @@ const DEMAND_ACTIONS = [
   'api::demande.demande.update',
   'plugin::users-permissions.user.me',
   SESSION_ROLE_ACTION,
+  // Flux SSE de notifications push en temps réel (EventSource, JWT en query param).
+  'api::notification.notification.stream',
 ];
 
 // ---------------------------------------------------------------------------
@@ -397,6 +399,9 @@ const SORTIE_READ_ACTIONS = [
   // 403 à TOUS les rôles (route morte) — accordée en lecture seule, comme le
   // reste de la liste.
   'api::sortie.sortie.findDistributions',
+  // Piste d'audit (GET /sorties/:documentId/mouvements) : liste des mouvements
+  // de traçage d'une sortie, preuve d'audit du mouvement « Remise au détenteur ».
+  'api::sortie.sortie.findMouvements',
   // Lecture des lignes : sans elles le sanitizer ne peuplerait pas `lignes`
   // (les sorties seraient affichées sans articles).
   'api::sortie-ligne.sortie-ligne.find',
@@ -489,6 +494,25 @@ const SORTIE_REMISE_ACTIONS = [
 ];
 
 const ROLES_REMISE_SORTIE = ['magasinier', 'depositaire'];
+
+// ---------------------------------------------------------------------------
+// Notification Outbox : lecture des notifications de l'utilisateur connecté.
+//
+// Chaque utilisateur peut lire ses propres notifications outbox (filtrées par
+// recipientId dans le contrôleur). Accordé à tous les rôles métier + l'admin
+// applicatif. Le rôle `public` n'y a pas accès.
+// ---------------------------------------------------------------------------
+const NOTIFICATION_OUTBOX_ACTIONS = [
+  'api::notification-outbox.notification-outbox.find',
+];
+
+const ROLES_NOTIFICATION_OUTBOX = [
+  'demandeur',
+  'depositaire',
+  'magasinier',
+  'logistique',
+  'comptable',
+];
 
 
 const DEMO_DEMANDEUR = {
@@ -925,6 +949,28 @@ async function ensureAuthSetup(strapi) {
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
       accordees.add(cle);
+    }
+  }
+
+  // 2treize) Notification Outbox : lecture des notifications propres à chaque
+  // utilisateur. Accordée à tous les rôles métier + l'admin applicatif.
+  for (const type of ROLES_NOTIFICATION_OUTBOX) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of NOTIFICATION_OUTBOX_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+  if (roles.admin) {
+    for (const action of NOTIFICATION_OUTBOX_ACTIONS) {
+      const cle = `admin:${action}`;
+      if (!accordees.has(cle)) {
+        await permQuery.create({ data: { action, role: roles.admin.id } });
+        accordees.add(cle);
+      }
     }
   }
 

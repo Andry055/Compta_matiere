@@ -140,11 +140,12 @@ test('le routeur déclare les lectures GET (liste, distributions, détail) et le
   const routes = mod.routes;
 
   assert.ok(Array.isArray(routes), 'module.exports.routes attendu');
-  assert.strictEqual(routes.length, 7, '3 lectures GET + 4 POST du circuit');
+  assert.strictEqual(routes.length, 8, '3 lectures GET + 1 piste d\'audit + 4 POST du circuit');
 
   const signatures = routes.map((r) => `${r.method} ${r.path}`).sort();
   assert.deepStrictEqual(signatures, [
     'GET /sorties',
+    'GET /sorties/:documentId/mouvements',
     'GET /sorties/:id',
     'GET /sorties/distributions',
     'POST /sorties/:documentId/reject',
@@ -156,6 +157,7 @@ test('le routeur déclare les lectures GET (liste, distributions, détail) et le
   assert.strictEqual(routes.find((r) => r.path === '/sorties').handler, 'sortie.find');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/distributions').handler, 'sortie.findDistributions');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/:id').handler, 'sortie.findOne');
+  assert.strictEqual(routes.find((r) => r.path === '/sorties/:documentId/mouvements').handler, 'sortie.findMouvements');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/create-complete').handler, 'sortie.createComplete');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/:documentId/sign').handler, 'sortie.sign');
   assert.strictEqual(routes.find((r) => r.path === '/sorties/:documentId/reject').handler, 'sortie.reject');
@@ -285,8 +287,8 @@ test('le contrôleur applique le filtre dans la requête, avant pagination', () 
 
   // a) Filtre posé sur ctx.query.filters (muté, comme entree.find) via la
   //    fonction pure — donc DANS la requête, avant la pagination core.
-  assert.match(source, /ctx\.query\.filters = filtreAppropriation\(/);
-  assert.match(source, /withAppropriationFilter\(ctx, miens\)/);
+  //    L'assignation se fait via le helper withAppropriationFilter.
+  assert.match(source, /withAppropriationFilter\(ctx,/);
 
   // b) Le périmètre provient de la relation demande -> demandeur (document
   //    service : ni le sanitizer ni les permissions du rôle n'entrent en jeu).
@@ -328,6 +330,7 @@ const SORTIE_ACTIONS_ATTENDUES = [
   'api::sortie.sortie.find',
   'api::sortie.sortie.findOne',
   'api::sortie.sortie.findDistributions',
+  'api::sortie.sortie.findMouvements',
   'api::sortie-ligne.sortie-ligne.find',
   'api::sortie-ligne.sortie-ligne.findOne',
   'api::material.material.find',

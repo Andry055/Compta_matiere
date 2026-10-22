@@ -51,6 +51,11 @@ module.exports = {
       path: '/sorties/:documentId/remise',
       handler: 'sortie.remise',
     },
+    {
+      method: 'GET',
+      path: '/sorties/:documentId/mouvements',
+      handler: 'sortie.findMouvements',
+    },
   ],
 };
 

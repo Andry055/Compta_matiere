@@ -51,6 +51,10 @@ const SORTIE_UID = 'api::sortie.sortie';
 const SORTIE_LIGNE_UID = 'api::sortie-ligne.sortie-ligne';
 const MOUVEMENT_UID = 'api::mouvement.mouvement';
 
+const { sseBroadcastToUser } = require('../../../lib/notifications');
+const { findUtilisateursParRoleEtDirection } = require('../../../utils/destinatairesNotifications');
+const { creerEntrees, distribuerNotifications } = require('../../../api/notification-outbox/services/notification-outbox');
+
 /** Noms des tables SQL (collectionName des schémas) : utilisés par le SQL
  *  conditionnel ATOMIQUE de la validation (verrou stock_impacte et
  *  décrémentations du stock, dans la transaction). */
@@ -157,6 +161,37 @@ async function documentIdsPossedesPar(strapi, user) {
           documentId: user.documentId,
         },
       },
+    },
+    fields: ['documentId'],
+    limit: -1,
+  });
+  return (rows || []).map((l) => l.documentId);
+}
+
+/** documentId des sorties de la direction de l'utilisateur (pour un demandeur,
+ *  il voit toutes les sorties de sa direction, pas seulement les siennes).
+ *  Le `department` est de la forme « <DIRECTION> - <SERVICE> » (ex. « DRH -
+ *  Service Gestion Personnel ») ou parfois seulement le nom de direction. */
+async function documentIdsDuDirection(strapi, user) {
+  const departement = user.department || '';
+  const separateur = departement.indexOf(' - ');
+  const directionNom = separateur >= 0
+    ? departement.slice(0, separateur).trim()
+    : departement.trim();
+  if (!directionNom) return [];
+
+  const directions = await strapi.documents('api::direction.direction').findMany({
+    filters: { nom_direction: { $eqi: directionNom } },
+    fields: ['documentId'],
+    limit: -1,
+  });
+  if (!directions || directions.length === 0) return [];
+
+  const directionIds = directions.map((d) => d.documentId);
+
+  const rows = await strapi.documents(SORTIE_UID).findMany({
+    filters: {
+      direction: { documentId: { $in: directionIds } },
     },
     fields: ['documentId'],
     limit: -1,
@@ -429,6 +464,45 @@ async function signerLogistique(app, ctx, sortie, documentId, user, body) {
             `Sortie validée par le chef logistique : stock débité (${lignes.length} ligne(s)).`,
         },
       });
+
+      // --- Création des entrées outbox (dans la même transaction) ----------
+      // Les notifications sont persistées atomiquement avec la validation du
+      // stock. Leur envoi effectif a lieu après le commit, via le distributeur.
+      const directionId = sortie.direction?.documentId;
+      const reference = sortie.reference || documentId;
+      const dateSortie = sortie.date_sortie
+        ? new Date(sortie.date_sortie).toISOString().slice(0, 10)
+        : null;
+
+      const payloadDepot = {
+        sortieId: documentId,
+        reference,
+        date_sortie: dateSortie,
+        direction: directionId,
+        message: `Un ordre de sortie (${reference}) est validé et prêt à être distribué vers votre direction.`,
+      };
+
+      const payloadMag = {
+        sortieId: documentId,
+        reference,
+        date_sortie: dateSortie,
+        direction: directionId,
+        message: `Un ordre de sortie (${reference}) est autorisé : les matériels peuvent être préparés pour l'expédition.`,
+      };
+
+      const depositaires = await findUtilisateursParRoleEtDirection(
+        app,
+        'depositaire',
+        directionId
+      );
+      const magasiniers = await findUtilisateursParRoleEtDirection(
+        app,
+        'magasinier',
+        directionId
+      );
+
+      await creerEntrees(app, documentId, depositaires, 'depositaire', payloadDepot);
+      await creerEntrees(app, documentId, magasiniers, 'magasinier', payloadMag);
     });
   } catch (e) {
     // La transaction a été annulée par strapi.db.transaction : ni stock, ni
@@ -441,6 +515,18 @@ async function signerLogistique(app, ctx, sortie, documentId, user, body) {
     return erreurInterne(
       ctx,
       `Validation impossible (tout a été annulé) : ${e.message}`
+    );
+  }
+
+  // --- Distribution des notifications outbox (après transaction réussie) ---
+  // Les entrées ont été créées dans la transaction (atomicité avec le stock).
+  // Le distributeur les revendique et les envoie via SSE, avec retry en cas
+  // d'échec. Un échec d'envoi n'annule pas la validation déjà commitée.
+  try {
+    await distribuerNotifications(app);
+  } catch (e) {
+    app.log.warn(
+      `[sortie] Échec de la distribution des notifications outbox : ${e.message}`
     );
   }
 
@@ -465,7 +551,10 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     const app = strapi;
     if (await isDemandeurSession(app, ctx)) {
       const miens = await documentIdsPossedesPar(app, ctx.state.user);
-      withAppropriationFilter(ctx, miens);
+      const directionSorties = await documentIdsDuDirection(app, ctx.state.user);
+      // Le demandeur voit ses propres sorties ET toutes celles de sa direction
+      const tousIds = [...new Set([...miens, ...directionSorties])];
+      withAppropriationFilter(ctx, tousIds);
       // Apply populate and filter security for demandeur
       const { securePopulateAndFilters } = require('../../../utils/populateSecurise');
       securePopulateAndFilters(ctx);
@@ -1053,6 +1142,32 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       // Après la transaction réussie, on charge la sortie finale
       const sortieFinale = await loadSortie(app, documentId);
 
+      // Notification push temps réel au demandeur dès que la sortie est remise
+      if (sortieFinale?.demande) {
+        try {
+          const demande = await app.documents('api::demande.demande').findOne({
+            documentId: sortieFinale.demande.documentId,
+            populate: ['demandeur'],
+          });
+          if (demande?.demandeur?.id) {
+            sseBroadcastToUser(
+              demande.demandeur.id,
+              'demande_aboutie',
+              {
+                demandeId: demande.documentId,
+                demandeReference: demande.reference,
+                sortieReference: sortieFinale.reference,
+                message: `Votre demande ${demande.reference} est maintenant aboutie (sortie effectuée).`,
+                date: new Date().toISOString(),
+              }
+            );
+          }
+        } catch (e) {
+          // Ne fait pas échouer la remise si la notification ne peut pas être envoyée
+          app.log.warn(`[sortie] Échec de l'envoi de la notification SSE : ${e.message}`);
+        }
+      }
+
       return {
         data: sortieFinale,
         meta: {
@@ -1068,5 +1183,44 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
         `Remise impossible (tout a été annulé) : ${e.message}`
       );
     }
+  },
+
+  /**
+   * GET /api/sorties/:documentId/mouvements
+   * Piste d'audit : liste tous les mouvements de traçage d'une sortie,
+   * ordonnés par date_mouvement croissante.
+   * Accessible aux rôles qui lisent les sorties ; le Demandeur ne voit que
+   * les mouvements de SES propres sorties.
+   */
+  async findMouvements(ctx) {
+    const app = strapi;
+    const { documentId } = ctx.params;
+
+    // Vérifier que la sortie existe
+    const sortie = await app.documents(SORTIE_UID).findOne({ documentId });
+    if (!sortie) {
+      ctx.status = 404;
+      ctx.body = { error: { status: 404, name: 'NotFoundError', message: 'Sortie introuvable.' } };
+      return ctx.body;
+    }
+
+    // Le Demandeur ne voit que les mouvements de SES sorties (via SA demande)
+    if (await isDemandeurSession(app, ctx)) {
+      const miens = await documentIdsPossedesPar(app, ctx.state.user);
+      if (!miens.includes(documentId)) {
+        return forbid(
+          ctx,
+          "Accès refusé : vous ne pouvez consulter les mouvements que de vos propres sorties.",
+          403
+        );
+      }
+    }
+
+    const mouvements = await app.documents(MOUVEMENT_UID).findMany({
+      filters: { sortie: documentId },
+      sort: { date_mouvement: 'asc' },
+    });
+
+    return { data: mouvements };
   },
 });

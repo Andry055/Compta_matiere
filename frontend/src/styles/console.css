@@ -404,6 +404,7 @@ input[type="radio"] {
 }
 
 .cm-modal {
+  background-color: var(--cm-glass-strong);
   border-color: color-mix(in oklch, var(--cm-accent) 24%, transparent);
   box-shadow:
     var(--cm-shadow-lg),

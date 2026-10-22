@@ -27,9 +27,10 @@ import { ErrorBoundary } from "./ErrorBoundary"
 interface DashboardLayoutProps {
   user: User
   onLogout: () => void
+  notificationVersion?: number
 }
 
-export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
+export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: DashboardLayoutProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   // Horodatage RÉEL de la dernière relecture serveur réussie (alimenté par
   // l'écran Réception de Matériel) — le pied de page n'affichait qu'un « il y a
@@ -265,6 +266,7 @@ export function DashboardLayout({ user, onLogout }: DashboardLayoutProps) {
                 notification de sortie acceptée (dépositaire) ouvre Distribution. */}
             <NotificationBell
               user={user}
+              version={notificationVersion}
               onOpenEntree={handleOuvrirNotification}
               onOpenSortie={() => handleSectionChange("distribution")}
             />

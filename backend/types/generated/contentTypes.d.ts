@@ -1177,6 +1177,8 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
       'oneToMany',
       'api::mouvement.mouvement'
     >;
+    notifications_validee_envoyees: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
     observations: Schema.Attribute.Text;
     publishedAt: Schema.Attribute.DateTime;
     reference: Schema.Attribute.String & Schema.Attribute.Unique;
@@ -1662,6 +1664,10 @@ export interface PluginUsersPermissionsUser
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     department: Schema.Attribute.String;
+    direction: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::direction.direction'
+    >;
     email: Schema.Attribute.Email &
       Schema.Attribute.Required &
       Schema.Attribute.Unique &

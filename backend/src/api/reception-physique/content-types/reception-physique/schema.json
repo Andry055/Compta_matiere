@@ -1,0 +1,56 @@
+{
+  "kind": "collectionType",
+  "collectionName": "receptions_physiques",
+  "info": {
+    "singularName": "reception-physique",
+    "pluralName": "receptions-physiques",
+    "displayName": "Réception physique"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "sortie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie.sortie",
+      "required": true
+    },
+    "date_reception": {
+      "type": "date",
+      "required": true
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": [
+        "conforme",
+        "anomalie"
+      ],
+      "default": "conforme"
+    },
+    "type_anomalie": {
+      "type": "enumeration",
+      "enum": [
+        "manquant",
+        "endommage",
+        "incorrect"
+      ]
+    },
+    "description_anomalie": {
+      "type": "text"
+    },
+    "quantite_prevue": {
+      "type": "integer",
+      "required": true
+    },
+    "quantite_recue": {
+      "type": "integer",
+      "required": true
+    },
+    "utilisateur": {
+      "type": "string",
+      "required": true
+    }
+  }
+}

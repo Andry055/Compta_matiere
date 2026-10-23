@@ -496,6 +496,17 @@ const SORTIE_REMISE_ACTIONS = [
 const ROLES_REMISE_SORTIE = ['magasinier', 'depositaire'];
 
 // ---------------------------------------------------------------------------
+// Réception physique : création et lecture des réceptions physiques —
+// Accordée UNIQUEMENT au rôle Demandeur (dépositaire de direction).
+// Le contrôleur vérifie en outre l'appropriation par direction.
+// ---------------------------------------------------------------------------
+const RECEPTION_PHYSIQUE_ACTIONS = [
+  'api::reception-physique.reception-physique.find',
+  'api::reception-physique.reception-physique.findOne',
+  'api::reception-physique.reception-physique.create',
+];
+
+// ---------------------------------------------------------------------------
 // Notification Outbox : lecture des notifications de l'utilisateur connecté.
 //
 // Chaque utilisateur peut lire ses propres notifications outbox (filtrées par
@@ -948,6 +959,18 @@ async function ensureAuthSetup(strapi) {
       const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2treize bis) Permissions « Réception physique » : accordées
+  // UNIQUEMENT au rôle Demandeur (dépositaire de direction). Le contrôleur
+  // vérifie en outre l'appropriation par direction.
+  if (roleDemandeur) {
+    for (const action of RECEPTION_PHYSIQUE_ACTIONS) {
+      const cle = `${roleDemandeur.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roleDemandeur.id } });
       accordees.add(cle);
     }
   }

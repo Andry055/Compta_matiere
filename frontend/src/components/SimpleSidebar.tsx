@@ -14,7 +14,8 @@ import {
   ArrowDownToLine,
   ArrowUpFromLine,
   ArrowLeftRight,
-  Truck
+  Truck,
+  PackageCheck
 } from "lucide-react"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
@@ -68,6 +69,12 @@ const navItems = [
     icon: ArrowUpFromLine,
     key: "exits",
     description: "Suivi des sorties de matériels"
+  },
+  {
+    title: "Réception physique",
+    icon: PackageCheck,
+    key: "reception",
+    description: "Réceptionner les matériels sortis"
   },
   {
     title: "Distribution",

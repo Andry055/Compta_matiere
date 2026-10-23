@@ -11,6 +11,7 @@ import { Requests } from "./Requests"
 import { EntriesPage } from "./EntriesPage"
 import { AffectationsPage } from "./AffectationsPage"
 import { ExitsPage } from "./ExitsPage"
+import { EcranReception } from "./reception/EcranReception"
 import { Reports } from "./Reports"
 import { MiniJournalDirection } from "./MiniJournalDirection"
 import { Users } from "./Users"
@@ -115,6 +116,8 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
         return <MiniJournalDirection user={user} />
       case "equipment":
         return <Equipment user={user} />
+      case "reception":
+        return <EcranReception user={user} onNavigate={handleSectionChange} />
       case "distribution":
         return (
           <Distribution

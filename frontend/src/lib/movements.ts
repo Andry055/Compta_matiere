@@ -690,6 +690,130 @@ const sortieRows: Array<SortieRecord> = [
 export const sortieRecords: SortieRecord[] = sortieRows;
 
 // ---------------------------------------------------------------------------
+// Réceptions physiques (étape 2 : réception du matériel sortant)
+// ---------------------------------------------------------------------------
+
+export type StatutRéception = "En cours" | "Partielle" | "Complète" | "Annulée";
+
+export interface LigneRéception {
+  /** documentId de la ligne de sortie concernée. */
+  ligneId: string;
+  designation: string;
+  /** Quantité prévue sur l'ordre de sortie. */
+  quantitePrevue: number;
+  /** Quantité déjà reçue lors de réceptions antérieures. */
+  quantiteDejaRecue: number;
+  /** Quantité reçue lors de CETTE réception (saisie utilisateur). */
+  quantiteRecue: number;
+  /** Reliquat après cette réception : prévue - déjà reçue - reçue. */
+  reliquat: number;
+}
+
+export interface AnomalieRéception {
+  id: string;
+  sortieId: string;
+  /** Optionnel : liée à une ligne de sortie précise. */
+  ligneId?: string;
+  type: "quantite" | "etat" | "conformite" | "autre";
+  description: string;
+  dateDeclaration: string;
+  declarePar: string;
+  statut: "Ouverte" | "Resolue";
+  dateResolution?: string;
+  resoluePar?: string;
+}
+
+export interface Réception {
+  id: string;
+  sortieId: string;
+  reference: string;
+  dateRéception: string;
+  depositaireId: string;
+  depositaireNom: string;
+  direction: string;
+  statut: StatutRéception;
+  lignes: LigneRéception[];
+  anomalies: AnomalieRéception[];
+  /** true quand le stock a déjà été débité pour cette réception (évite le double débit). */
+  stockDebite: boolean;
+}
+
+/** Données locales de démonstration — remplacées par l'API Strapi plus tard. */
+export const receptions: Réception[] = [];
+
+export const receptionAnomalies: AnomalieRéception[] = [];
+
+/** Quantité déjà reçue pour une sortie (somme de toutes ses réceptions). */
+export function getQuantiteDejaRecue(sortieId: string): number {
+  return receptions
+    .filter((r) => r.sortieId === sortieId)
+    .reduce((s, r) => s + r.lignes.reduce((t, l) => t + l.quantiteRecue, 0), 0);
+}
+
+/** Reliquat restant à recevoir pour une sortie. */
+export function getReliquat(sortie: SortieRecord): number {
+  const dejaRecue = getQuantiteDejaRecue(sortie.id);
+  return Math.max(0, sortie.quantite - dejaRecue);
+}
+
+/** Statut d'avancement de la réception d'une sortie. */
+export function getStatutRéceptionSortie(sortie: SortieRecord): StatutRéception {
+  const dejaRecue = getQuantiteDejaRecue(sortie.id);
+  if (dejaRecue <= 0) return "En cours";
+  if (dejaRecue < sortie.quantite) return "Partielle";
+  return "Complète";
+}
+
+/** Vérifie qu'une réception proposée ne dépasse pas la quantité prévue. */
+export function peutRecevoir(
+  sortie: SortieRecord,
+  quantiteRecue: number
+): { ok: boolean; reliquat: number; message?: string } {
+  const dejaRecue = getQuantiteDejaRecue(sortie.id);
+  const nouveauCumule = dejaRecue + quantiteRecue;
+  if (nouveauCumule > sortie.quantite) {
+    return {
+      ok: false,
+      reliquat: Math.max(0, sortie.quantite - dejaRecue),
+      message: `La quantité reçue (${quantiteRecue}) ferait dépasser le cumulé autorisé (${sortie.quantite}). Reliquat : ${sortie.quantite - dejaRecue}.`,
+    };
+  }
+  return { ok: true, reliquat: Math.max(0, sortie.quantite - nouveauCumule) };
+}
+
+/** Filtre les sorties réceptionnables : statut "Sortie effectuée", 3 signatures,
+ *  direction correspondante au dépositaire connecté. */
+export function sortiesRéceptionnables(
+  sorties: SortieRecord[],
+  user?: { role?: string; department?: string; name?: string }
+): SortieRecord[] {
+  if (!user || user.role !== "depositaire") return [];
+
+  const { direction } = splitDepartement(user.department || "");
+
+  return sorties.filter((s) => {
+    if (s.statut !== "Sortie effectuée") return false;
+    if (!(s.magasinier_signed && s.depositaire_signed && s.logistique_signed)) return false;
+    if (direction && s.direction !== direction) return false;
+    if (getReliquat(s) <= 0) return false;
+    return true;
+  });
+}
+
+/** Vérifie qu'un utilisateur peut réceptionner une sortie donnée. */
+export function peutReceptionnerSortie(
+  sortie: SortieRecord,
+  user: { role?: string; department?: string }
+): boolean {
+  if (user.role !== "depositaire") return false;
+  if (sortie.statut !== "Sortie effectuée") return false;
+  if (!(sortie.magasinier_signed && sortie.depositaire_signed && sortie.logistique_signed)) return false;
+  const { direction } = splitDepartement(user.department || "");
+  if (direction && sortie.direction !== direction) return false;
+  return getReliquat(sortie) > 0;
+}
+
+// ---------------------------------------------------------------------------
 // Traçabilité
 // ---------------------------------------------------------------------------
 

@@ -1,0 +1,190 @@
+/* ———————————————————————————————————————————————
+   Écran « Réception physique du matériel »
+   Classes préfixées msc- (matériel sortie réception) pour éviter les collisions.
+——————————————————————————————————————————————— */
+
+.msr-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
+  .msr-page {
+    padding: 1.5rem;
+  }
+}
+
+/* En-tête */
+.msr-entete {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-bottom: 1px solid;
+  border-color: var(--border-color, #e5e7eb);
+  padding-bottom: 1rem;
+}
+
+.msr-titre {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+
+.msr-sous-titre {
+  font-size: 0.95rem;
+  color: var(--muted-foreground, #6b7280);
+  margin: 0;
+}
+
+.msr-actions-en-tete {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Compteurs */
+.msr-compteurs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.msr-compteur {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--background, #ffffff);
+  border: 1px solid;
+  border-color: var(--border-color, #e5e7eb);
+  border-radius: 0.75rem;
+  min-width: 140px;
+}
+
+.msr-compteur-valeur {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--foreground, #000000);
+}
+
+.msr-compteur-libelle {
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #6b7280);
+}
+
+/* Onglets */
+.msr-onglets {
+  display: flex;
+  gap: 0;
+  border-bottom: 1px solid;
+  border-color: var(--border-color, #e5e7eb);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+}
+
+.msr-onglet {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--muted-foreground, #6b7280);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.msr-onglet:hover {
+  color: var(--foreground, #000000);
+}
+
+.msr-onglet--actif {
+  color: var(--primary, #0f172a);
+  border-bottom-color: var(--primary, #0f172a);
+}
+
+/* Contenu des onglets */
+.msr-contenu {
+  min-height: 200px;
+}
+
+.msr-blanc {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  color: var(--muted-foreground, #6b7280);
+}
+
+/* Cartes de liste */
+.msr-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.msr-carte {
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.msr-carte:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+/* Champs dans les cartes */
+.msr-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.msr-champ-cle {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground, #6b7280);
+}
+
+.msr-champ-valeur {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Dialogues */
+.msr-dialogue {
+  outline: none;
+}
+
+.msr-dialogue-corps {
+  outline: none;
+}
+
+.msr-select {
+  appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%236b7280'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'%3E%3C/path%3E%3C/svg%3E");
+  background-position: right 0.75rem center;
+  background-repeat: no-repeat;
+  background-size: 1rem 1rem;
+  padding-right: 2.5rem;
+}
+
+.msr-textarea {
+  resize: vertical;
+}
+
+/* État vide */
+.msr-etat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--muted-foreground, #6b7280);
+}

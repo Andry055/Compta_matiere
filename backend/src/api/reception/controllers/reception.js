@@ -418,6 +418,7 @@ module.exports = guardedCoreController(createCoreController, RECEPTION_UID, {
             },
           });
         }
+        }
 
         // 3. Déterminer le statut + 4. Créer les entrées outbox,
         // uniquement si des lignes de réception ont été traitées.

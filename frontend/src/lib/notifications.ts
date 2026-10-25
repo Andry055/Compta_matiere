@@ -104,11 +104,16 @@ export function pushNotification(
 export function pushRealtimeNotification(
   type: AppNotification["type"],
   message: string,
-  date: string
+  date: string,
+  id?: string
 ): void {
   const notifs = readAll();
+  const notificationId = id || `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+  // Déduplication : une même notification (ex. outbox réconciliée) n'est pas
+  // réinjectée deux fois à chaque recharge.
+  if (notifs.some((n) => n.id === notificationId)) return;
   notifs.unshift({
-    id: `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    id: notificationId,
     type,
     message,
     date,

@@ -1,0 +1,78 @@
+
+> backend@0.1.0 dev
+> strapi develop
+
+- Loading Strapi
+[2026-10-24 22:04:42.969] [33mwarn[39m: [email]: The "sendmail" email provider is still supported, but for most production setups that use a dedicated SMTP relay, consider switching to @strapi/provider-email-nodemailer (set `provider` to `"nodemailer"` in your email plugin config). This message is only shown in development.
+[2026-10-24 22:04:46.268] [32minfo[39m: [MCP] Starting MCP server...
+[2026-10-24 22:04:46.270] [32minfo[39m: [MCP] Server available at /mcp
+[2026-10-24 22:04:46.318] [32minfo[39m: [seed] Directions déjà présentes : seed ignoré.
+[2026-10-24 22:04:46.321] [32minfo[39m: [seed-reddition] Ouvertures déjà présentes : seed ignoré.
+[2026-10-24 22:04:46.322] [32minfo[39m: [seed-materiels] Matériels déjà présents : seed ignoré.
+[2026-10-24 22:04:46.323] [32minfo[39m: [routes] Routes notification enregistrées sur le content-api router
+- Building build context
+✔ Building build context (65ms)
+- Creating admin
+✔ Creating admin (5938ms)
+✔ Loading Strapi (52133ms)
+- Generating types
+✔ Generating types (936ms)
+
+ Project information
+
+[90m╭────────────────────[39m[90m┬──────────────────────────────────────────────────╮[39m
+[90m│[39m Time               [90m│[39m Sat Oct 24 2026 22:04:55 GMT+0300 (heure normal… [90m│[39m
+[90m│[39m Launched in        [90m│[39m 54846 ms                                         [90m│[39m
+[90m│[39m Environment        [90m│[39m development                                      [90m│[39m
+[90m│[39m Process PID        [90m│[39m 12044                                            [90m│[39m
+[90m│[39m Version            [90m│[39m 5.53.0 (node v24.19.0)                           [90m│[39m
+[90m│[39m Plan               [90m│[39m Community                                        [90m│[39m
+[90m│[39m Database           [90m│[39m sqlite                                           [90m│[39m
+[90m│[39m Database name      [90m│[39m .tmp\data.db                                     [90m│[39m
+[90m╰────────────────────[39m[90m┴──────────────────────────────────────────────────╯[39m
+
+ Actions available
+
+Welcome back!
+To access the server ⚡️, go to:
+http://localhost:1337
+
+[2026-10-24 22:04:55.354] [32minfo[39m: Strapi started successfully
+[2026-10-24 22:16:28.167] [32mhttp[39m: POST /api/auth/local (678 ms) 200
+[2026-10-24 22:16:28.669] [32mhttp[39m: POST /api/auth/local (154 ms) 200
+[2026-10-24 22:16:29.029] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODY5Mzg4LCJleHAiOjE3OTU0NjEzODh9.7HyDBVvPL9f0I0JhRZ2I8IRbELTJI5xOXJdh-zJiKp4 (29 ms) 404
+[2026-10-24 22:16:29.559] [32mhttp[39m: GET /api/sse/stream (2 ms) 401
+[2026-10-24 22:16:30.052] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.token (2 ms) 401
+[2026-10-24 22:16:30.651] [32mhttp[39m: GET /api/notification-outbox/notifications (47 ms) 200
+[2026-10-24 22:16:31.214] [32mhttp[39m: GET /api/notification-outbox/notifications (2 ms) 401
+[2026-10-24 22:16:31.764] [32mhttp[39m: GET /api/notification-outbox/notifications (2 ms) 401
+[2026-10-24 22:16:32.339] [32mhttp[39m: GET /api/notification-outbox/notifications (8 ms) 200
+[2026-10-24 22:19:53.402] [32mhttp[39m: GET /api/sse/stream?jwt=testtoken123 (2 ms) 401
+[2026-10-24 22:22:20.596] [32mhttp[39m: POST /api/auth/local (142 ms) 200
+[2026-10-24 22:22:20.947] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODY5NzQwLCJleHAiOjE3OTU0NjE3NDB9.og9dMokiBaKZ7bBKydiZG-ba-c-1WZDlNGi6jGkjMzI (3 ms) 404
+[2026-10-24 22:22:59.915] [32mhttp[39m: GET /api/sse/stream?jwt= (1 ms) 401
+[2026-10-24 22:22:59.919] [32mhttp[39m: POST /api/auth/local (136 ms) 200
+[2026-10-24 22:23:00.481] [32mhttp[39m: POST /api/auth/local (144 ms) 200
+[2026-10-24 22:23:00.873] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODY5Nzc5LCJleHAiOjE3OTU0NjE3Nzl9.djEMzS7-xsOL-7dsQfSJexd3S-JU2ai5sG9T_T12esk (4 ms) 404
+[2026-10-24 22:24:09.929] [32mhttp[39m: GET /api/sse/stream?jwt= (2 ms) 401
+[2026-10-24 22:24:09.934] [32mhttp[39m: POST /api/auth/local (152 ms) 200
+[2026-10-24 22:24:10.477] [32mhttp[39m: POST /api/auth/local (144 ms) 200
+[2026-10-24 22:24:10.862] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODY5ODQ5LCJleHAiOjE3OTU0NjE4NDl9.HGj2VoSRz3TnCfKp-rwPH9mcQWI2nuvwYCA8XUCjAC0 (5 ms) 404
+[2026-10-24 22:25:06.944] [32mhttp[39m: POST /api/auth/local (135 ms) 200
+[2026-10-24 22:25:07.084] [32mhttp[39m: POST /api/auth/local (134 ms) 200
+[2026-10-24 22:25:07.091] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODY5OTA2LCJleHAiOjE3OTU0NjE5MDZ9.ZYql5y0LpxGzarsNlYh9YJw79otng9j-v-W38uOpe0g (4 ms) 404
+[2026-10-24 22:25:07.096] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwiaWF0IjoxNzkyODY5OTA3LCJleHAiOjE3OTU0NjE5MDd9.src9LVpqX34rGB8YMLBhZDlQTRlmKVuvNIH_2TSU7zQ (3 ms) 404
+
+  Error: Parse Error: Invalid method encountered
+
+[2026-10-24 22:25:07.104] [32mhttp[39m: GET /api/notification-outbox/notifications (6 ms) 200
+
+  Error: Parse Error: Invalid method encountered
+
+[2026-10-24 22:25:07.111] [32mhttp[39m: GET /api/notification-outbox/notifications (5 ms) 200
+[2026-10-24 22:25:56.142] [32mhttp[39m: POST /api/auth/local (135 ms) 200
+[2026-10-24 22:25:56.286] [32mhttp[39m: POST /api/auth/local (138 ms) 200
+[2026-10-24 22:25:56.292] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODY5OTU2LCJleHAiOjE3OTU0NjE5NTZ9.-FPSmU93sMCaU27F6fyGEAX_lrpTAN67tUChRA8fTuo (2 ms) 404
+[2026-10-24 22:25:56.296] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODY5OTU2LCJleHAiOjE3OTU0NjE5NTZ9.-FPSmU93sMCaU27F6fyGEAX_lrpTAN67tUChRA8fTuo (2 ms) 404
+[2026-10-24 22:25:56.303] [32mhttp[39m: GET /api/notification-outbox/notifications (6 ms) 200
+[2026-10-24 22:25:56.308] [32mhttp[39m: GET /api/notification-outbox/notifications (4 ms) 200

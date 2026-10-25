@@ -61,6 +61,31 @@ export interface StrapiAuthUser {
   role?: StrapiRole | null;
 }
 
+/**
+ * Résultat distingué de strapiLogin : succès avec JWT, échec d'authentification,
+ * ou erreur réseau. Permet à l'appelant de distinguer un refus serveur (403/401)
+ * d'une panne réseau, afin de ne pas masquer un échec d'authentification par
+ * un repli en mode démo.
+ */
+export interface StrapiLoginOk {
+  ok: true;
+  jwt: string;
+  user: StrapiAuthUser;
+}
+export interface StrapiLoginAuthError {
+  ok: false;
+  code: 'auth_echec';
+  status?: number;
+}
+export interface StrapiLoginNetworkError {
+  ok: false;
+  code: 'reseau';
+}
+export type StrapiLoginResult =
+  | StrapiLoginOk
+  | StrapiLoginAuthError
+  | StrapiLoginNetworkError;
+
 export function getStrapiJwt(): string | null {
   try {
     return localStorage.getItem(JWT_KEY);
@@ -156,15 +181,17 @@ export class ErreurSessionAbsente extends Error {
 const REQUETES_SANS_JETON = ["/api/auth/local"];
 
 // Envoi automatique du jeton sur chaque requête Content API.
-// SANS jeton, la requête ne PART PAS (ErreurSessionAbsente) : pas de 403.
+// Les requêtes sans jeton (ex: /api/auth/local) n'en reçoivent JAMAIS :
+// Strapi rejette une demande de connexion déjà porteuse d'un jeton (403).
+// SANS jeton sur les autres routes, la requête ne PART PAS (ErreurSessionAbsente) : pas de 403.
 api.interceptors.request.use((config) => {
+  const url = config.url ?? "";
+  if (REQUETES_SANS_JETON.some((prefixe) => url.startsWith(prefixe))) {
+    return config;
+  }
   const jwt = getStrapiJwt();
   if (jwt) {
     config.headers.set("Authorization", `Bearer ${jwt}`);
-    return config;
-  }
-  const url = config.url ?? "";
-  if (REQUETES_SANS_JETON.some((prefixe) => url.startsWith(prefixe))) {
     return config;
   }
   throw new ErreurSessionAbsente();
@@ -173,13 +200,15 @@ api.interceptors.request.use((config) => {
 
 /**
  * Connexion à l'API Strapi (POST /api/auth/local).
- * Retourne `null` si les identifiants sont invalides ou si le backend est
- * injoignable : l'appelant bascule alors sur les comptes de démonstration.
+ * Retourne un résultat distingué : succès avec JWT, échec d'authentification
+ * (403/401), ou erreur réseau. L'appelant peut ainsi distinguer un refus
+ * serveur d'une panne réseau, et éviter de masquer un échec d'authentification
+ * par un repli en mode démo.
  */
 export async function strapiLogin(
   identifier: string,
   password: string
-): Promise<{ jwt: string; user: StrapiAuthUser } | null> {
+): Promise<StrapiLoginResult> {
   try {
     const { data } = await api.post(
       "/api/auth/local",
@@ -188,11 +217,18 @@ export async function strapiLogin(
     );
     if (data && data.jwt && data.user) {
       setStrapiSession(data.jwt, data.user);
-      return { jwt: data.jwt, user: data.user };
+      return { ok: true, jwt: data.jwt, user: data.user };
     }
-    return null;
-  } catch {
-    return null;
+    // Réponse HTTP 2xx mais absence de jeton : échec d'authentification.
+    return { ok: false, code: 'auth_echec' };
+  } catch (err: unknown) {
+    if (axios.isAxiosError(err)) {
+      if (err.response?.status === 403 || err.response?.status === 401) {
+        return { ok: false, code: 'auth_echec', status: err.response.status };
+      }
+    }
+    // Erreur réseau ou serveur injoignable : l'authentification n'a pas pu être évaluée.
+    return { ok: false, code: 'reseau' };
   }
 }
 
@@ -814,6 +850,36 @@ export async function remettreSortie(
  * Renvoie `null` si l'ordre est introuvable ; lève si le serveur est
  * injoignable (état alors toujours inconnu).
  */
+/**
+ * Une entrée outbox retournée par GET /api/notification-outbox/notifications.
+ */
+export interface NotificationOutbox {
+  id: number;
+  eventType?: string;
+  recipientId?: number;
+  recipientRole?: string;
+  payload?: Record<string, unknown>;
+  status?: string;
+  createdAt?: string;
+}
+
+/**
+ * Récupère les notifications outbox de l'utilisateur connecté.
+ * GET /api/notification-outbox/notifications — filtrées par recipientId.
+ * Retourne la liste (tous statuts confondus, y compris celles manquées en
+ * temps réel) ou `null` en cas d'échec/réseau ; ne lève jamais d'exception.
+ */
+export async function fetchNotificationsOutbox(): Promise<NotificationOutbox[] | null> {
+  try {
+    const { data } = await api.get("/api/notification-outbox/notifications", {
+      timeout: 5000,
+    });
+    return data?.data ?? []
+  } catch {
+    return null
+  }
+}
+
 export async function rechargerSortie(documentId: string): Promise<SortieRecord | null> {
   const sorties = await fetchAllSortiesOrThrow();
   return sorties.find((sortie) => sortie.id === documentId) ?? null;

@@ -19,7 +19,7 @@ const { createCoreRouter } = require('@strapi/strapi').factories;
 module.exports = createCoreRouter('api::material.material', {
   find: { auth: false },
   findOne: { auth: false },
-  create: { auth: true },
-  update: { auth: true },
-  delete: { auth: true },
+  // create/update/delete : `auth` omis = comportement par défaut de Strapi 5
+  // (authentification requise). Attention : `auth: true` est invalide dans
+  // cette version et fait échouer le démarrage à l'initialisation du routage.
 });

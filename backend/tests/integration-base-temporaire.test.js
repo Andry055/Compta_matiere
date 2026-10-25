@@ -31,7 +31,18 @@ const FICHIER_BASE = path.join(SUBDOSSIER, 'integration-etape-4.db');
 
 fs.mkdirSync(SUBDOSSIER, { recursive: true });
 if (fs.existsSync(FICHIER_BASE)) {
-  fs.rmSync(FICHIER_BASE, { force: true }); // reprise après un run avorté
+  // Sous Windows, le fichier SQLite peut rester verrouillé brièvement après
+  // un run avorté (Strapi non détruit proprement). On retry avec attente.
+  (async () => {
+    for (let tentative = 0; tentative < 10; tentative += 1) {
+      try {
+        fs.rmSync(FICHIER_BASE, { force: true });
+        break;
+      } catch (e) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+  })();
 }
 process.env.DATABASE_FILENAME = path.join('.tmp', 'integration-etape-4.db');
 

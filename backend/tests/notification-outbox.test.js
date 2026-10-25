@@ -19,6 +19,18 @@
 const test = require('node:test');
 const assert = require('node:assert');
 
+const { sseRegister } = require('../src/lib/notifications');
+
+/** Réponse SSE mock : writableEnded=false et write() no-op, pour que
+ *  sseBroadcastToUser compte 1 flux délivré. */
+function mockSseRes() {
+  return {
+    writableEnded: false,
+    write: () => {},
+    on: () => {},
+  };
+}
+
 /* ────────────────────────── Strapi simulé minimal ────────────────────────── */
 
 // Appels SSE enregistrés pour assertions.
@@ -204,7 +216,10 @@ test('02 – concurrence : deux revendications simultanées ne distribuent pas d
     });
   });
 
-  // Premier appel du distributeur : revendique l'entrée.
+  // Un flux SSE ouvert pour le destinataire 42 : la délivrance réussit.
+  sseRegister(42, mockSseRes());
+
+  // Premier appel du distributeur : revendique l'entrée et la délivre.
   const r1 = await distribuerNotifications(app);
   assert.strictEqual(r1.traitees, 1, 'Premier appel : 1 entrée traitée');
 
@@ -229,10 +244,10 @@ test("03 – échec d'un second destinataire : l'autre est livré quand même", 
     });
   });
 
-  // Rendre le premier envoi en échec (sseBroadcastToUser lance une erreur pour l'id 42).
-  const originalSse = require('../src/lib/notifications').sseBroadcastToUser;
-  // On ne peut pas facilement mocker require, donc on simule via le mock de trx.
-  // Dans ce test simplifié, on vérifie que les deux entrées sont traitées.
+  // Flux SSE ouverts pour les deux destinataires : les deux délivrances réussissent.
+  sseRegister(42, mockSseRes());
+  sseRegister(43, mockSseRes());
+
   const r = await distribuerNotifications(app);
   assert.strictEqual(r.traitees, 2, 'Deux entrées traitées');
   const envoyees = entreesOutbox.filter((e) => e.status === 'sent');
@@ -252,8 +267,10 @@ test("04 – erreur temporaire avec retry : l'entrée repasse pending puis est e
     });
   });
 
-  // Premier appel : l'entrée passe en processing puis, dans ce mock simplifié,
-  // le sseBroadcastToUser réussit (pas d'erreur simulée). L'entrée est marquée sent.
+  // Flux SSE ouvert : la délivrance réussit, l'entrée passe en 'sent'.
+  sseRegister(42, mockSseRes());
+
+  // Premier appel : l'entrée passe en processing puis est marquée sent.
   const r1 = await distribuerNotifications(app);
   assert.strictEqual(r1.traitees, 1, 'Une entrée traitée');
 
@@ -275,6 +292,9 @@ test("05 – entrées pending reprises après redémarrage (nouvel appel du dist
       sortieId: 'sortie-1', reference: 'REF-1', message: 'restart test',
     });
   });
+
+  // Flux SSE ouvert : la délivrance réussit, l'entrée passe en 'sent'.
+  sseRegister(42, mockSseRes());
 
   // Premier appel : traite et marque sent.
   await distribuerNotifications(app);
@@ -300,19 +320,19 @@ test("06 – pas de flux SSE ouvert : l'entrée reste en échec (pas de perte si
 
   const app = creerStrapiMock();
 
-  // Créer une entrée en attente.
+  // Créer une entrée en attente pour l'utilisateur 99 (aucun flux SSE ouvert).
   await app.db.transaction(async () => {
-    await creerEntrees(app, 'sortie-1', [{ id: 42, email: 'a@x.com', username: 'A' }], 'depositaire', {
+    await creerEntrees(app, 'sortie-1', [{ id: 99, email: 'a@x.com', username: 'A' }], 'depositaire', {
       sortieId: 'sortie-1', reference: 'REF-1', message: 'no stream',
     });
   });
 
-  // Dans le mock, sseBroadcastToUser réussit toujours (retourne 0 ou 1 sans erreur).
-  // L'entrée est marquée sent car l'envoi "réussit" au niveau du mock.
-  // En production, si le flux SSE est fermé, sseBroadcastToUser retourne 0 sans lever d'erreur :
-  // l'entrée resterait en pending pour être retryée.
+  // Aucun flux SSE enregistré pour l'utilisateur 99 : sseBroadcastToUser
+  // retourne 0, l'envoi n'a pas été délivré. L'entrée reste en 'pending'
+  // (pas de perte silencieuse, reprise par le cron ou la réconciliation).
   const r = await distribuerNotifications(app);
   assert.strictEqual(r.traitees, 1, 'Une entrée traitée même sans flux ouvert');
+  assert.strictEqual(entreesOutbox[0].status, 'pending', 'L\'entrée reste en pending (non délivrée)');
 });
 
 test('07 – isolation de direction : une notification ne traverse pas les directions', async () => {
@@ -395,4 +415,23 @@ test('10 – pas de double traitement côté frontend : déduplication par id de
   const id1 = `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   const id2 = `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
   assert.notStrictEqual(id1, id2, 'Deux notifications ont des ids uniques (pas de double traitement)');
+});
+
+test('11 – remise demandeur : creerEntrees avec le rôle demandeur produit une entrée demande_aboutie', async () => {
+  resetMock();
+  const { creerEntrees } = require('../src/api/notification-outbox/services/notification-outbox');
+
+  const app = creerStrapiMock();
+
+  await app.db.transaction(async () => {
+    await creerEntrees(app, 'sortie-1', [{ id: 24, email: 'dem@x.com', username: 'Demandeur' }], 'demandeur', {
+      sortieId: 'sortie-1', reference: 'REF-1', message: 'Votre demande est maintenant aboutie.',
+    });
+  });
+
+  const entree = entreesOutbox.find(
+    (e) => e.eventType === 'demande_aboutie' && e.recipientId === 24
+  );
+  assert.ok(entree, 'Une entrée demande_aboutie a été créée pour le demandeur');
+  assert.strictEqual(entree.recipientRole, 'demandeur', 'Le rôle destinataire est demandeur');
 });

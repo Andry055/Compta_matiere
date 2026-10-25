@@ -83,7 +83,9 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
             Réceptionnez les matériels sortis validés à trois signatures.{" "}
             {user.role === "depositaire"
               ? `Vous êtes dépositaire de la direction ${user.department}.`
-              : "Accès réservé au Dépositaire comptable."}
+              : user.role === "demandeur"
+                ? `Vous consultez les sorties à réceptionner de votre direction (${user.department}).`
+                : "Accès réservé au Dépositaire comptable."}
           </p>
         </div>
         <div className="msr-actions-en-tete">
@@ -154,6 +156,7 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
         {onglet === "recevoir" && (
           <ListeSortiesARéceptionner
             sorties={sorties}
+            user={user}
             onRecevoir={handleRecevoir}
             onAnomalie={handleAnomalie}
           />

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react"
-import { clearStrapiSession, fetchSessionRole, getStrapiJwt } from "./lib/api"
+import { clearStrapiSession, fetchNotificationsOutbox, fetchSessionRole, getStrapiJwt } from "./lib/api"
 import { mapStrapiUser } from "./lib/session"
 import { DashboardLayout } from "./components/DashboardLayout"
 import { StaffDashboardLayout } from "./components/StaffDashboardLayout"
@@ -156,6 +156,34 @@ export default function App() {
     })
 
     return unsubscribe
+  }, [currentUser?.role])
+
+  // Réconciliation des notifications outbox manquées pour le demandeur.
+  // Les notifications émises pendant une déconnexion SSE (remise, etc.) sont
+  // persistées en outbox ; on les recharge à la connexion pour qu'elles
+  // apparaissent dans la cloche sans jamais les dupliquer.
+  useEffect(() => {
+    if (currentUser?.role !== 'demandeur') return
+    const jwt = getStrapiJwt()
+    if (!jwt) return
+    let mounted = true
+    ;(async () => {
+      const notifications = await fetchNotificationsOutbox()
+      if (!mounted) return
+      for (const n of notifications ?? []) {
+        const message =
+          typeof n.payload?.message === 'string' ? n.payload.message : `Votre demande est maintenant aboutie.`
+        pushRealtimeNotification(
+          'sortie',
+          message,
+          n.createdAt || new Date().toISOString(),
+          `outbox-${n.id}`
+        )
+      }
+    })()
+    return () => {
+      mounted = false
+    }
   }, [currentUser?.role])
 
   const handleLogin = (user: User) => {

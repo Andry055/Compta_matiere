@@ -36,6 +36,33 @@ module.exports = {
    */
   async find(ctx) {
     const app = strapi;
+
+    // Vérification manuelle du JWT depuis l'en-tête Authorization: Bearer ...
+    // (la route est déclarée avec auth: false dans index.js car Strapi 5 ne
+    //  gère pas correctement auth: true sur les routes enregistrées via
+    //  strapi.server.routes() pour les content types custom).
+    const authHeader = ctx.headers && ctx.headers.authorization;
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return forbid(ctx, 'Authentification requise pour lire vos notifications.', 401);
+    }
+
+    const jwt = authHeader.slice(7);
+    let token;
+    try {
+      token = await strapi.plugin('users-permissions').service('jwt').verify(jwt);
+    } catch (e) {
+      return forbid(ctx, 'Jeton invalide.', 401);
+    }
+
+    const userId = token && (token.id || token.userId);
+    if (!userId) {
+      return forbid(ctx, 'Jeton sans identifiant utilisateur.', 401);
+    }
+
+    // Peuple ctx.state.user pour que le reste du contrôleur dispose de
+    // l'utilisateur authentifié.
+    ctx.state.user = { id: userId };
+
     const user = ctx.state && ctx.state.user;
     if (!user || !user.id) {
       return forbid(ctx, 'Authentification requise pour lire vos notifications.', 401);

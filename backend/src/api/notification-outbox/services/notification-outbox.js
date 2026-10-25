@@ -155,7 +155,16 @@ async function marquerEchec(trx, entree, erreur) {
  */
 async function traiterEntree(app, trx, entree) {
   try {
-    await envoyerEntree(app, entree);
+    const nbEnvoyes = await envoyerEntree(app, entree);
+    if (nbEnvoyes === 0) {
+      // Aucun flux SSE ouvert pour le destinataire : la notification
+      // n'a pas été délivrée. On laisse l'entrée en 'pending' pour
+      // qu'elle soit reprise par un prochain passage du distributeur
+      // (cron périodique) ou par la réconciliation frontend.
+      throw new Error(
+        `Aucun flux SSE ouvert pour l'utilisateur #${entree.recipientId}`
+      );
+    }
     await marquerEnvoyee(trx, entree);
     app.log.debug(
       `[notification-outbox] Entrée #${entree.id} envoyée (${entree.eventType} → utilisateur #${entree.recipientId}).`

@@ -1010,8 +1010,21 @@ async function ensureAuthSetup(strapi) {
     const existingUser = await userQuery.findOne({
       where: { email: demo.email },
     });
-    if (existingUser) continue;
     const { roleType, ...data } = demo;
+    if (existingUser) {
+      // S'assurer que le compte démo existe avec le statut attendu
+      // (confirmé, non bloqué) sans toucher au mot de passe ni aux autres données.
+      const updates = {};
+      if (existingUser.confirmed !== true) updates.confirmed = true;
+      if (existingUser.blocked !== false) updates.blocked = false;
+      if (Object.keys(updates).length > 0) {
+        await userQuery.update({ where: { id: existingUser.id }, data: updates });
+        strapi.log.info(
+          `[auth] Compte ${roleType} mis à jour : ${demo.email}`
+        );
+      }
+      continue;
+    }
     await strapi
       .plugin('users-permissions')
       .service('user')
@@ -1164,5 +1177,50 @@ module.exports = {
     } catch (err) {
       strapi.log.error(`[seed-materiels] Échec : ${err.message}`);
     }
+
+    // Garantit que la colonne lastAttemptAt existe sur la table
+    // notification_outboxes. Déclarée dans schema.json mais absente des tables
+    // créées avant son ajout : le UPDATE dans reclamerEntrees échouait avec
+    // "no such column: lastAttemptAt", bloquant toute distribution outbox.
+    try {
+      await strapi.db.connection.raw(
+        `ALTER TABLE notification_outboxes ADD COLUMN lastAttemptAt DATETIME`
+      );
+      strapi.log.info('[notification-outbox] Colonne lastAttemptAt ajoutée.');
+    } catch (e) {
+      if (!/duplicate column/i.test(e.message || '')) {
+        strapi.log.warn(
+          `[notification-outbox] Impossible d'ajouter lastAttemptAt : ${e.message}`
+        );
+      }
+    }
+
+    // Enregistrement des routes de notification (SSE + outbox) sur le routeur
+    // de contenu (préfixe /api). Les fichiers api/*/routes/* ne sont pas chargés
+    // automatiquement par Strapi pour ces APIs ; on déclare donc explicitement
+    // les routes sur le content-api router via strapi.server.routes().
+    try {
+      strapi.server.routes({
+        type: 'content-api',
+        routes: [
+          {
+            method: 'GET',
+            path: '/sse/stream',
+            handler: 'api::notification.notification.stream',
+            config: { auth: false },
+          },
+          {
+            method: 'GET',
+            path: '/notification-outbox/notifications',
+            handler: 'api::notification-outbox.notification-outbox.find',
+            config: { auth: false },
+          },
+        ],
+      });
+      strapi.log.info('[routes] Routes notification enregistrées sur le content-api router');
+    } catch (err) {
+      strapi.log.error(`[routes] Échec de l'enregistrement des routes notification : ${err.message}`);
+    }
+
   },
 };

@@ -13,9 +13,6 @@ module.exports = {
       method: 'GET',
       path: '/notifications',
       handler: 'notification-outbox.find',
-      config: {
-        auth: true,
-      },
     },
   ],
 };

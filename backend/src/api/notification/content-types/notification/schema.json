@@ -1,0 +1,17 @@
+{
+  "kind": "collectionType",
+  "collectionName": "notifications",
+  "info": {
+    "singularName": "notification",
+    "pluralName": "notifications",
+    "displayName": "Notification",
+    "description": "Content-type factice pour enregistrer la route SSE /api/notifications/stream (flux de notifications push en temps réel)."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "titre": { "type": "string" }
+  }
+}

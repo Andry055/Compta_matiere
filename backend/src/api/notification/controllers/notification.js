@@ -40,6 +40,7 @@ module.exports = {
     }
 
     // En-têtes SSE.
+    ctx.status = 200;
     ctx.set('Content-Type', 'text/event-stream');
     ctx.set('Cache-Control', 'no-cache, no-transform');
     ctx.set('Connection', 'keep-alive');

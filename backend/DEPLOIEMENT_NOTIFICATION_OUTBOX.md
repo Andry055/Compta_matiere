@@ -21,8 +21,9 @@ Le pattern outbox repose sur :
 ### Étapes
 
 1. **Appliquer la migration SQL**
-   Exécuter `backend/database/migrations/001_create_notification_outbox.sql` sur la base de production PostgreSQL.
+   Exécuter `backend/database/sql/001_create_notification_outbox.sql` sur la base de production PostgreSQL.
    > ⚠️ Ce fichier est fourni à titre de référence. L'équipe doit l'adapter à son outil de migration (Knex, pg-migrate, etc.) avant exécution en production. Il ne doit **pas** être exécuté directement sur la base de production sans révision.
+   > ℹ️ Il est volontairement **hors de `database/migrations/`** : Strapi exécute automatiquement tout fichier `.sql` de ce dossier au démarrage, et ce fichier est en syntaxe PostgreSQL uniquement (il fait planter un démarrage en SQLite). En développement, la table `notification_outboxes` est créée automatiquement par la synchronisation de schéma Strapi à partir du content-type `notification-outbox`.
 
 2. **Déployer le code backend**
    Déployer les nouveaux fichiers et modifications :
@@ -85,7 +86,7 @@ Si seul le pattern outbox doit être désactivé tout en gardant les autres modi
 
 | Fichier | Rôle |
 |---------|------|
-| `database/migrations/001_create_notification_outbox.sql` | Création de la table outbox (PostgreSQL) |
+| `database/sql/001_create_notification_outbox.sql` | Création de la table outbox (PostgreSQL) — référence, hors dossier de migrations auto-exécutées |
 | `src/api/notification-outbox/content-types/notification-outbox/schema.json` | Déclaration du content-type Strapi |
 | `src/api/notification-outbox/services/notification-outbox.js` | Service distributeur (revendication, envoi, marquage) |
 | `src/api/notification-outbox/controllers/notification-outbox.js` | Controller `find` (route `GET /notifications`) |

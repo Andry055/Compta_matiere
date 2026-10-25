@@ -16,6 +16,7 @@ import { toast } from "sonner";
 
 interface ListeSortiesARéceptionnerProps {
   sorties: SortieRecord[];
+  user?: { role?: string };
   onRecevoir: (sortie: SortieRecord) => void;
   onAnomalie: (sortie: SortieRecord) => void;
 }
@@ -36,6 +37,7 @@ const STATUT_BADGE_COLOR: Record<string, string> = {
 
 export function ListeSortiesARéceptionner({
   sorties,
+  user,
   onRecevoir,
   onAnomalie,
 }: ListeSortiesARéceptionnerProps) {
@@ -160,13 +162,24 @@ export function ListeSortiesARéceptionner({
                     </Button>
                   ) : (
                     <>
-                      <Button
-                        onClick={() => onRecevoir(sortie)}
-                        size="sm"
-                        className="flex-1"
-                      >
-                        <Plus className="w-3 h-3 mr-1" /> Recevoir
-                      </Button>
+                      {user?.role === "depositaire" ? (
+                        <Button
+                          onClick={() => onRecevoir(sortie)}
+                          size="sm"
+                          className="flex-1"
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Recevoir
+                        </Button>
+                      ) : (
+                        <Button
+                          disabled
+                          variant="outline"
+                          size="sm"
+                          className="opacity-50 cursor-not-allowed flex-1"
+                        >
+                          <Plus className="w-3 h-3 mr-1" /> Recevoir (dépositaire)
+                        </Button>
+                      )}
                       <Button
                         onClick={() => onAnomalie(sortie)}
                         variant="outline"

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { User as UserType } from "../App";
 import { strapiLogin, fetchSessionRole, setStrapiSession } from "../lib/api";
+import type { StrapiLoginResult } from "../lib/api";
 import { mapStrapiUser } from "../lib/session";
 
 interface LoginScreenProps {
@@ -121,7 +122,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     // 1) API Strapi (JWT) : la vraie persistance côté serveur
     // -----------------------------------------------------------------------
     const strapiAuth = await strapiLogin(email, password);
-    if (strapiAuth) {
+
+    // Cas 1 : authentification Strapi réussie (JWT reçu).
+    if (strapiAuth.ok) {
       // La réponse de /api/auth/local ne contient PAS `role` (le sanitizer
       // Content API retire la relation vers users-permissions.user) : on va
       // le chercher sur /api/session/role, qui lit le rôle réel du jeton.
@@ -139,10 +142,29 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         onLogin(mapped);
         return;
       }
-      // Rôle inconnu ET endpoint injoignable : on retombe sur les comptes de
-      // démonstration locaux (mode hors ligne). Le jetonStrapi, lui, reste
-      // valide : c'est lui qui fait foi côté serveur.
+      // Rôle inconnu ou session/role inaccessible : l'utilisateur est bien
+      // authentifié chez Strapi mais son rôle n'est pas reconnu. On ne bascule
+      // PAS en mode démo : cela masquerait un problème de configuration.
+      setError(
+        "Authentification Strapi réussie, mais le rôle utilisateur est indisponible."
+      );
+      setIsLoading(false);
+      return;
     }
+
+    // Cas 2 : Strapi a rejeté les identifiants (403 ou 401).
+    // On ne bascule PAS en mode démo : cela masquerait l'échec réel.
+    if (!strapiAuth.ok && strapiAuth.code === 'auth_echec') {
+      setError(
+        strapiAuth.status === 403
+          ? "Authentification refusée : compte bloqué ou non confirmé."
+          : "Identifiants refusés par le serveur."
+      );
+      setIsLoading(false);
+      return;
+    }
+
+    // Cas 3 : erreur réseau — Strapi injoignable. Repli autorisé sur le mode démo.
 
     // -----------------------------------------------------------------------
     // 2) Repli hors ligne : comptes de démonstration de l'application

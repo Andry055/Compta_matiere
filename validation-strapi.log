@@ -1,0 +1,58 @@
+
+> backend@0.1.0 start
+> strapi start
+
+[2026-10-24 23:32:36.324] [33mwarn[39m: [email]: The "sendmail" email provider is still supported, but for most production setups that use a dedicated SMTP relay, consider switching to @strapi/provider-email-nodemailer (set `provider` to `"nodemailer"` in your email plugin config). This message is only shown in development.
+[2026-10-24 23:32:37.234] [32minfo[39m: [MCP] Starting MCP server...
+[2026-10-24 23:32:37.238] [32minfo[39m: [MCP] Server available at /mcp
+[2026-10-24 23:32:37.298] [32minfo[39m: [seed] Directions déjà présentes : seed ignoré.
+[2026-10-24 23:32:37.302] [32minfo[39m: [seed-reddition] Ouvertures déjà présentes : seed ignoré.
+[2026-10-24 23:32:37.306] [32minfo[39m: [seed-materiels] Matériels déjà présents : seed ignoré.
+[2026-10-24 23:32:37.459] [32minfo[39m: [notification-outbox] Colonne lastAttemptAt ajoutée.
+[2026-10-24 23:32:37.461] [32minfo[39m: [routes] Routes notification enregistrées sur le content-api router
+
+ Project information
+
+[90m╭────────────────────[39m[90m┬──────────────────────────────────────────────────╮[39m
+[90m│[39m Time               [90m│[39m Sat Oct 24 2026 23:32:37 GMT+0300 (heure normal… [90m│[39m
+[90m│[39m Launched in        [90m│[39m 5671 ms                                          [90m│[39m
+[90m│[39m Environment        [90m│[39m development                                      [90m│[39m
+[90m│[39m Process PID        [90m│[39m 5904                                             [90m│[39m
+[90m│[39m Version            [90m│[39m 5.53.0 (node v24.19.0)                           [90m│[39m
+[90m│[39m Plan               [90m│[39m Community                                        [90m│[39m
+[90m│[39m Database           [90m│[39m sqlite                                           [90m│[39m
+[90m│[39m Database name      [90m│[39m .tmp\data.db                                     [90m│[39m
+[90m╰────────────────────[39m[90m┴──────────────────────────────────────────────────╯[39m
+
+ Actions available
+
+Welcome back!
+To manage your project 🚀, go to the administration panel at:
+http://localhost:1337/admin
+
+To access the server ⚡️, go to:
+http://localhost:1337
+
+[2026-10-24 23:32:37.519] [32minfo[39m: Strapi started successfully
+[2026-10-24 23:32:53.402] [32mhttp[39m: POST /api/auth/local (261 ms) 200
+[2026-10-24 23:32:57.092] [32mhttp[39m: POST /api/auth/local (187 ms) 200
+[2026-10-24 23:33:15.022] [32mhttp[39m: POST /api/auth/local (177 ms) 200
+[2026-10-24 23:33:15.362] [32mhttp[39m: GET /api/notification-outbox/notifications (11 ms) 200
+[2026-10-24 23:33:15.682] [32mhttp[39m: GET /api/notification-outbox/notifications (5 ms) 200
+[2026-10-24 23:33:18.115] [32mhttp[39m: GET /api/notification-outbox/notifications (1 ms) 401
+[2026-10-24 23:33:18.448] [32mhttp[39m: GET /api/notification-outbox/notifications (2 ms) 401
+[2026-10-24 23:33:20.711] [32mhttp[39m: GET /api/notification-outbox/notifications (1 ms) 401
+[2026-10-24 23:33:21.071] [32mhttp[39m: GET /api/notification-outbox/notifications (3 ms) 401
+[2026-10-24 23:33:35.327] [32mhttp[39m: POST /api/auth/local (241 ms) 200
+[2026-10-24 23:33:35.724] [32mhttp[39m: GET /api/notification-outbox/notifications (4 ms) 200
+[2026-10-24 23:33:42.987] [32mhttp[39m: POST /api/auth/local (168 ms) 200
+[2026-10-24 23:33:43.360] [32mhttp[39m: GET /api/notification-outbox/notifications (5 ms) 200
+[2026-10-24 23:34:47.491] [32mhttp[39m: POST /api/auth/local (159 ms) 200
+[2026-10-24 23:34:48.072] [32mhttp[39m: POST /api/auth/local (193 ms) 200
+[2026-10-24 23:34:48.400] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODc0MDg3LCJleHAiOjE3OTU0NjYwODd9.Ac2SrI93M_yCdJhK1NzM4N0nfEzk6BJpjY6jmkyimt8 (2 ms) 200
+[2026-10-24 23:34:48.409] [32mhttp[39m: GET /api/sse/stream (2 ms) 401
+[2026-10-24 23:34:48.413] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.invalid.token (2 ms) 401
+[2026-10-24 23:34:48.420] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODc0MDg3LCJleHAiOjE3OTU0NjYwODd9.Ac2SrI93M_yCdJhK1NzM4N0nfEzk6BJpjY6jmkyimt8 (1 ms) 200
+[2026-10-24 23:34:48.423] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODc0MDg3LCJleHAiOjE3OTU0NjYwODd9.Ac2SrI93M_yCdJhK1NzM4N0nfEzk6BJpjY6jmkyimt8 (2 ms) 200
+[2026-10-24 23:34:48.429] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwiaWF0IjoxNzkyODc0MDg3LCJleHAiOjE3OTU0NjYwODd9.Ac2SrI93M_yCdJhK1NzM4N0nfEzk6BJpjY6jmkyimt8 (3 ms) 200
+[2026-10-24 23:34:48.433] [32mhttp[39m: GET /api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MiwiaWF0IjoxNzkyODc0MDg4LCJleHAiOjE3OTU0NjYwODh9.4217_9Aa50O-3JO-gVtMZ4j182bciTMDACAlfAwxGUw (2 ms) 200

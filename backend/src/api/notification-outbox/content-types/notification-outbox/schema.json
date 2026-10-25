@@ -2,13 +2,15 @@
   "kind": "collectionType",
   "collectionName": "notification_outboxes",
   "info": {
-    "name": "NotificationOutbox",
+    "singularName": "notification-outbox",
+    "pluralName": "notification-outboxes",
     "displayName": "Notification Outbox",
     "description": "File d'attente persistante des notifications (outbox pattern) pour garantir l'idempotence et la reprise après échec des envois SSE."
   },
   "options": {
     "draftAndPublish": false
   },
+  "pluginOptions": {},
   "attributes": {
     "sortie": {
       "type": "relation",

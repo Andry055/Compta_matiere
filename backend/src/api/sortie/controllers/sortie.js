@@ -51,7 +51,6 @@ const SORTIE_UID = 'api::sortie.sortie';
 const SORTIE_LIGNE_UID = 'api::sortie-ligne.sortie-ligne';
 const MOUVEMENT_UID = 'api::mouvement.mouvement';
 
-const { sseBroadcastToUser } = require('../../../lib/notifications');
 const { findUtilisateursParRoleEtDirection } = require('../../../utils/destinatairesNotifications');
 const { creerEntrees, distribuerNotifications } = require('../../../api/notification-outbox/services/notification-outbox');
 
@@ -1142,7 +1141,11 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       // Après la transaction réussie, on charge la sortie finale
       const sortieFinale = await loadSortie(app, documentId);
 
-      // Notification push temps réel au demandeur dès que la sortie est remise
+      // Notification « demande aboutie » au demandeur : persistance en outbox +
+      // livraison SSE avec reprise (même pattern que signerLogistique, ÉTAPE 4).
+      // Le demandeur connecté reçoit l'événement immédiatement via le
+      // distributeur ; le demandeur déconnecté le retrouve à sa prochaine
+      // connexion grâce à la réconciliation sur GET /api/notification-outbox/notifications.
       if (sortieFinale?.demande) {
         try {
           const demande = await app.documents('api::demande.demande').findOne({
@@ -1150,22 +1153,42 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
             populate: ['demandeur'],
           });
           if (demande?.demandeur?.id) {
-            sseBroadcastToUser(
-              demande.demandeur.id,
-              'demande_aboutie',
-              {
-                demandeId: demande.documentId,
-                demandeReference: demande.reference,
-                sortieReference: sortieFinale.reference,
-                message: `Votre demande ${demande.reference} est maintenant aboutie (sortie effectuée).`,
-                date: new Date().toISOString(),
-              }
+            const payloadDemandeAboutie = {
+              demandeId: demande.documentId,
+              demandeReference: demande.reference,
+              sortieReference: sortieFinale.reference,
+              message: `Votre demande ${demande.reference} est maintenant aboutie (sortie effectuée).`,
+              date: new Date().toISOString(),
+            };
+            // 1. Persiste la notification en outbox (statut 'pending').
+            await creerEntrees(
+              app,
+              documentId,
+              [
+                {
+                  id: demande.demandeur.id,
+                  email: demande.demandeur.email ?? '',
+                  username: demande.demandeur.username ?? '',
+                },
+              ],
+              'demandeur',
+              payloadDemandeAboutie
+            );
+            // 2. Livraison SSE immédiate + reprise des entrées en échec.
+            await distribuerNotifications(app);
+          } else {
+            app.log.warn(
+              `[sortie] Remise ${sortieFinale.reference} : demande liée sans demandeur, notification 'demande_aboutie' ignorée.`
             );
           }
         } catch (e) {
-          // Ne fait pas échouer la remise si la notification ne peut pas être envoyée
-          app.log.warn(`[sortie] Échec de l'envoi de la notification SSE : ${e.message}`);
+          // Ne fait pas échouer la remise si la notification ne peut pas être envoyée/persistée.
+          app.log.warn(`[sortie] Échec de la notification 'demande_aboutie' : ${e.message}`);
         }
+      } else {
+        app.log.warn(
+          `[sortie] Remise ${sortieFinale?.reference || documentId} : sortie sans demande liée, notification 'demande_aboutie' ignorée.`
+        );
       }
 
       return {

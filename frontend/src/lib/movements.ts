@@ -782,12 +782,12 @@ export function peutRecevoir(
 }
 
 /** Filtre les sorties réceptionnables : statut "Sortie effectuée", 3 signatures,
- *  direction correspondante au dépositaire connecté. */
+ *  direction correspondante à l'utilisateur connecté (dépositaire ou demandeur). */
 export function sortiesRéceptionnables(
   sorties: SortieRecord[],
   user?: { role?: string; department?: string; name?: string }
 ): SortieRecord[] {
-  if (!user || user.role !== "depositaire") return [];
+  if (!user || (user.role !== "depositaire" && user.role !== "demandeur")) return [];
 
   const { direction } = splitDepartement(user.department || "");
 

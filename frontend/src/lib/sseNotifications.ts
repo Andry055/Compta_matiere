@@ -35,7 +35,7 @@ export function connectSSE(userId: number, jwt: string): void {
   currentJwt = jwt;
   currentUserId = userId;
 
-  const url = new URL(`${API_URL}/api/notifications/stream`);
+  const url = new URL(`${API_URL}/api/sse/stream`);
   url.searchParams.set('jwt', encodeURIComponent(jwt));
 
   const es = new EventSource(url.toString());

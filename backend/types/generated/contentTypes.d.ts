@@ -952,6 +952,84 @@ export interface ApiMouvementMouvement extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiNotificationOutboxNotificationOutbox
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'notification_outboxes';
+  info: {
+    description: "File d'attente persistante des notifications (outbox pattern) pour garantir l'idempotence et la reprise apr\u00E8s \u00E9chec des envois SSE.";
+    displayName: 'Notification Outbox';
+    pluralName: 'notification-outboxes';
+    singularName: 'notification-outbox';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    attempts: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<0>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    eventType: Schema.Attribute.Enumeration<
+      ['ordre_pret_distribution', 'ordre_sortie_autorise', 'demande_aboutie']
+    > &
+      Schema.Attribute.Required;
+    lastAttemptAt: Schema.Attribute.DateTime;
+    lastError: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::notification-outbox.notification-outbox'
+    > &
+      Schema.Attribute.Private;
+    payload: Schema.Attribute.JSON & Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    recipientId: Schema.Attribute.Integer & Schema.Attribute.Required;
+    recipientRole: Schema.Attribute.String & Schema.Attribute.Required;
+    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'> &
+      Schema.Attribute.Required;
+    status: Schema.Attribute.Enumeration<
+      ['pending', 'processing', 'sent', 'failed']
+    > &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<'pending'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiNotificationNotification
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'notifications';
+  info: {
+    description: 'Content-type factice pour enregistrer la route SSE /api/notifications/stream (flux de notifications push en temps r\u00E9el).';
+    displayName: 'Notification';
+    pluralName: 'notifications';
+    singularName: 'notification';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::notification.notification'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    titre: Schema.Attribute.String;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiOuvertureExerciceOuvertureExercice
   extends Struct.CollectionTypeSchema {
   collectionName: 'ouverture_exercices';
@@ -1019,6 +1097,46 @@ export interface ApiRapportRapport extends Struct.SingleTypeSchema {
     updatedAt: Schema.Attribute.DateTime;
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+  };
+}
+
+export interface ApiReceptionPhysiqueReceptionPhysique
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'receptions_physiques';
+  info: {
+    displayName: 'R\u00E9ception physique';
+    pluralName: 'receptions-physiques';
+    singularName: 'reception-physique';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_reception: Schema.Attribute.Date & Schema.Attribute.Required;
+    description_anomalie: Schema.Attribute.Text;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::reception-physique.reception-physique'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite_prevue: Schema.Attribute.Integer & Schema.Attribute.Required;
+    quantite_recue: Schema.Attribute.Integer & Schema.Attribute.Required;
+    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'> &
+      Schema.Attribute.Required;
+    statut: Schema.Attribute.Enumeration<['conforme', 'anomalie']> &
+      Schema.Attribute.DefaultTo<'conforme'>;
+    type_anomalie: Schema.Attribute.Enumeration<
+      ['manquant', 'endommage', 'incorrect']
+    >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    utilisateur: Schema.Attribute.String & Schema.Attribute.Required;
   };
 }
 
@@ -1726,8 +1844,11 @@ declare module '@strapi/strapi' {
       'api::fournisseur.fournisseur': ApiFournisseurFournisseur;
       'api::material.material': ApiMaterialMaterial;
       'api::mouvement.mouvement': ApiMouvementMouvement;
+      'api::notification-outbox.notification-outbox': ApiNotificationOutboxNotificationOutbox;
+      'api::notification.notification': ApiNotificationNotification;
       'api::ouverture-exercice.ouverture-exercice': ApiOuvertureExerciceOuvertureExercice;
       'api::rapport.rapport': ApiRapportRapport;
+      'api::reception-physique.reception-physique': ApiReceptionPhysiqueReceptionPhysique;
       'api::service.service': ApiServiceService;
       'api::session-role.session-role': ApiSessionRoleSessionRole;
       'api::sortie-ligne.sortie-ligne': ApiSortieLigneSortieLigne;

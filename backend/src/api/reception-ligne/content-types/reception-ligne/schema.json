@@ -1,0 +1,51 @@
+{
+  "kind": "collectionType",
+  "collectionName": "reception-lignes",
+  "info": {
+    "singularName": "reception-ligne",
+    "pluralName": "reception-lignes",
+    "displayName": "Ligne de réception"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "reception": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::reception.reception",
+      "required": true
+    },
+    "sortie_ligne": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie-ligne.sortie-ligne",
+      "required": true
+    },
+    "materiel": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::material.material",
+      "required": true
+    },
+    "quantite_commandee": {
+      "type": "integer",
+      "required": true
+    },
+    "quantite_recue": {
+      "type": "integer",
+      "required": true
+    },
+    "quantite_reliquat": {
+      "type": "integer"
+    },
+    "etat": {
+      "type": "enumeration",
+      "enum": ["neuf", "bon", "moyen", "defaillant"]
+    },
+    "observations": {
+      "type": "text"
+    }
+  }
+}

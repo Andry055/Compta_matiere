@@ -1,0 +1,57 @@
+{
+  "kind": "collectionType",
+  "collectionName": "anomalies",
+  "info": {
+    "singularName": "anomalie",
+    "pluralName": "anomalies",
+    "displayName": "Anomalie"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "reception": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::reception.reception",
+      "required": true
+    },
+    "reception_ligne": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::reception-ligne.reception-ligne"
+    },
+    "type_anomalie": {
+      "type": "enumeration",
+      "enum": ["manquant", "endommage", "non_conforme", "autre"],
+      "required": true
+    },
+    "description": {
+      "type": "text",
+      "required": true
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": ["ouverte", "en_cours", "resolue", "rejetee"],
+      "required": true
+    },
+    "version": {
+      "type": "integer",
+      "required": true,
+      "default": 1
+    },
+    "date_ouverture": {
+      "type": "date",
+      "required": true
+    },
+    "date_resolution": {
+      "type": "date"
+    },
+    "responsable": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user"
+    }
+  }
+}

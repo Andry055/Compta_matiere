@@ -525,6 +525,42 @@ const ROLES_NOTIFICATION_OUTBOX = [
   'comptable',
 ];
 
+// ---------------------------------------------------------------------------
+// Réception physique : création de réception et de lignes de réception.
+// Réservée au rôle « depositaire » (contrôle aussi dans le contrôleur).
+// ---------------------------------------------------------------------------
+const RECEPTION_ACTIONS = [
+  'api::reception.reception.create',
+  'api::reception.reception.find',
+  'api::reception.reception.findOne',
+  'api::reception-ligne.reception-ligne.create',
+];
+
+const ROLES_RECEPTION = ['depositaire'];
+
+// ---------------------------------------------------------------------------
+// Anomalies de réception : déclaration et résolution. Réservée au rôle
+// « depositaire » (contrôle aussi dans le contrôleur).
+// ---------------------------------------------------------------------------
+const ANOMALIE_ACTIONS = [
+  'api::anomalie.anomalie.create',
+  'api::anomalie.anomalie.find',
+  'api::anomalie.anomalie.findOne',
+  'api::anomalie.anomalie.resolve',
+];
+
+const ROLES_ANOMALIE = ['depositaire'];
+
+// ---------------------------------------------------------------------------
+// Journal d'action des anomalies : lecture seule. Réservée au rôle
+// « depositaire » (contrôle aussi dans le contrôleur).
+// ---------------------------------------------------------------------------
+const JOURNAL_ACTION_ACTIONS = [
+  'api::journal-action.journal-action.find',
+];
+
+const ROLES_JOURNAL_ACTION = ['depositaire'];
+
 
 const DEMO_DEMANDEUR = {
   username: 'Randriamampionona Tolotra',
@@ -1004,6 +1040,46 @@ async function ensureAuthSetup(strapi) {
         await permQuery.create({ data: { action, role: roles.admin.id } });
         accordees.add(cle);
       }
+    }
+  }
+
+  // 2douzaines bis) Réception physique : accordée au Dépositaire (et à l'admin
+  // applicatif) pour create/find/findOne sur les réceptions et create sur les
+  // lignes de réception.
+  for (const type of ROLES_RECEPTION) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of RECEPTION_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2douzaines ter) Anomalies : create/find/findOne au Dépositaire ; resolve
+  // au Dépositaire (et à l'admin applicatif) — résolution avec verrou version.
+  for (const type of ROLES_ANOMALIE) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of ANOMALIE_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2douzaines quater) Journal-action (immuable) : find seul au Dépositaire,
+  // lecture seule, pas d'écriture directe sur ce modèle.
+  for (const type of ROLES_JOURNAL_ACTION) {
+    const role = roles[type];
+    if (!role) continue;
+    for (const action of JOURNAL_ACTION_ACTIONS) {
+      const cle = `${role.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
     }
   }
 

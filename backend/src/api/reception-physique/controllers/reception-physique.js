@@ -21,6 +21,11 @@ const { getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
 const RECEPTION_UID = 'api::reception-physique.reception-physique';
 const SORTIE_UID = 'api::sortie.sortie';
 
+// Le rôle « depositaire » est le rôle métier utilisé pour le dépositaire de
+// direction. Le rôle « demandeur » est l'équivalent Strapi dans ce flux. Les
+// deux doivent pouvoir créer et consulter les réceptions physiques.
+const DEPOSITAIRE_ROLE = 'depositaire';
+
 function forbid(ctx, message, status = 403) {
   ctx.status = status;
   const noms = { 403: 'ForbiddenError', 404: 'NotFoundError' };
@@ -42,10 +47,12 @@ function badRequest(ctx, message) {
   return ctx.body;
 }
 
+// Vérifie que l'utilisateur est un dépositaire de direction, identifié par le
+// rôle « depositaire » ou « demandeur » (rôle métier Strapi).
 async function isDemandeur(strapi, userId) {
   if (!userId) return false;
   const code = await getRoleCode(strapi, userId);
-  return code === DEMANDEUR_ROLE;
+  return code === DEMANDEUR_ROLE || code === DEPOSITAIRE_ROLE;
 }
 
 /**
@@ -62,7 +69,12 @@ async function getDirectionIds(strapi, user) {
   if (!directionNom) return [];
 
   const directions = await strapi.documents('api::direction.direction').findMany({
-    filters: { nom_direction: { $eqi: directionNom } },
+    filters: {
+      $or: [
+        { nom_direction: { $eqi: directionNom } },
+        { abreviation: { $eqi: directionNom } },
+      ],
+    },
     fields: ['documentId'],
     limit: -1,
   });
@@ -114,6 +126,12 @@ module.exports = createCoreController(RECEPTION_UID, ({ strapi: app }) => ({
         ctx,
         'Cette sortie ne appartient pas à votre direction.'
       );
+    }
+
+    // Convertir sortieId en relation sortie attendue par le schema Strapi
+    if (ctx.request.body && ctx.request.body.data) {
+      ctx.request.body.data.sortie = sortieId;
+      delete ctx.request.body.data.sortieId;
     }
 
     return super.create(ctx);

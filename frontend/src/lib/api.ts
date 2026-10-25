@@ -282,7 +282,7 @@ interface StrapiEntity {
   notes?: string | null;
   observations?: string | null;
   fournisseur?: { nom?: string | null } | null;
-  direction?: { nom_direction?: string | null } | null;
+  direction?: { documentId?: string | null; nom_direction?: string | null } | null;
   service?: { nom_service?: string | null } | null;
   demande?: {
     id?: number;
@@ -524,6 +524,7 @@ function mapSortie(row: StrapiEntity): SortieRecord {
     ),
     serviceDemandeur: row.service?.nom_service || "—",
     direction: row.direction?.nom_direction || "—",
+    directionId: row.direction?.documentId || undefined,
     demandeId: row.demande?.id,
     demandeur,
     beneficiaire: row.beneficiaire || "—",
@@ -813,8 +814,6 @@ export async function rejeterSortie(documentId: string, motif: string): Promise<
  * qu'une occasion de dévier du contrat.
  */
 export interface PayloadRemise {
-  detenteur_nom: string;
-  detenteur_fonction: string;
   mandataire_nom?: string;
   date_remise: string;
 }
@@ -1069,6 +1068,8 @@ export async function rejeterEntree(documentId: string): Promise<EntreeRecord> {
 export interface RefOption {
   documentId: string;
   nom: string;
+  /** Abréviation de la direction (ex. « DAF ») — pour le rapprochement stable avec le département utilisateur. */
+  abbreviation?: string;
   /** Direction de rattachement (services uniquement) — pour le filtrage Direction → Service */
   directionId?: string;
   /** Responsables du service (déchargés automatiquement à la sélection) */
@@ -1133,10 +1134,12 @@ export async function fetchDirections(): Promise<RefOption[]> {
         documentId?: string;
         id: number;
         nom_direction?: string;
+        abreviation?: string;
         directeur?: string;
       }) => ({
         documentId: row.documentId || String(row.id),
         nom: row.nom_direction || `Direction #${row.id}`,
+        abbreviation: row.abreviation || undefined,
         directeur: row.directeur || undefined,
       })
     );
@@ -1732,6 +1735,108 @@ export async function fetchOrdresValidesPourDepositaire(): Promise<
     return null;
   }
 }
+// ---------------------------------------------------------------------------
+// Réceptions physiques : persistance via l'API backend /api/receptions-physiques
+// ---------------------------------------------------------------------------
+
+export type StatutReceptionPhysique = "conforme" | "anomalie";
+
+export type TypeAnomalieReception = "manquant" | "endommage" | "incorrect";
+
+export interface ReceptionPhysiqueCreatePayload {
+  sortieId: string;
+  date_reception?: string;
+  statut?: StatutReceptionPhysique;
+  type_anomalie?: TypeAnomalieReception;
+  description_anomalie?: string;
+  quantite_prevue: number;
+  quantite_recue: number;
+  utilisateur: string;
+}
+
+export interface ReceptionPhysiqueRecord {
+  id: string;
+  documentId?: string;
+  sortieId?: string;
+  date_reception: string;
+  statut: StatutReceptionPhysique;
+  type_anomalie?: TypeAnomalieReception;
+  description_anomalie?: string;
+  quantite_prevue: number;
+  quantite_recue: number;
+  utilisateur: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+/** Mappe un type d'anomalie frontend vers l'énumération backend.
+ *  "autre" n'a pas d'équivalent côté serveur → retourne undefined (champ omis). */
+function mapTypeAnomalieBackend(
+  type: "quantite" | "etat" | "conformite" | "autre"
+): TypeAnomalieReception | undefined {
+  switch (type) {
+    case "quantite":
+      return "incorrect";
+    case "etat":
+      return "endommage";
+    case "conformite":
+      return "incorrect";
+    case "autre":
+      return undefined;
+  }
+}
+
+/** Crée une réception physique côté serveur.
+ *  POST /api/receptions-physiques — rôle demandeur requis, sortie en statut
+ *  `sortie_effectuee` appartenant à la direction du demandeur.
+ *  Aucun débit de stock n'est effectué par cette route (le stock a déjà été
+ *  débité à la signature logistique).
+ */
+export async function creerReceptionPhysique(
+  payload: ReceptionPhysiqueCreatePayload
+): Promise<ReceptionPhysiqueRecord> {
+  const { data } = await api.post("/api/receptions-physiques", { data: payload });
+  return data?.data ?? data;
+}
+
+/** Liste les réceptions physiques (filtrées par direction côté serveur si demandeur).
+ *  La relation `sortie` est peuplée pour accéder à la référence et à la direction.
+ */
+export async function listerReceptionsPhysiques(): Promise<
+  ReceptionPhysiqueRecord[] | null
+> {
+  try {
+    const { data } = await api.get("/api/receptions-physiques", {
+      timeout: 5000,
+      params: {
+        populate: {
+          sortie: {
+            populate: { direction: true },
+          },
+        },
+      },
+    });
+    const rows: Array<ReceptionPhysiqueRecord> = data?.data ?? [];
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
+/** Récupère une réception physique par son documentId. */
+export async function getReceptionPhysique(
+  documentId: string
+): Promise<ReceptionPhysiqueRecord | null> {
+  try {
+    const { data } = await api.get(`/api/receptions-physiques/${documentId}`, {
+      timeout: 5000,
+    });
+    return data?.data ?? null;
+  } catch {
+    return null;
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Types exposés au frontend (structure attendue par les composants)
 // ---------------------------------------------------------------------------

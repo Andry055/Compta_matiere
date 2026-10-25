@@ -241,6 +241,9 @@ export interface SortieRecord {
   quantite: number;
   serviceDemandeur: string;
   direction: string;
+  /** Identifiant stable de direction (Strapi documentId) : utilisé pour
+   *  l'autorisation de réception plutôt que par comparaison de libellés. */
+  directionId?: string;
   /** Lien avec la demande d'origine (module Demandes) */
   demandeId?: number;
   demandeur?: string;
@@ -743,22 +746,48 @@ export const receptions: Réception[] = [];
 
 export const receptionAnomalies: AnomalieRéception[] = [];
 
-/** Quantité déjà reçue pour une sortie (somme de toutes ses réceptions). */
-export function getQuantiteDejaRecue(sortieId: string): number {
-  return receptions
+/** Quantité déjà reçue pour une sortie (somme de toutes ses réceptions).
+ *
+ *  Les réceptions peuvent provenir de deux sources :
+ *  - le tableau local `receptions` (données de démonstration, toujours vide en production),
+ *  - un tableau de réceptions serveur passé en paramètre (champ `sortieId` + `quantite_recue`).
+ *
+ *  Les deux sources sont additionnées : une réception enregistrée localement ou côté
+ *  serveur réduit le reliquat de la sortie correspondante.
+ */
+export function getQuantiteDejaRecue(
+  sortieId: string,
+  receptionsServeur?: Array<{ sortieId?: string | null; quantite_recue?: number | null }>
+): number {
+  const local = receptions
     .filter((r) => r.sortieId === sortieId)
     .reduce((s, r) => s + r.lignes.reduce((t, l) => t + l.quantiteRecue, 0), 0);
+  const serveur = (receptionsServeur ?? [])
+    .filter((r) => r.sortieId === sortieId)
+    .reduce((s, r) => s + (Number(r.quantite_recue) || 0), 0);
+  return local + serveur;
 }
 
-/** Reliquat restant à recevoir pour une sortie. */
-export function getReliquat(sortie: SortieRecord): number {
-  const dejaRecue = getQuantiteDejaRecue(sortie.id);
+/** Reliquat restant à recevoir pour une sortie.
+ *
+ *  Accepte un tableau optionnel de réceptions serveur pour calculer le reliquat
+ *  réel à partir des données persistées côté Strapi, et non seulement du tableau
+ *  local statique.
+ */
+export function getReliquat(
+  sortie: SortieRecord,
+  receptionsServeur?: Array<{ sortieId?: string | null; quantite_recue?: number | null }>
+): number {
+  const dejaRecue = getQuantiteDejaRecue(sortie.id, receptionsServeur);
   return Math.max(0, sortie.quantite - dejaRecue);
 }
 
 /** Statut d'avancement de la réception d'une sortie. */
-export function getStatutRéceptionSortie(sortie: SortieRecord): StatutRéception {
-  const dejaRecue = getQuantiteDejaRecue(sortie.id);
+export function getStatutRéceptionSortie(
+  sortie: SortieRecord,
+  receptionsServeur?: Array<{ sortieId?: string | null; quantite_recue?: number | null }>
+): StatutRéception {
+  const dejaRecue = getQuantiteDejaRecue(sortie.id, receptionsServeur);
   if (dejaRecue <= 0) return "En cours";
   if (dejaRecue < sortie.quantite) return "Partielle";
   return "Complète";
@@ -767,9 +796,10 @@ export function getStatutRéceptionSortie(sortie: SortieRecord): StatutRéceptio
 /** Vérifie qu'une réception proposée ne dépasse pas la quantité prévue. */
 export function peutRecevoir(
   sortie: SortieRecord,
-  quantiteRecue: number
+  quantiteRecue: number,
+  receptionsServeur?: Array<{ sortieId?: string | null; quantite_recue?: number | null }>
 ): { ok: boolean; reliquat: number; message?: string } {
-  const dejaRecue = getQuantiteDejaRecue(sortie.id);
+  const dejaRecue = getQuantiteDejaRecue(sortie.id, receptionsServeur);
   const nouveauCumule = dejaRecue + quantiteRecue;
   if (nouveauCumule > sortie.quantite) {
     return {
@@ -782,20 +812,31 @@ export function peutRecevoir(
 }
 
 /** Filtre les sorties réceptionnables : statut "Sortie effectuée", 3 signatures,
- *  direction correspondante à l'utilisateur connecté (dépositaire ou demandeur). */
+ *  direction correspondante à l'utilisateur connecté (dépositaire ou demandeur),
+ *  et reliquat encore positif.
+ *
+ *  Le paramètre optionnel `receptionsServeur` permet de prendre en compte les
+ *  réceptions physiquement enregistrées côté Strapi pour calculer le reliquat
+ *  réel : une sortie dont toutes les quantités ont été reçues est exclue de la
+ *  liste des sorties à réceptionner.
+ */
 export function sortiesRéceptionnables(
   sorties: SortieRecord[],
-  user?: { role?: string; department?: string; name?: string }
+  user?: { role?: string; department?: string; name?: string; directionId?: string },
+  receptionsServeur?: Array<{ sortieId?: string | null; quantite_recue?: number | null }>
 ): SortieRecord[] {
   if (!user || (user.role !== "depositaire" && user.role !== "demandeur")) return [];
 
-  const { direction } = splitDepartement(user.department || "");
+  const directionId = user.directionId;
 
   return sorties.filter((s) => {
     if (s.statut !== "Sortie effectuée") return false;
     if (!(s.magasinier_signed && s.depositaire_signed && s.logistique_signed)) return false;
-    if (direction && s.direction !== direction) return false;
-    if (getReliquat(s) <= 0) return false;
+    // Autorisation par identifiant stable de direction (jamais par libellé approximatif).
+    // Si l'identifiant du dépositaire ou de la sortie est manquant, la sortie est exclue
+    // (comportement fermé : pas de contournement de la règle de direction).
+    if (!directionId || !s.directionId || s.directionId !== directionId) return false;
+    if (getReliquat(s, receptionsServeur) <= 0) return false;
     return true;
   });
 }
@@ -803,14 +844,18 @@ export function sortiesRéceptionnables(
 /** Vérifie qu'un utilisateur peut réceptionner une sortie donnée. */
 export function peutReceptionnerSortie(
   sortie: SortieRecord,
-  user: { role?: string; department?: string }
+  user: { role?: string; department?: string; directionId?: string },
+  receptionsServeur?: Array<{ sortieId?: string | null; quantite_recue?: number | null }>
 ): boolean {
-  if (user.role !== "depositaire") return false;
+  // Le dépositaire de direction est identifié par le rôle « depositaire » ou
+  // « demandeur » (ce dernier est le rôle métier utilisé pour le dépositaire
+  // de la direction dans ce flux de réception physique). Les autres rôles
+  // (magasinier, logistique, comptable…) ne peuvent pas réceptionner.
+  if (user.role !== "depositaire" && user.role !== "demandeur") return false;
   if (sortie.statut !== "Sortie effectuée") return false;
   if (!(sortie.magasinier_signed && sortie.depositaire_signed && sortie.logistique_signed)) return false;
-  const { direction } = splitDepartement(user.department || "");
-  if (direction && sortie.direction !== direction) return false;
-  return getReliquat(sortie) > 0;
+  if (!user.directionId || !sortie.directionId || sortie.directionId !== user.directionId) return false;
+  return getReliquat(sortie, receptionsServeur) > 0;
 }
 
 // ---------------------------------------------------------------------------

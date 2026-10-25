@@ -5,14 +5,11 @@ import { Badge } from "../ui/badge";
 import { Separator } from "../ui/separator";
 import {
   SortieRecord,
-  sortieRecords,
-  receptions,
-  receptionAnomalies,
   sortiesRéceptionnables,
   getStatutRéceptionSortie,
   getReliquat,
-  peutRecevoir,
 } from "@/lib/movements";
+import { fetchSorties, listerReceptionsPhysiques, fetchDirections, type ReceptionPhysiqueRecord } from "@/lib/api";
 import { User } from "../App";
 import { ListeSortiesARéceptionner } from "./ListeSortiesARéceptionner";
 import { FormulaireRéception } from "./FormulaireRéception";
@@ -29,7 +26,7 @@ import "./EcranReception.css";
 
 type Onglet = "recevoir" | "historique" | "anomalies";
 
-const STATUT_BADGE: Record<StatutRéception, string> = {
+const STATUT_BADGE: Record<string, string> = {
   "En cours": "bg-blue-50 text-blue-700 border-blue-200",
   Partielle: "bg-yellow-50 text-yellow-700 border-yellow-200",
   Complète: "bg-green-50 text-green-700 border-green-200",
@@ -47,10 +44,81 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
   const [anomalieOuverte, setAnomalieOuverte] = useState<SortieRecord | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  // Sorties chargées depuis le backend (remplace le mock local sortieRecords).
+  const [sortiesServeur, setSortiesServeur] = useState<SortieRecord[]>([]);
+  const [chargementSorties, setChargementSorties] = useState(true);
+  const [erreurSorties, setErreurSorties] = useState<string | null>(null);
+
+  // Réceptions physiques enregistrées côté serveur (pour calcul du reliquat réel).
+  const [receptionsServeur, setReceptionsServeur] = useState<ReceptionPhysiqueRecord[]>([]);
+  const [chargementReceptions, setChargementReceptions] = useState(true);
+  const [erreurReceptions, setErreurReceptions] = useState<string | null>(null);
+
+  // Identifiant stable de direction du dépositaire (résolu depuis le libellé du département).
+  const [directionId, setDirectionId] = useState<string | undefined>(undefined);
+
+  const chargerDonnées = useCallback(async () => {
+    setChargementSorties(true);
+    setChargementReceptions(true);
+    setErreurSorties(null);
+    setErreurReceptions(null);
+
+    // Charger les sorties depuis le serveur.
+    try {
+      const result = await fetchSorties();
+      setSortiesServeur(result ?? []);
+    } catch {
+      setErreurSorties("Impossible de charger la liste des sorties depuis le serveur.");
+      setSortiesServeur([]);
+    } finally {
+      setChargementSorties(false);
+    }
+
+    // Charger les réceptions physiques depuis le serveur (calcul du reliquat réel).
+    try {
+      const result = await listerReceptionsPhysiques();
+      setReceptionsServeur(result ?? []);
+    } catch {
+      setErreurReceptions("Impossible de charger les réceptions physiques depuis le serveur.");
+      setReceptionsServeur([]);
+    } finally {
+      setChargementReceptions(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    chargerDonnées();
+  }, [chargerDonnées]);
+
+  // Résout l'identifiant de direction du dépositaire à partir de son département,
+  // à l'image du contrôleur backend (`getDirectionIds` sur nom_direction).
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const directions = await fetchDirections();
+        const departement = user.department || "";
+        const abbr = departement.split(" - ")[0].trim();
+        const correspondance = directions.find(
+          (d) =>
+            (d.abbreviation && d.abbreviation.toLowerCase() === abbr.toLowerCase()) ||
+            (d.nom && d.nom.toLowerCase() === abbr.toLowerCase())
+        );
+        if (mounted) setDirectionId(correspondance?.documentId);
+      } catch {
+        if (mounted) setDirectionId(undefined);
+      }
+    })();
+    return () => {
+      mounted = false;
+    };
+  }, [user.department]);
+
   // Sorties réceptionnables pour ce dépositaire (3 signatures, statut "Sortie effectuée", même direction).
   const sorties = sortiesRéceptionnables(
-    sortieRecords,
-    { role: user.role, department: user.department }
+    sortiesServeur,
+    { role: user.role, department: user.department, directionId },
+    receptionsServeur
   );
 
   const handleRecevoir = (sortie: SortieRecord) => {
@@ -63,15 +131,13 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
 
   const handleRefresh = async () => {
     setIsRefreshing(true);
-    await new Promise((r) => setTimeout(r, 600));
+    await chargerDonnées();
     setIsRefreshing(false);
     toast.success("Liste actualisée");
   };
 
   const countARéceptionner = sorties.length;
-  const countAnomaliesOuvertes = receptionAnomalies.filter(
-    (a) => a.statut === "Ouverte"
-  ).length;
+  const countAnomaliesOuvertes = 0; // Les anomalies proviennent désormais de l'API backend (non connectée en Phase 1)
 
   return (
     <div className="msr-page">
@@ -91,11 +157,12 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
         <div className="msr-actions-en-tete">
           <Button
             onClick={handleRefresh}
-            disabled={isRefreshing}
+            disabled={isRefreshing || chargementSorties}
             variant="outline"
             size="sm"
           >
-            <RefreshCw className="w-4 h-4" /> {isRefreshing ? "Actualisation..." : "Actualiser"}
+            <RefreshCw className="w-4 h-4" />
+            {isRefreshing || chargementSorties ? "Actualisation…" : "Actualiser"}
           </Button>
         </div>
       </div>
@@ -111,10 +178,25 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
           <div className="msr-compteur-libelle">Anomalies ouvertes</div>
         </div>
         <div className="msr-compteur">
-          <div className="msr-compteur-valeur">{receptions.length}</div>
-          <div className="msr-compteur-libelle">Réceptions enregistrées</div>
+          <div className="msr-compteur-valeur">{sortiesServeur.length}</div>
+          <div className="msr-compteur-libelle">Sorties chargées (serveur)</div>
+        </div>
+        <div className="msr-compteur">
+          <div className="msr-compteur-valeur">{receptionsServeur.length}</div>
+          <div className="msr-compteur-libelle">Réceptions enregistrées (serveur)</div>
         </div>
       </div>
+
+      {erreurSorties && (
+        <div className="p-3 rounded-lg border border-destructive bg-destructive/10 text-destructive text-sm mb-3">
+          {erreurSorties}
+        </div>
+      )}
+      {erreurReceptions && (
+        <div className="p-3 rounded-lg border border-destructive bg-destructive/10 text-destructive text-sm mb-3">
+          {erreurReceptions}
+        </div>
+      )}
 
       <Separator />
 
@@ -157,93 +239,26 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
           <ListeSortiesARéceptionner
             sorties={sorties}
             user={user}
+            receptionsServeur={receptionsServeur}
             onRecevoir={handleRecevoir}
             onAnomalie={handleAnomalie}
           />
         )}
         {onglet === "historique" && (
-          <HistoriqueRéceptions receptions={receptions} />
+          <HistoriqueRéceptions />
         )}
         {onglet === "anomalies" && (
           <div className="msr-liste">
-            {receptionAnomalies.length === 0 ? (
-              <div className="msr-etat">
-                <AlertTriangle className="w-10 h-10 text-muted-foreground mb-2" />
-                <h3 className="font-medium text-foreground mb-1">
-                  Aucune anomalie déclarée
-                </h3>
-                <p className="text-sm text-muted-foreground">
-                  Aucune anomalie n'a encore été déclarée sur les réceptions physiques.
-                </p>
-              </div>
-            ) : (
-              <Card className="msr-carte border border-border">
-                <CardHeader>
-                  <CardTitle className="text-sm font-semibold">
-                    Anomalies déclarées ({receptionAnomalies.length})
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    Liste des anomalies ouvertes et résolues sur les réceptions physiques.
-                  </p>
-                </CardHeader>
-                <CardContent className="pt-3 space-y-3">
-                  {receptionAnomalies
-                    .slice()
-                    .sort(
-                      (a, b) =>
-                        new Date(b.dateDeclaration).getTime() -
-                        new Date(a.dateDeclaration).getTime()
-                    )
-                    .map((anomalie) => {
-                      const sortie = sortieRecords.find(
-                        (s) => s.id === anomalie.sortieId
-                      );
-                      return (
-                        <div
-                          key={anomalie.id}
-                          className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3 rounded-lg border border-border/60 bg-muted/50"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-2 mb-1">
-                              <span className="text-xs font-medium text-foreground">
-                                {anomalie.type === "quantite"
-                                  ? "Écart de quantité"
-                                  : anomalie.type === "etat"
-                                    ? "État du matériel"
-                                    : anomalie.type === "conformite"
-                                      ? "Non-conformité"
-                                      : "Autre"}
-                              </span>
-                              <Badge
-                                variant={
-                                  anomalie.statut === "Ouverte"
-                                    ? "destructive"
-                                    : "secondary"
-                                }
-                                className="text-[10px] shrink-0"
-                              >
-                                {anomalie.statut === "Ouverte"
-                                  ? "Ouverte"
-                                  : "Résolue"}
-                              </Badge>
-                            </div>
-                            <p className="text-sm text-foreground">
-                              {anomalie.description}
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                              {sortie ? `Sortie ${sortie.reference}` : "—"} •{" "}
-                              {anomalie.declarePar} •{" "}
-                              {new Date(anomalie.dateDeclaration).toLocaleString(
-                                "fr-FR"
-                              )}
-                            </p>
-                          </div>
-                        </div>
-                      );
-                    })}
-                </CardContent>
-              </Card>
-            )}
+            <div className="msr-etat">
+              <AlertTriangle className="w-10 h-10 text-muted-foreground mb-2" />
+              <h3 className="font-medium text-foreground mb-1">
+                Anomalies non disponibles (Phase 1)
+              </h3>
+              <p className="text-sm text-muted-foreground">
+                Aucune API d'anomalie n'existe sur le backend de cette branche.
+                Les déclarations d'anomalie restent locales et ne sont pas persistées.
+              </p>
+            </div>
           </div>
         )}
       </div>
@@ -252,6 +267,7 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
       {sortieOuverte && (
         <FormulaireRéception
           sortie={sortieOuverte}
+          receptionsServeur={receptionsServeur}
           onClose={() => setSortieOuverte(null)}
         />
       )}

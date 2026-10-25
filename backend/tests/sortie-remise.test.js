@@ -457,71 +457,42 @@ test('remise : statut obligatoire — jamais de remise hors validee', async () =
   assert.match(ctx3.body.error.message, /Remise déjà enregistrée/);
 });
 
-test('remise : validation des champs obligatoires', async () => {
+test('remise : le détenteur est optionnel, sa longueur est validée quand fourni', async () => {
+  // a) remise SANS detenteur_nom ni detenteur_fonction : accepté (le
+  //    détenteur s'identifie à l'affectation, après la réception physique).
   reinitialiser();
-
-  // a) detenteur_nom manquant
   let ctx = contexteAppel('s1', {
     data: {
-      // detenteur_nom manquant volontairement
-      detenteur_fonction: 'Ingénieur'
+      date_remise: '2026-10-13'
     }
   }, 'magasinier');
-  await controleur.remise(ctx);
-  assert.strictEqual(ctx.status, 400);
-  assert.match(ctx.body.error.message, /detenteur_nom obligatoire/);
+  const reponse = await controleur.remise(ctx);
+  assert.strictEqual(ctx.status, 200, 'remise sans détenteur acceptée');
+  assert.strictEqual(reponse.data.statut, 'sortie_effectuee', 'statut final');
+  assert.strictEqual(reponse.data.detenteur_nom, undefined, 'detenteur_nom non écrit');
+  assert.strictEqual(reponse.data.detenteur_fonction, undefined, 'detenteur_fonction non écrit');
 
-  // b) detenteur_nom vide
-  ctx = contexteAppel('s1', {
-    data: {
-      detenteur_nom: '',
-      detenteur_fonction: 'Ingénieur'
-    }
-  }, 'magasinier');
-  await controleur.remise(ctx);
-  assert.strictEqual(ctx.status, 400);
-  assert.match(ctx.body.error.message, /detenteur_nom obligatoire/);
-
-  // c) detenteur_fonction manquant
-  ctx = contexteAppel('s1', {
-    data: {
-      detenteur_nom: 'Jean Martin'
-      // detenteur_fonction manquant volontairement
-    }
-  }, 'magasinier');
-  await controleur.remise(ctx);
-  assert.strictEqual(ctx.status, 400);
-  assert.match(ctx.body.error.message, /detenteur_fonction obligatoire/);
-
-  // d) detenteur_fonction vide
-  ctx = contexteAppel('s1', {
-    data: {
-      detenteur_nom: 'Jean Martin',
-      detenteur_fonction: ''
-    }
-  }, 'magasinier');
-  await controleur.remise(ctx);
-  assert.strictEqual(ctx.status, 400);
-  assert.match(ctx.body.error.message, /detenteur_fonction obligatoire/);
-
-  // e) detenteur_nom trop long (> 150 caractères)
+  // b) detenteur_nom trop long (> 150 caractères) : refusé.
+  reinitialiser();
   const nomTropLong = 'a'.repeat(151);
   ctx = contexteAppel('s1', {
     data: {
       detenteur_nom: nomTropLong,
-      detenteur_fonction: 'Ingénieur'
+      date_remise: '2026-10-13'
     }
   }, 'magasinier');
   await controleur.remise(ctx);
   assert.strictEqual(ctx.status, 400);
   assert.match(ctx.body.error.message, /detenteur_nom limité à 150 caractères/);
 
-  // f) detenteur_fonction trop long (> 150 caractères)
+  // c) detenteur_fonction trop long (> 150 caractères) : refusé.
+  reinitialiser();
   const fonctionTropLongue = 'b'.repeat(151);
   ctx = contexteAppel('s1', {
     data: {
       detenteur_nom: 'Jean Martin',
-      detenteur_fonction: fonctionTropLongue
+      detenteur_fonction: fonctionTropLongue,
+      date_remise: '2026-10-13'
     }
   }, 'magasinier');
   await controleur.remise(ctx);

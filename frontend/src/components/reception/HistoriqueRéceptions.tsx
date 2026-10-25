@@ -1,47 +1,96 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect, useCallback } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Badge } from "../ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
 import {
-  SortieRecord,
-  receptions,
-  receptionAnomalies,
-  getStatutRéceptionSortie,
-  getQuantiteDejaRecue,
-} from "@/lib/movements";
-import {
-  Truck,
   Package,
   Clock,
-  User as UserIcon,
   AlertTriangle,
-  FileText,
+  RefreshCw,
 } from "lucide-react";
+import { listerReceptionsPhysiques, type ReceptionPhysiqueRecord } from "@/lib/api";
+import { toast } from "sonner";
 
 const STATUT_BADGE: Record<string, string> = {
-  "En cours": "bg-blue-50 text-blue-700 border-blue-200",
-  Partielle: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  Complète: "bg-green-50 text-green-700 border-green-200",
-  Annulée: "bg-red-50 text-red-700 border-red-200",
+  conforme: "bg-green-50 text-green-700 border-green-200",
+  anomalie: "bg-yellow-50 text-yellow-700 border-yellow-200",
+};
+
+const STATUT_LABEL: Record<string, string> = {
+  conforme: "Conforme",
+  anomalie: "Anomalie",
 };
 
 interface HistoriqueRéceptionsProps {
-  receptionsList: typeof receptions;
+  // Rétrocompatibilité : une liste locale peut encore être fournie, mais
+  // les données affichées proviennent de l'API backend.
+  receptionsList?: Array<{
+    id: string;
+    reference: string;
+    dateRéception: string;
+    depositaireNom: string;
+    direction: string;
+    statut: string;
+    quantite_recue?: number;
+    quantite_prevue?: number;
+  }>;
 }
 
 export function HistoriqueRéceptions({ receptionsList }: HistoriqueRéceptionsProps) {
+  const [receptions, setReceptions] = useState<ReceptionPhysiqueRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [erreur, setErreur] = useState<string | null>(null);
+
+  const fetchReceptions = useCallback(async () => {
+    setIsLoading(true);
+    setErreur(null);
+    try {
+      const result = await listerReceptionsPhysiques();
+      setReceptions(result ?? []);
+    } catch {
+      setErreur("Impossible de charger l'historique des réceptions depuis le serveur.");
+      setReceptions([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchReceptions();
+  }, [fetchReceptions]);
+
+  // Si l'API n'a rien retourné, on tombe sur la liste locale fournie en prop
+  // (rétrocompatibilité). Sinon on affiche les données du serveur.
+  const receptionsAffiches =
+    receptions.length > 0 ? receptions : (receptionsList ?? []);
+
   const receptionsTriees = useMemo(
-    () => [...receptionsList].sort((a, b) => (a.dateRéception < b.dateRéception ? 1 : -1)),
-    [receptionsList]
+    () =>
+      [...receptionsAffiches].sort(
+        (a, b) =>
+          new Date(b.dateRéception).getTime() - new Date(a.dateRéception).getTime()
+      ),
+    [receptionsAffiches]
   );
 
-  const anomaliesParSortie = useMemo(() => {
-    const map: Record<string, number> = {};
-    receptionAnomalies.forEach((a) => {
-      map[a.sortieId] = (map[a.sortieId] || 0) + 1;
-    });
-    return map;
-  }, [receptionAnomalies]);
+  if (isLoading) {
+    return (
+      <div className="msr-etat">
+        <Clock className="w-10 h-10 text-muted-foreground mb-2 animate-spin" />
+        <h3 className="font-medium text-foreground mb-1">Chargement de l'historique…</h3>
+      </div>
+    );
+  }
+
+  if (erreur) {
+    return (
+      <div className="msr-etat">
+        <AlertTriangle className="w-10 h-10 text-destructive mb-2" />
+        <h3 className="font-medium text-destructive mb-1">Erreur de chargement</h3>
+        <p className="text-sm text-muted-foreground">{erreur}</p>
+      </div>
+    );
+  }
 
   if (receptionsTriees.length === 0) {
     return (
@@ -75,13 +124,13 @@ export function HistoriqueRéceptions({ receptionsList }: HistoriqueRéceptionsP
                     Référence
                   </TableHead>
                   <TableHead className="text-left py-3 px-3 text-sm text-muted-foreground">
-                    Matériel
+                    Matériel / Sortie
                   </TableHead>
                   <TableHead className="text-left py-3 px-3 text-sm text-muted-foreground">
                     Date de réception
                   </TableHead>
                   <TableHead className="text-left py-3 px-3 text-sm text-muted-foreground">
-                    Dépositaire
+                    Utilisateur
                   </TableHead>
                   <TableHead className="text-left py-3 px-3 text-sm text-muted-foreground">
                     Direction
@@ -93,64 +142,66 @@ export function HistoriqueRéceptions({ receptionsList }: HistoriqueRéceptionsP
                     Statut
                   </TableHead>
                   <TableHead className="text-left py-3 px-3 text-sm text-muted-foreground">
-                    Anomalies
+                    Anomalie
                   </TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {receptionsTriees.map((reception) => {
-                  const nbAnomalies = anomaliesParSortie[reception.id] || 0;
-                  const anomaliesOuvertes = receptionAnomalies.filter(
-                    (a) => a.sortieId === reception.id && a.statut === "Ouverte"
-                  ).length;
+                  // La relation sortie est peuplée via l'API (populate sortie.direction)
+                  const sortie = (reception as any).sortie;
+                  const reference =
+                    sortie?.reference || `RCP-${reception.id}`;
+                  const materiel = sortie?.materiel || "—";
+                  const directionNom =
+                    sortie?.direction?.nom_direction || "—";
+                  const statutBrute = reception.statut;
+                  const statutAffiche =
+                    STATUT_LABEL[statutBrute] ?? statutBrute;
+                  const estAnomalie = statutBrute === "anomalie";
                   return (
                     <TableRow
                       key={reception.id}
                       className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
                     >
                       <TableCell className="py-3 px-3 text-sm font-mono text-card-foreground">
-                        {reception.reference}
+                        {reference}
                       </TableCell>
                       <TableCell className="py-3 px-3 text-sm text-card-foreground max-w-[200px] truncate">
-                        {reception.lignes[0]?.designation || "—"}
+                        {materiel}
                       </TableCell>
                       <TableCell className="py-3 px-3 text-sm text-card-foreground whitespace-nowrap">
-                        {new Date(reception.dateRéception).toLocaleDateString("fr-FR")}
+                        {new Date(reception.date_reception).toLocaleDateString("fr-FR")}
                       </TableCell>
                       <TableCell className="py-3 px-3 text-sm text-card-foreground">
-                        {reception.depositaireNom}
+                        {reception.utilisateur || "—"}
                       </TableCell>
                       <TableCell className="py-3 px-3 text-sm text-card-foreground">
-                        {reception.direction}
+                        {directionNom}
                       </TableCell>
                       <TableCell className="py-3 px-3 text-sm text-card-foreground">
                         <div className="flex flex-col gap-1">
                           <span className="text-xs">
-                            {reception.lignes.reduce((s, l) => s + l.quantiteRecue, 0)} reçue(s)
+                            {reception.quantite_recue} reçue(s)
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            sur {reception.lignes.reduce((s, l) => s + l.quantitePrevue, 0)} prévue(s)
+                            sur {reception.quantite_prevue} prévue(s)
                           </span>
                         </div>
                       </TableCell>
                       <TableCell className="py-3 px-3">
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${STATUT_BADGE[reception.statut]}`}
+                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${STATUT_BADGE[statutBrute]}`}
                         >
-                          {reception.statut}
+                          {statutAffiche}
                         </span>
                       </TableCell>
                       <TableCell className="py-3 px-3 text-sm">
-                        {nbAnomalies > 0 ? (
-                          <div className="flex items-center gap-1">
-                            <AlertTriangle className={`h-3 w-3 ${
-                              anomaliesOuvertes > 0 ? "text-red-600" : "text-green-600"
-                            }`} />
-                            <span className={`font-medium ${anomaliesOuvertes > 0 ? "text-red-600" : "text-green-600"}`}>
-                              {nbAnomalies} {nbAnomalies > 1 ? "anomalies" : "anomalie"}
-                              {anomaliesOuvertes > 0 ? ` (${anomaliesOuvertes} ouverte(s))` : ""}
-                            </span>
-                          </div>
+                        {estAnomalie && reception.description_anomalie ? (
+                          <span className="text-xs text-destructive truncate max-w-[150px]">
+                            {reception.type_anomalie || "—"}:{" "}
+                            {reception.description_anomalie}
+                          </span>
                         ) : (
                           <span className="text-muted-foreground">—</span>
                         )}

@@ -1010,21 +1010,31 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       );
     }
 
-    // Validation des champs obligatoires
+    // Validation des champs de remise. Le détenteur (nom/fonction) est
+    // OPTIONNEL : il s'identifie lors de l'affectation, après la réception
+    // physique, pas à la remise du magasinier.
     const { detenteur_nom, detenteur_fonction, date_remise, mandataire_nom } = body.data || body;
 
-    if (!detenteur_nom || typeof detenteur_nom !== 'string' || detenteur_nom.trim() === '') {
-      return badRequest(ctx, 'detenteur_nom obligatoire (non vide).');
-    }
-    if (detenteur_nom.trim().length > 150) {
-      return badRequest(ctx, 'detenteur_nom limité à 150 caractères maximum.');
+    let detenteurNomFinal = null;
+    if (detenteur_nom !== undefined && detenteur_nom !== null && detenteur_nom !== '') {
+      if (typeof detenteur_nom !== 'string') {
+        return badRequest(ctx, 'detenteur_nom doit être un texte.');
+      }
+      detenteurNomFinal = detenteur_nom.trim();
+      if (detenteurNomFinal.length > 150) {
+        return badRequest(ctx, 'detenteur_nom limité à 150 caractères maximum.');
+      }
     }
 
-    if (!detenteur_fonction || typeof detenteur_fonction !== 'string' || detenteur_fonction.trim() === '') {
-      return badRequest(ctx, 'detenteur_fonction obligatoire (non vide).');
-    }
-    if (detenteur_fonction.trim().length > 150) {
-      return badRequest(ctx, 'detenteur_fonction limité à 150 caractères maximum.');
+    let detenteurFonctionFinal = null;
+    if (detenteur_fonction !== undefined && detenteur_fonction !== null && detenteur_fonction !== '') {
+      if (typeof detenteur_fonction !== 'string') {
+        return badRequest(ctx, 'detenteur_fonction doit être un texte.');
+      }
+      detenteurFonctionFinal = detenteur_fonction.trim();
+      if (detenteurFonctionFinal.length > 150) {
+        return badRequest(ctx, 'detenteur_fonction limité à 150 caractères maximum.');
+      }
     }
 
     // Mandataire (OPTIONNEL) : la personne que le détenteur a mandatée pour
@@ -1079,12 +1089,17 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     let demandeMiseAJour = false;
     try {
       await app.db.transaction(async ({ trx }) => {
-        // 1. Enregistrement du détenteur et date de remise
+        // 1. Enregistrement de la date de remise (et, le cas échéant, du
+        // détenteur — désormais optionnel, saisi à l'affectation pas ici).
         const donneesRemise = {
-          detenteur_nom: detenteur_nom.trim(),
-          detenteur_fonction: detenteur_fonction.trim(),
           date_remise: dateRemiseFinal,
         };
+        if (detenteurNomFinal) {
+          donneesRemise.detenteur_nom = detenteurNomFinal;
+        }
+        if (detenteurFonctionFinal) {
+          donneesRemise.detenteur_fonction = detenteurFonctionFinal;
+        }
         // Un mandataire vide n'écrit RIEN : le champ n'est pas touché.
         if (mandataireFinal) {
           donneesRemise.mandataire_nom = mandataireFinal;
@@ -1127,7 +1142,9 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
             quantite: (sortie.lignes || []).reduce((sum, l) => sum + (Number(l.quantite) || 0), 0),
             statut: 'sortie_effectuee',
             sortie: documentId,
-            observations: `Matériel remis à ${detenteur_nom.trim()} (${detenteur_fonction.trim()})`,
+            observations: detenteurNomFinal
+              ? `Matériel remis à ${detenteurNomFinal} (${detenteurFonctionFinal || '—'})`
+              : 'Matériel remis au détenteur.',
           },
         });
 

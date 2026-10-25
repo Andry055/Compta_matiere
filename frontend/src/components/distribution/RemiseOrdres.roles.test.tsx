@@ -179,8 +179,7 @@ describe("(6) espace magasinier — onglets de remise", () => {
     // Lecture seule : ni action de remise, ni formulaire de saisie.
     expect(screen.queryByRole("button", { name: "Remettre" })).toBeNull();
     expect(screen.queryByLabelText(/Nom du détenteur/)).toBeNull();
-    // Le détenteur et la date de la remise sont affichés.
-    expect(screen.getByText(/RAKOTOMALALA Hery/)).toBeTruthy();
+    // La date de la remise est affichée.
     expect(screen.getByText(/Date de remise :/)).toBeTruthy();
   });
 

@@ -18,6 +18,11 @@ import {
   getQuantiteDejaRecue,
 } from "@/lib/movements";
 import {
+  creerReceptionPhysique,
+  getStrapiAuthUser,
+  type ReceptionPhysiqueRecord,
+} from "@/lib/api";
+import {
   Truck,
   AlertCircle,
   CheckCircle2,
@@ -29,10 +34,11 @@ import { toast } from "sonner";
 
 interface FormulaireRéceptionProps {
   sortie: SortieRecord;
+  receptionsServeur?: ReceptionPhysiqueRecord[];
   onClose: () => void;
 }
 
-export function FormulaireRéception({ sortie, onClose }: FormulaireRéceptionProps) {
+export function FormulaireRéception({ sortie, receptionsServeur, onClose }: FormulaireRéceptionProps) {
   const [quantiteRecue, setQuantiteRecue] = useState("");
   const [declarationAnomalie, setDeclarationAnomalie] = useState(false);
   const [descriptionAnomalie, setDescriptionAnomalie] = useState("");
@@ -40,13 +46,15 @@ export function FormulaireRéception({ sortie, onClose }: FormulaireRéceptionPr
     "quantite" | "etat" | "conformite" | "autre"
   >("quantite");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [erreur, setErreur] = useState<string | null>(null);
 
-  const dejaRecue = getQuantiteDejaRecue(sortie.id);
+  const dejaRecue = getQuantiteDejaRecue(sortie.id, receptionsServeur);
   const reliquatActuel = Math.max(0, sortie.quantite - dejaRecue);
 
   const validation = peutRecevoir(
     sortie,
-    quantiteRecue ? parseInt(quantiteRecue, 10) || 0 : 0
+    quantiteRecue ? parseInt(quantiteRecue, 10) || 0 : 0,
+    receptionsServeur
   );
 
   const peutValider =
@@ -55,55 +63,102 @@ export function FormulaireRéception({ sortie, onClose }: FormulaireRéceptionPr
     validation.ok &&
     !isSubmitting;
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!peutValider) return;
 
     setIsSubmitting(true);
+    setErreur(null);
 
-    const nouvelleReception = {
-      id: `REC-${Date.now()}`,
-      sortieId: sortie.id,
-      reference: sortie.reference,
-      dateRéception: new Date().toISOString(),
-      depositaireId: "dep-connecte",
-      depositaireNom: "Dépositaire connecté",
-      direction: sortie.direction,
-      statut: validation.reliquat <= 0 ? "Complète" : "Partielle",
-      lignes: [
-        {
-          ligneId: sortie.id,
-          designation: sortie.materiel,
-          quantitePrevue: sortie.quantite,
-          quantiteDejaRecue: dejaRecue,
-          quantiteRecue: parseInt(quantiteRecue, 10),
-          reliquat: validation.reliquat,
-        },
-      ],
-      anomalies: declarationAnomalie && descriptionAnomalie
-        ? [
-            {
-              id: `ANOM-${Date.now()}`,
-              sortieId: sortie.id,
-              type: typeAnomalie,
-              description: descriptionAnomalie,
-              dateDeclaration: new Date().toISOString(),
-              declarePar: "Dépositaire connecté",
-              statut: "Ouverte",
-            },
-          ]
-        : [],
-      stockDebite: false,
-    };
+    const quantite = parseInt(quantiteRecue, 10);
+    const utilisateur = getStrapiAuthUser()?.username || "Utilisateur connecté";
 
-    // Ajout local uniquement — l'API n'est pas encore connectée.
-    receptions.push(nouvelleReception);
+    const typeAnomalieBackend = declarationAnomalie && descriptionAnomalie
+      ? (() => {
+          switch (typeAnomalie) {
+            case "quantite": return "incorrect";
+            case "etat": return "endommage";
+            case "conformite": return "incorrect";
+            case "autre": return undefined;
+          }
+        })()
+      : undefined;
 
-    setIsSubmitting(false);
-    toast.success("Réception enregistrée", {
-      description: `${nouvelleReception.lignes[0].quantiteRecue} unité(s) réceptionnée(s) pour ${sortie.reference}.`,
-    });
-    onClose();
+    try {
+      await creerReceptionPhysique({
+        sortieId: sortie.id,
+        date_reception: new Date().toISOString(),
+        statut: declarationAnomalie ? "anomalie" : "conforme",
+        quantite_prevue: sortie.quantite,
+        quantite_recue: quantite,
+        utilisateur,
+        ...(typeAnomalieBackend !== undefined && {
+          type_anomalie: typeAnomalieBackend,
+        }),
+        ...(declarationAnomalie && descriptionAnomalie && {
+          description_anomalie: descriptionAnomalie,
+        }),
+      });
+
+      // Mise à jour du cache local uniquement après succès serveur,
+      // pour ne jamais présenter des données non persistées comme enregistrées.
+      const nouvelleReception = {
+        id: `REC-${Date.now()}`,
+        sortieId: sortie.id,
+        reference: sortie.reference,
+        dateRéception: new Date().toISOString(),
+        depositaireId: utilisateur,
+        depositaireNom: utilisateur,
+        direction: sortie.direction,
+        statut: validation.reliquat <= 0 ? "Complète" : "Partielle",
+        lignes: [
+          {
+            ligneId: sortie.id,
+            designation: sortie.materiel,
+            quantitePrevue: sortie.quantite,
+            quantiteDejaRecue: dejaRecue,
+            quantiteRecue: quantite,
+            reliquat: validation.reliquat,
+          },
+        ],
+        anomalies: declarationAnomalie && descriptionAnomalie
+          ? [
+              {
+                id: `ANOM-${Date.now()}`,
+                sortieId: sortie.id,
+                type: typeAnomalie,
+                description: descriptionAnomalie,
+                dateDeclaration: new Date().toISOString(),
+                declarePar: utilisateur,
+                statut: "Ouverte",
+              },
+            ]
+          : [],
+        stockDebite: false,
+      };
+      receptions.push(nouvelleReception);
+
+      setIsSubmitting(false);
+      toast.success("Réception enregistrée", {
+        description: `${quantite} unité(s) réceptionnée(s) pour ${sortie.reference}.`,
+      });
+      onClose();
+    } catch (err: unknown) {
+      setIsSubmitting(false);
+      let message = "Échec de l'enregistrement de la réception.";
+      if (err && typeof err === "object" && "response" in err) {
+        const axiosErr = err as { response?: { status?: number; data?: { error?: { message?: string } } } };
+        if (axiosErr.response?.status === 403) {
+          message = "Accès refusé : vous n'êtes pas autorisé à enregistrer une réception.";
+        } else if (axiosErr.response?.status === 400) {
+          message = axiosErr.response?.data?.error?.message || "Données de réception invalides.";
+        } else if (axiosErr.response?.status === 404) {
+          message = "Sortie introuvable.";
+        }
+      }
+      setErreur(message);
+      toast.error("Échec de la réception", { description: message });
+    }
   };
 
   const handleQuantiteChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -131,6 +186,11 @@ export function FormulaireRéception({ sortie, onClose }: FormulaireRéceptionPr
         <Separator className="my-3" />
         <div className="msr-dialogue-corps space-y-4">
           <form onSubmit={handleSubmit}>
+            {erreur && (
+              <div className="p-3 rounded-lg border border-destructive bg-destructive/10 text-destructive text-sm">
+                {erreur}
+              </div>
+            )}
             {/* Quantité à recevoir */}
             <div className="space-y-1">
               <Label htmlFor="quantiteRecue">Quantité reçue</Label>

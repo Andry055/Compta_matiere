@@ -15,8 +15,6 @@
 //      succès ; remise non faite → échec confirmé ; état illisible → inconnu) ;
 //   S6 la date de remise par défaut est la date LOCALE (jamais UTC) ;
 //   S7 aucune mise à jour du stock n'est déclenchée par la remise ;
-//   S8 le détenteur est proposé quand le référentiel le permet, et les
-//      champs restent modifiables dans tous les cas.
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RemiseOrdreSortie } from "./RemiseOrdreSortie";
@@ -98,14 +96,13 @@ function sortieRemisee(overrides: Record<string, unknown> = {}): SortieRecord {
   });
 }
 
-/** Remplit la saisie minimale et coche la case du matériel. */
-function saisirDetenteur(nom = "RAKOTOMALALA Hery") {
-  fireEvent.change(screen.getByLabelText(/Nom du détenteur/), {
-    target: { value: nom },
-  });
-  fireEvent.change(screen.getByLabelText(/Fonction du détenteur/), {
-    target: { value: "Dépositaire" },
-  });
+/** Remplit la saisie de la remise : mandataire (facultatif) et case du matériel. */
+function saisirRemise(mandataire = "") {
+  if (mandataire) {
+    fireEvent.change(screen.getByLabelText(/mandataire/i), {
+      target: { value: mandataire },
+    });
+  }
   fireEvent.click(screen.getByRole("checkbox"));
 }
 
@@ -144,10 +141,7 @@ describe("(7) panneau de remise — payload, confirmation et envoi unique", () =
   it("S1 : le payload porte quatre champs, jamais un statut ni le stock", async () => {
     monter();
 
-    saisirDetenteur();
-    fireEvent.change(screen.getByLabelText(/mandataire/i), {
-      target: { value: "RASOANAIVO Naina" },
-    });
+    saisirRemise("RASOANAIVO Naina");
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Confirmer la remise/ }));
@@ -158,12 +152,8 @@ describe("(7) panneau de remise — payload, confirmation et envoi unique", () =
     expect(documentId).toBe("sortie-1");
     expect(Object.keys(payload).sort()).toEqual([
       "date_remise",
-      "detenteur_fonction",
-      "detenteur_nom",
       "mandataire_nom",
     ]);
-    expect(payload.detenteur_nom).toBe("RAKOTOMALALA Hery");
-    expect(payload.detenteur_fonction).toBe("Dépositaire");
     expect(payload.mandataire_nom).toBe("RASOANAIVO Naina");
     expect("statut" in payload).toBe(false);
     expect("stock" in payload).toBe(false);
@@ -172,30 +162,19 @@ describe("(7) panneau de remise — payload, confirmation et envoi unique", () =
   it("S1 bis : sans mandataire, le champ n'est pas envoyé", async () => {
     monter();
 
-    saisirDetenteur();
+    saisirRemise();
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Confirmer la remise/ }));
     });
 
     const [, payload] = etat.remettre.mock.calls[0];
-    expect(Object.keys(payload).sort()).toEqual([
-      "date_remise",
-      "detenteur_fonction",
-      "detenteur_nom",
-    ]);
+    expect(Object.keys(payload).sort()).toEqual(["date_remise"]);
     expect("mandataire_nom" in payload).toBe(false);
   });
 
   it("S2 : sans la case « le matériel remis correspond à la liste », rien n'est envoyé", async () => {
     monter();
-
-    fireEvent.change(screen.getByLabelText(/Nom du détenteur/), {
-      target: { value: "RAKOTOMALALA Hery" },
-    });
-    fireEvent.change(screen.getByLabelText(/Fonction du détenteur/), {
-      target: { value: "Dépositaire" },
-    });
 
     const enregistrer = screen.getByRole("button", {
       name: /Enregistrer la remise/,
@@ -210,7 +189,7 @@ describe("(7) panneau de remise — payload, confirmation et envoi unique", () =
   it("S3 : la confirmation est obligatoire — « Enregistrer » seul n'envoie rien", async () => {
     monter();
 
-    saisirDetenteur();
+    saisirRemise();
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
 
     expect(
@@ -227,7 +206,7 @@ describe("(7) panneau de remise — payload, confirmation et envoi unique", () =
   it("S4 : un double-clic n'envoie qu'UN SEUL enregistrement", async () => {
     monter();
 
-    saisirDetenteur();
+    saisirRemise();
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
 
     const confirmer = screen.getByRole("button", { name: /Confirmer la remise/ });
@@ -249,7 +228,7 @@ describe("(7) panneau de remise — résultat incertain et date par défaut", ()
     etat.recharger.mockResolvedValue(sortieRemisee());
     const { onSuccess, onError } = monter();
 
-    saisirDetenteur();
+    saisirRemise();
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Confirmer la remise/ }));
@@ -271,7 +250,7 @@ describe("(7) panneau de remise — résultat incertain et date par défaut", ()
     etat.recharger.mockResolvedValue(sortieValidee());
     const { onSuccess, onError } = monter();
 
-    saisirDetenteur("RAKOTOMALALA Hery");
+    saisirRemise("RAKOTOMALALA Hery");
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Confirmer la remise/ }));
@@ -281,7 +260,7 @@ describe("(7) panneau de remise — résultat incertain et date par défaut", ()
     expect(onError).toHaveBeenCalledTimes(1);
     expect(onError.mock.calls[0][0]).toMatch(/n'a pas été enregistrée/i);
     // La saisie est conservée.
-    expect((screen.getByLabelText(/Nom du détenteur/) as HTMLInputElement).value).toBe(
+    expect((screen.getByLabelText(/mandataire/i) as HTMLInputElement).value).toBe(
       "RAKOTOMALALA Hery"
     );
     expect(etat.remettre, "aucune relance automatique").toHaveBeenCalledTimes(1);
@@ -292,7 +271,7 @@ describe("(7) panneau de remise — résultat incertain et date par défaut", ()
     etat.recharger.mockRejectedValue(new Error("serveur injoignable"));
     const { onSuccess, onError } = monter();
 
-    saisirDetenteur();
+    saisirRemise();
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Confirmer la remise/ }));
@@ -331,7 +310,7 @@ describe("(8) remise et stock — aucune mise à jour du stock", () => {
   it("S7 : la remise n'appelle NI la signature (débit du stock) NI le rejet", async () => {
     monter();
 
-    saisirDetenteur();
+    saisirRemise();
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Confirmer la remise/ }));
@@ -345,7 +324,7 @@ describe("(8) remise et stock — aucune mise à jour du stock", () => {
   it("S7 bis : le stock n'est pas modifié par la remise (champ absent du payload)", async () => {
     monter();
 
-    saisirDetenteur();
+    saisirRemise();
     fireEvent.click(screen.getByRole("button", { name: /Enregistrer la remise/ }));
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: /Confirmer la remise/ }));
@@ -354,51 +333,10 @@ describe("(8) remise et stock — aucune mise à jour du stock", () => {
     const [, payload] = etat.remettre.mock.calls[0];
     for (const cle of Object.keys(payload)) {
       expect(
-        ["detenteur_nom", "detenteur_fonction", "mandataire_nom", "date_remise"],
+        ["mandataire_nom", "date_remise"],
         `champ inattendu dans le payload : ${cle}`
       ).toContain(cle);
     }
   });
 });
 
-describe("(7) panneau de remise — détenteur proposé et saisie modifiable", () => {
-  it("S8 : le détenteur du service destinataire est proposé, et reste modifiable", async () => {
-    etat.services = [
-      {
-        documentId: "svc-1",
-        nom: "Service Informatique",
-        directionId: "dir-1",
-        depositaire: "RAKOTOMALALA Hery",
-      },
-    ];
-    etat.directions = [
-      { documentId: "dir-1", nom: "Direction Informatique", directeur: "ANDRIANARISOA Hanta" },
-    ];
-
-    monter();
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    const nom = screen.getByLabelText(/Nom du détenteur/) as HTMLInputElement;
-    const fonction = screen.getByLabelText(/Fonction du détenteur/) as HTMLInputElement;
-    expect(nom.value).toBe("RAKOTOMALALA Hery");
-    expect(fonction.value).toBe("Dépositaire");
-
-    // Modifiable : la saisie de l'utilisateur prime.
-    fireEvent.change(nom, { target: { value: "AUTRE PERSONNE" } });
-    expect((screen.getByLabelText(/Nom du détenteur/) as HTMLInputElement).value).toBe(
-      "AUTRE PERSONNE"
-    );
-  });
-
-  it("S8 bis : sans donnée dans le référentiel, l'aide « Saisissez le détenteur » est affichée", async () => {
-    monter();
-    await act(async () => {
-      await Promise.resolve();
-    });
-
-    expect(screen.getByText("Saisissez le détenteur")).toBeTruthy();
-    expect((screen.getByLabelText(/Nom du détenteur/) as HTMLInputElement).value).toBe("");
-  });
-});

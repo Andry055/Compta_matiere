@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
 import { SortieRecord } from "@/lib/movements";
 import { getReliquat, getStatutRéceptionSortie } from "@/lib/movements";
+import { type ReceptionPhysiqueRecord } from "@/lib/api";
 import {
   Package,
   Clock,
@@ -17,6 +18,7 @@ import { toast } from "sonner";
 interface ListeSortiesARéceptionnerProps {
   sorties: SortieRecord[];
   user?: { role?: string };
+  receptionsServeur?: ReceptionPhysiqueRecord[];
   onRecevoir: (sortie: SortieRecord) => void;
   onAnomalie: (sortie: SortieRecord) => void;
 }
@@ -38,6 +40,7 @@ const STATUT_BADGE_COLOR: Record<string, string> = {
 export function ListeSortiesARéceptionner({
   sorties,
   user,
+  receptionsServeur,
   onRecevoir,
   onAnomalie,
 }: ListeSortiesARéceptionnerProps) {
@@ -61,8 +64,8 @@ export function ListeSortiesARéceptionner({
   return (
     <div className="msr-liste">
       {sortiesTriees.map((sortie) => {
-        const reliquat = getReliquat(sortie);
-        const statutRéception = getStatutRéceptionSortie(sortie);
+        const reliquat = getReliquat(sortie, receptionsServeur);
+        const statutRéception = getStatutRéceptionSortie(sortie, receptionsServeur);
         const troisSignatures =
           sortie.magasinier_signed && sortie.depositaire_signed && sortie.logistique_signed;
 
@@ -162,7 +165,7 @@ export function ListeSortiesARéceptionner({
                     </Button>
                   ) : (
                     <>
-                      {user?.role === "depositaire" ? (
+                      {user?.role === "depositaire" || user?.role === "demandeur" ? (
                         <Button
                           onClick={() => onRecevoir(sortie)}
                           size="sm"

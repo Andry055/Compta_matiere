@@ -30,20 +30,6 @@ const SUBDOSSIER = path.join(RACINE_BACKEND, '.tmp');
 const FICHIER_BASE = path.join(SUBDOSSIER, 'integration-etape-4.db');
 
 fs.mkdirSync(SUBDOSSIER, { recursive: true });
-if (fs.existsSync(FICHIER_BASE)) {
-  // Sous Windows, le fichier SQLite peut rester verrouillé brièvement après
-  // un run avorté (Strapi non détruit proprement). On retry avec attente.
-  (async () => {
-    for (let tentative = 0; tentative < 10; tentative += 1) {
-      try {
-        fs.rmSync(FICHIER_BASE, { force: true });
-        break;
-      } catch (e) {
-        await new Promise((r) => setTimeout(r, 250));
-      }
-    }
-  })();
-}
 process.env.DATABASE_FILENAME = path.join('.tmp', 'integration-etape-4.db');
 
 const { createStrapi } = require('@strapi/strapi');
@@ -55,6 +41,18 @@ let controleur = null;
 let controleurRapport = null;
 
 test.before(async () => {
+  // Nettoyer l'ancienne base AVANT le démarrage de Strapi (évite les conflits
+  // d'unicite sur 'reference' entre deux executions de la suite).
+  if (fs.existsSync(FICHIER_BASE)) {
+    for (let tentative = 0; tentative < 10; tentative += 1) {
+      try {
+        fs.rmSync(FICHIER_BASE, { force: true });
+        break;
+      } catch (e) {
+        await new Promise((r) => setTimeout(r, 250));
+      }
+    }
+  }
   strapi = createStrapi({
     appDir: RACINE_BACKEND,
     // Strapi 5 charge les config depuis appDir pour un projet JS pur.
@@ -219,7 +217,7 @@ async function grandLivreReel(materielDocumentId, utilisateur) {
 test('integration : cycle complet sur base réelle — le stock baisse EXACTEMENT', async () => {
   const logistique = await utilisateurDuRole('logistique');
   const materiel = await materielDeTest('Tapis integration', 10);
-  const { sortie } = await sortieDeTest(materiel, 2, 'SOR-INT-001');
+  const { sortie } = await sortieDeTest(materiel, 2);
   await poserSignatures1et2(sortie.documentId);
 
   const ctx = contexte(sortie.documentId, {
@@ -268,7 +266,7 @@ test('integration : cycle complet sur base réelle — le stock baisse EXACTEMEN
 test('integration : stock insuffisant — 409, stock theorique AVANT === APRES (preuve chiffrée)', async () => {
   const logistique = await utilisateurDuRole('logistique');
   const materiel = await materielDeTest('Clavier integration', 1);
-  const { sortie } = await sortieDeTest(materiel, 3, 'SOR-INT-002');
+  const { sortie } = await sortieDeTest(materiel, 3);
   await poserSignatures1et2(sortie.documentId);
 
   const avant = await stockReel(materiel.documentId); // 1
@@ -295,7 +293,7 @@ test('integration : stock insuffisant — 409, stock theorique AVANT === APRES (
 test('integration : line sans fiche materiel — 400, rien de modifié', async () => {
   const logistique = await utilisateurDuRole('logistique');
   const materiel = await materielDeTest('Ecran integration', 4);
-  const { sortie } = await sortieDeTest(materiel, 1, 'SOR-INT-003');
+  const { sortie } = await sortieDeTest(materiel, 1);
   await poserSignatures1et2(sortie.documentId);
   // La ligne PERD sa fiche matérielle (cas de test, jamais de quoi réel).
   const lignes = await strapi.documents(UIDS.ligne).findMany({
@@ -317,7 +315,7 @@ test('integration : line sans fiche materiel — 400, rien de modifié', async (
 test('integration : deux signatures CONCURRENTES (Promise.all) — un seul débit', async () => {
   const logistique = await utilisateurDuRole('logistique');
   const materiel = await materielDeTest('Chargeur integration', 7);
-  const { sortie } = await sortieDeTest(materiel, 2, 'SOR-INT-004');
+  const { sortie } = await sortieDeTest(materiel, 2);
   await poserSignatures1et2(sortie.documentId);
 
   const [c1, c2] = [
@@ -374,7 +372,7 @@ test('integration : validation logistique -> stock debité, grand livre du depos
   });
 
   // Ordre de sortie de 2 unités, signatures 1 et 2 posées.
-  const { sortie } = await sortieDeTest(materiel, 2, 'SOR-INT-007');
+  const { sortie } = await sortieDeTest(materiel, 2);
   await poserSignatures1et2(sortie.documentId);
 
   // ── Validation par le chef logistique (étape 4) ──────────────────────────
@@ -421,8 +419,8 @@ test('integration : deux sorties disputent UN stock insuffisant — une seule r�
   const logistique = await utilisateurDuRole('logistique');
   const materiel = await materielDeTest('Souris disputée', 3);
 
-  const a = await sortieDeTest(materiel, 2, 'SOR-INT-005');
-  const b = await sortieDeTest(materiel, 2, 'SOR-INT-006');
+  const a = await sortieDeTest(materiel, 2);
+  const b = await sortieDeTest(materiel, 2);
   await poserSignatures1et2(a.sortie.documentId);
   await poserSignatures1et2(b.sortie.documentId);
 

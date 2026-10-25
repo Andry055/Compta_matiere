@@ -964,13 +964,23 @@ async function ensureAuthSetup(strapi) {
   }
 
   // 2treize bis) Permissions « Réception physique » : accordées
-  // UNIQUEMENT au rôle Demandeur (dépositaire de direction). Le contrôleur
-  // vérifie en outre l'appropriation par direction.
+  // aux rôles Demandeur et Dépositaire (le contrôleur accepte les deux,
+  // voir isDemandeur() dans api/reception-physique/controllers/reception-physique.js).
+  // Le contrôleur vérifie en outre l'appropriation par direction.
   if (roleDemandeur) {
     for (const action of RECEPTION_PHYSIQUE_ACTIONS) {
       const cle = `${roleDemandeur.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: roleDemandeur.id } });
+      accordees.add(cle);
+    }
+  }
+  const roleDepositaire = roles['depositaire'];
+  if (roleDepositaire) {
+    for (const action of RECEPTION_PHYSIQUE_ACTIONS) {
+      const cle = `${roleDepositaire.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roleDepositaire.id } });
       accordees.add(cle);
     }
   }

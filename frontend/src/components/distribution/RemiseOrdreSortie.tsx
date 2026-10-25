@@ -2,8 +2,6 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Printer, Send } from "lucide-react";
 import { toast } from "sonner";
 import {
-  fetchDirections,
-  fetchServices,
   rechargerSortie as rechargerSortieParDefaut,
   remettreSortie,
 } from "@/lib/api";
@@ -16,8 +14,6 @@ import {
   estRemise,
   estResultatIncertain,
   messageServeur,
-  personnesDepuisReferentiel,
-  proposerDetenteur,
 } from "@/lib/remiseSortie";
 import { genererPdfBonSortie, modeleBonSortie } from "@/lib/bonSortieDocument";
 import "./RemiseOrdreSortie.css";
@@ -65,8 +61,6 @@ export function RemiseOrdreSortie({
   onError,
   rechargerSortie,
 }: RemiseOrdreSortieProps) {
-  const [detenteurNom, setDetenteurNom] = useState("");
-  const [detenteurFonction, setDetenteurFonction] = useState("");
   const [mandataireNom, setMandataireNom] = useState("");
   // Date du jour en HEURE LOCALE (jamais UTC) : la date de remise est une
   // date civile, elle ne doit pas basculer la veille au soir.
@@ -87,37 +81,6 @@ export function RemiseOrdreSortie({
 
   /** Sortie courante : après une remise réussie, celle renvoyée par le serveur. */
   const sortieCourante = sortieRemise ?? sortie;
-
-  // ── Pré-remplissage du détenteur ────────────────────────────────────────
-  // Best-effort : le référentiel ne relie pas un compte à une direction de
-  // façon exploitable. Si rien ne correspond, les champs restent VIDES et
-  // l'utilisateur saisit le détenteur (aide « Saisissez le détenteur »).
-  useEffect(() => {
-    let annule = false;
-    (async () => {
-      try {
-        const [services, directions] = await Promise.all([
-          fetchServices(),
-          fetchDirections(),
-        ]);
-        if (annule) return;
-        const proposition = proposerDetenteur(
-          sortie,
-          personnesDepuisReferentiel(services, directions)
-        );
-        if (proposition) {
-          setDetenteurNom(proposition.nom);
-          setDetenteurFonction(proposition.fonction);
-        }
-      } catch {
-        // Référentiel indisponible : on laisse la saisie à l'utilisateur.
-      }
-    })();
-    return () => {
-      annule = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sortie.id]);
 
   // ── Impression du bon de sortie ─────────────────────────────────────────
   const imprimerBon = useCallback(
@@ -227,8 +190,6 @@ export function RemiseOrdreSortie({
 
   // ── Règles de saisie ────────────────────────────────────────────────────
   const erreurDeSaisie = useMemo(() => {
-    if (!detenteurNom.trim()) return "Le nom du détenteur est requis.";
-    if (!detenteurFonction.trim()) return "La fonction du détenteur est requise.";
     if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRemise)) return "La date de remise est invalide.";
     if (dateEstDansLeFutur(dateRemise, aujourdhui)) {
       return "La date de remise ne peut pas être postérieure à aujourd'hui.";
@@ -237,7 +198,7 @@ export function RemiseOrdreSortie({
       return "Confirmez que le matériel remis correspond à la liste.";
     }
     return null;
-  }, [aujourdhui, dateRemise, detenteurFonction, detenteurNom, materielConfirme]);
+  }, [aujourdhui, dateRemise, materielConfirme]);
 
   // ── Envoi ───────────────────────────────────────────────────────────────
   const envoyer = useCallback(async () => {
@@ -253,10 +214,9 @@ export function RemiseOrdreSortie({
     setEnvoi(true);
     setErreur(null);
 
-    // Quatre champs, et rien d'autre : ni statut, ni stock.
+    // Deux champs seulement : mandataire (optionnel) et date de remise.
+    // Jamais de statut, jamais le stock, jamais le détenteur.
     const payload = construirePayloadRemise({
-      detenteurNom,
-      detenteurFonction,
       mandataireNom,
       dateRemise,
     });
@@ -275,7 +235,7 @@ export function RemiseOrdreSortie({
       envoiEnCours.current = false;
       setEnvoi(false);
     }
-  }, [detenteurFonction, detenteurNom, erreurDeSaisie, gererEchec, mandataireNom, dateRemise, onSuccess, sortie.id]);
+  }, [dateRemise, erreurDeSaisie, gererEchec, mandataireNom, onSuccess, sortie.id]);
 
   // ── Rendu ───────────────────────────────────────────────────────────────
   // Remise déjà enregistrée : on n'affiche plus le formulaire.
@@ -345,39 +305,8 @@ export function RemiseOrdreSortie({
       {/* ── Saisie de la remise ──────────────────────────────────────────── */}
       <div className="rms-champs">
         <div className="rms-champ">
-          <label className="rms-libelle" htmlFor={`rms-nom-${sortie.id}`}>
-            Nom du détenteur :
-          </label>
-          <input
-            id={`rms-nom-${sortie.id}`}
-            className="rms-input"
-            value={detenteurNom}
-            onChange={(e) => setDetenteurNom(e.target.value)}
-            disabled={envoi}
-            placeholder="Nom du détenteur"
-          />
-          {!detenteurNom.trim() && (
-            <p className="rms-aide">Saisissez le détenteur</p>
-          )}
-        </div>
-
-        <div className="rms-champ">
-          <label className="rms-libelle" htmlFor={`rms-fonction-${sortie.id}`}>
-            Fonction du détenteur :
-          </label>
-          <input
-            id={`rms-fonction-${sortie.id}`}
-            className="rms-input"
-            value={detenteurFonction}
-            onChange={(e) => setDetenteurFonction(e.target.value)}
-            disabled={envoi}
-            placeholder="Fonction du détenteur"
-          />
-        </div>
-
-        <div className="rms-champ">
           <label className="rms-libelle" htmlFor={`rms-mandataire-${sortie.id}`}>
-            Retiré par (mandataire), si différent du détenteur :
+            Retiré par (mandataire) :
           </label>
           <input
             id={`rms-mandataire-${sortie.id}`}
@@ -474,18 +403,12 @@ export function RemiseOrdreSortie({
 }
 
 /**
- * Récapitulatif d'une remise déjà effectuée (lecture seule) : détenteur,
- * fonction, mandataire éventuel et date.
+ * Récapitulatif d'une remise déjà effectuée (lecture seule) : mandataire
+ * éventuel et date.
  */
 export function RecapitulatifRemise({ sortie }: { sortie: SortieRecord }) {
   return (
     <div className="rms-recap">
-      <p className="rms-recap-ligne">
-        <span>Détenteur :</span> {sortie.detenteurNom || "—"}
-      </p>
-      <p className="rms-recap-ligne">
-        <span>Fonction :</span> {sortie.detenteurFonction || "—"}
-      </p>
       {sortie.mandataireNom && (
         <p className="rms-recap-ligne">
           <span>Retiré par (mandataire) :</span> {sortie.mandataireNom}

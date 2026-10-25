@@ -1,0 +1,64 @@
+{
+  "kind": "collectionType",
+  "collectionName": "notification_outboxes",
+  "info": {
+    "name": "NotificationOutbox",
+    "displayName": "Notification Outbox",
+    "description": "File d'attente persistante des notifications (outbox pattern) pour garantir l'idempotence et la reprise après échec des envois SSE."
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "attributes": {
+    "sortie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie.sortie",
+      "required": true
+    },
+    "eventType": {
+      "type": "enumeration",
+      "enum": [
+        "ordre_pret_distribution",
+        "ordre_sortie_autorise",
+        "demande_aboutie"
+      ],
+      "required": true
+    },
+    "recipientId": {
+      "type": "integer",
+      "required": true
+    },
+    "recipientRole": {
+      "type": "string",
+      "required": true
+    },
+    "payload": {
+      "type": "json",
+      "required": true
+    },
+    "status": {
+      "type": "enumeration",
+      "enum": ["pending", "processing", "sent", "failed"],
+      "default": "pending",
+      "required": true
+    },
+    "attempts": {
+      "type": "integer",
+      "default": 0,
+      "required": true
+    },
+    "lastAttemptAt": {
+      "type": "datetime"
+    },
+    "lastError": {
+      "type": "text"
+    },
+    "createdAt": {
+      "type": "datetime"
+    },
+    "updatedAt": {
+      "type": "datetime"
+    }
+  }
+}

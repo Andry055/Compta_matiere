@@ -14,12 +14,6 @@
  *   1. Immédiatement après validation d'une sortie (depuis signerLogistique) pour
  *      traiter les entrées fraîchement créées.
  *   2. Périodiquement (cron / setInterval) pour reprendre les entrées en échec.
- *
- * EVENT_TYPE de réception physique (ajoutés pour la réception / anomalies) :
- *   - 'reception_partielle'  → rôle 'depositaire'
- *   - 'reception_complete'   → rôle 'depositaire'
- *   - 'anomalie_ouverte'     → rôle 'depositaire'
- *   - 'anomalie_resolue'     → rôle 'depositaire'
  */
 
 const { sseBroadcastToUser } = require('../../../lib/notifications');
@@ -34,17 +28,6 @@ const EVENT_TYPE_PAR_ROLE = {
   demandeur: 'demande_aboutie',
 };
 
-/**
- * EVENT_TYPE spécifiques à la réception physique et aux anomalies,
- * associés au rôle 'depositaire' (destinataire de ces notifications).
- */
-const EVENT_TYPE_RECEPTION = {
-  reception_partielle: 'depositaire',
-  reception_complete: 'depositaire',
-  anomalie_ouverte: 'depositaire',
-  anomalie_resolue: 'depositaire',
-};
-
 const OUTBOX_UID = 'api::notification-outbox.notification-outbox';
 
 /**
@@ -55,16 +38,12 @@ const OUTBOX_UID = 'api::notification-outbox.notification-outbox';
  * @param {object} app - instance Strapi
  * @param {string} sortieDocumentId - documentId de la sortie
  * @param {Array<{id, email, username}>} destinataires - liste des utilisateurs cibles
- * @param {string} role - rôle métier ou EVENT_TYPE de réception ('depositaire' | 'magasinier' | 'reception_partielle' | ...)
+ * @param {string} role - rôle métier des destinataires ('depositaire' | 'magasinier')
  * @param {object} payload - données de l'événement SSE
  * @returns {Promise<void>}
  */
 async function creerEntrees(app, sortieDocumentId, destinataires, role, payload) {
-  let eventType = EVENT_TYPE_PAR_ROLE[role];
-  if (!eventType && EVENT_TYPE_RECEPTION[role]) {
-    // Le paramètre role est en fait un EVENT_TYPE de réception : on l'utilise tel quel.
-    eventType = role;
-  }
+  const eventType = EVENT_TYPE_PAR_ROLE[role];
   if (!eventType) {
     throw new Error(`Rôle de destinataire inconnu pour l'outbox : ${role}`);
   }
@@ -77,7 +56,7 @@ async function creerEntrees(app, sortieDocumentId, destinataires, role, payload)
         sortie: sortieDocumentId,
         eventType,
         recipientId: destinataire.id,
-        recipientRole: EVENT_TYPE_PAR_ROLE[role] || EVENT_TYPE_RECEPTION[role] || role,
+        recipientRole: role,
         payload,
         status: 'pending',
         attempts: 0,
@@ -234,7 +213,6 @@ module.exports = {
   TABLE_OUTBOX,
   MAX_TENTATIVES,
   EVENT_TYPE_PAR_ROLE,
-  EVENT_TYPE_RECEPTION,
   OUTBOX_UID,
   creerEntrees,
   reclamerEntrees,

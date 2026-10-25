@@ -1,58 +1,83 @@
 'use strict';
 
 /**
- * Notifications SSE — stub minimal pour les tests hors Strapi.
+ * Gestion des connexions SSE (Server-Sent Events) pour les notifications
+ * push en temps réel.
  *
- * Fournit sseBroadcastToUser (utilisé par notification-outbox/services)
- * ainsi que sseRegister et sseCount (utilisés par le flux SSE existant).
- * Implémentation en mémoire, sans effet de bord externe.
+ * Maintient une map userId → Set de réponses HTTP (flux SSE) ouvertes.
+ * Lorsqu'un événement doit être poussé à un utilisateur, on écrit sur
+ * tous ses flux correspondants.
+ *
+ * Le stockage est en mémoire (process unique). Pour une architecture
+ * multi-instances, un pub/sub (Redis) serait nécessaire.
  */
 
-const streams = new Map(); // userId -> Set<{ write, closed }>
+const streams = new Map(); // userId → Set<http.ServerResponse>
 
 /**
  * Enregistre un flux SSE pour un utilisateur.
- * @param {number|string} userId
- * @param {object} stream - { write, closed }
+ * Le flux est retiré automatiquement à la fermeture ou sur erreur.
  */
-function sseRegister(userId, stream) {
-  if (!streams.has(userId)) streams.set(userId, new Set());
-  streams.get(userId).add(stream);
-  return () => {
-    stream.closed = true;
-    streams.get(userId).delete(stream);
-  };
+function sseRegister(userId, res) {
+  if (!streams.has(userId)) {
+    streams.set(userId, new Set());
+  }
+  const set = streams.get(userId);
+  set.add(res);
+
+  res.on('close', () => sseUnregister(userId, res));
+  res.on('error', () => sseUnregister(userId, res));
 }
 
 /**
- * Diffuse un événement SSE à tous les flux d'un utilisateur.
- * @param {number|string} userId
- * @param {string} eventType
- * @param {object} payload
- * @returns {number} nombre de flux atteints
+ * Retire un flux SSE pour un utilisateur.
  */
-function sseBroadcastToUser(userId, eventType, payload) {
+function sseUnregister(userId, res) {
   const set = streams.get(userId);
-  if (!set) return 0;
-  const message = `event: ${eventType}\ndata: ${JSON.stringify(payload || {})}\n\n`;
-  let count = 0;
-  for (const stream of set) {
-    if (!stream.closed && typeof stream.write === 'function') {
-      stream.write(message);
-      count += 1;
+  if (set) {
+    set.delete(res);
+    if (set.size === 0) {
+      streams.delete(userId);
     }
   }
-  return count;
 }
 
 /**
- * Retourne le nombre de flux SSE actifs pour un utilisateur.
- * @param {number|string} userId
- * @returns {number}
+ * Diffuse un événement SSE à tous les flux ouverts d'un utilisateur.
+ *
+ * @param {number} userId - id de l'utilisateur cible
+ * @param {string} event - nom de l'événement (ex: 'demande_aboutie')
+ * @param {object} data - données de l'événement (sérialisables en JSON)
+ * @returns {number} nombre de flux sur lesquels l'événement a été écrit
  */
-function sseCount(userId) {
+function sseBroadcastToUser(userId, event, data) {
   const set = streams.get(userId);
-  return set ? set.size : 0;
+  if (!set || set.size === 0) return 0;
+
+  const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  let envoyes = 0;
+
+  for (const res of set) {
+    try {
+      if (!res.writableEnded) {
+        res.write(payload);
+        envoyes++;
+      }
+    } catch {
+      sseUnregister(userId, res);
+    }
+  }
+
+  return envoyes;
+}
+
+/**
+ * Nombre total de flux SSE actuellement ouverts (monitoring / debug).
+ */
+function sseCount() {
+  let total = 0;
+  for (const set of streams.values()) total += set.size;
+  return total;
 }
 
 module.exports = {

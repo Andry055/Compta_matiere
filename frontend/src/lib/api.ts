@@ -1816,7 +1816,15 @@ export async function listerReceptionsPhysiques(): Promise<
         },
       },
     });
-    const rows: Array<ReceptionPhysiqueRecord> = data?.data ?? [];
+    const rows: Array<ReceptionPhysiqueRecord> = (data?.data ?? []).map((row: any) => ({
+      ...row,
+      // Strapi 5 retourne la relation `sortie` comme un objet peuplé
+      // ({ documentId, id, ... }), jamais comme un champ plat `sortieId`.
+      // On extrait le documentId de la sortie pour que le calcul du reliquat
+      // (getQuantiteDejaRecue / getReliquat / sortiesRéceptionnables) puisse
+      // faire correspondre chaque réception à sa sortie.
+      sortieId: row.sortie?.documentId || row.sortieId || undefined,
+    }));
     return rows;
   } catch {
     return null;

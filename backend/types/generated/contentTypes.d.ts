@@ -509,6 +509,60 @@ export interface ApiAffectationAffectation extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiAnomalieAnomalie extends Struct.CollectionTypeSchema {
+  collectionName: 'anomalies';
+  info: {
+    displayName: 'Anomalie';
+    pluralName: 'anomalies';
+    singularName: 'anomalie';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_ouverture: Schema.Attribute.Date & Schema.Attribute.Required;
+    date_resolution: Schema.Attribute.Date;
+    description: Schema.Attribute.Text & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::anomalie.anomalie'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    reception: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::reception.reception'
+    > &
+      Schema.Attribute.Required;
+    reception_ligne: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::reception-ligne.reception-ligne'
+    >;
+    responsable: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    statut: Schema.Attribute.Enumeration<
+      ['ouverte', 'en_cours', 'resolue', 'rejetee']
+    > &
+      Schema.Attribute.Required;
+    type_anomalie: Schema.Attribute.Enumeration<
+      ['manquant', 'endommage', 'non_conforme', 'autre']
+    > &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    version: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<1>;
+  };
+}
+
 export interface ApiCategoryCategory extends Struct.CollectionTypeSchema {
   collectionName: 'categories';
   info: {
@@ -865,6 +919,54 @@ export interface ApiFournisseurFournisseur extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiJournalActionJournalAction
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'journal-actions';
+  info: {
+    displayName: "Journal d'action";
+    pluralName: 'journal-actions';
+    singularName: 'journal-action';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    action: Schema.Attribute.Enumeration<
+      ['ouverte', 'prise_en_charge', 'resolue', 'rejetee']
+    > &
+      Schema.Attribute.Required;
+    ancien_statut: Schema.Attribute.Enumeration<
+      ['ouverte', 'en_cours', 'resolue', 'rejetee']
+    >;
+    anomalie: Schema.Attribute.Relation<'manyToOne', 'api::anomalie.anomalie'> &
+      Schema.Attribute.Required;
+    auteur: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    > &
+      Schema.Attribute.Required;
+    commentaire: Schema.Attribute.Text;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date: Schema.Attribute.Date & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::journal-action.journal-action'
+    > &
+      Schema.Attribute.Private;
+    nouveau_statut: Schema.Attribute.Enumeration<
+      ['ouverte', 'en_cours', 'resolue', 'rejetee']
+    > &
+      Schema.Attribute.Required;
+    publishedAt: Schema.Attribute.DateTime;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiMaterialMaterial extends Struct.CollectionTypeSchema {
   collectionName: 'materials';
   info: {
@@ -1100,6 +1202,51 @@ export interface ApiRapportRapport extends Struct.SingleTypeSchema {
   };
 }
 
+export interface ApiReceptionLigneReceptionLigne
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'reception-lignes';
+  info: {
+    displayName: 'Ligne de r\u00E9ception';
+    pluralName: 'reception-lignes';
+    singularName: 'reception-ligne';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    etat: Schema.Attribute.Enumeration<['neuf', 'bon', 'moyen', 'defaillant']>;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::reception-ligne.reception-ligne'
+    > &
+      Schema.Attribute.Private;
+    materiel: Schema.Attribute.Relation<'manyToOne', 'api::material.material'> &
+      Schema.Attribute.Required;
+    observations: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite_commandee: Schema.Attribute.Integer & Schema.Attribute.Required;
+    quantite_recue: Schema.Attribute.Integer & Schema.Attribute.Required;
+    quantite_reliquat: Schema.Attribute.Integer;
+    reception: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::reception.reception'
+    > &
+      Schema.Attribute.Required;
+    sortie_ligne: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::sortie-ligne.sortie-ligne'
+    > &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiReceptionPhysiqueReceptionPhysique
   extends Struct.CollectionTypeSchema {
   collectionName: 'receptions_physiques';
@@ -1137,6 +1284,52 @@ export interface ApiReceptionPhysiqueReceptionPhysique
     updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
     utilisateur: Schema.Attribute.String & Schema.Attribute.Required;
+  };
+}
+
+export interface ApiReceptionReception extends Struct.CollectionTypeSchema {
+  collectionName: 'receptions';
+  info: {
+    displayName: 'R\u00E9ception physique';
+    pluralName: 'receptions';
+    singularName: 'reception';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_reception: Schema.Attribute.Date & Schema.Attribute.Required;
+    depositaire_fonction: Schema.Attribute.Text & Schema.Attribute.Required;
+    depositaire_nom: Schema.Attribute.Text & Schema.Attribute.Required;
+    direction: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::direction.direction'
+    > &
+      Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::reception.reception'
+    > &
+      Schema.Attribute.Private;
+    numero: Schema.Attribute.Integer & Schema.Attribute.Required;
+    observations: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'> &
+      Schema.Attribute.Required;
+    statut: Schema.Attribute.Enumeration<
+      ['en_cours', 'partielle', 'complete', 'annulee']
+    > &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    version: Schema.Attribute.Integer &
+      Schema.Attribute.Required &
+      Schema.Attribute.DefaultTo<1>;
   };
 }
 
@@ -1835,6 +2028,7 @@ declare module '@strapi/strapi' {
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
       'api::affectation.affectation': ApiAffectationAffectation;
+      'api::anomalie.anomalie': ApiAnomalieAnomalie;
       'api::category.category': ApiCategoryCategory;
       'api::demande.demande': ApiDemandeDemande;
       'api::direction.direction': ApiDirectionDirection;
@@ -1842,13 +2036,16 @@ declare module '@strapi/strapi' {
       'api::entree-ligne.entree-ligne': ApiEntreeLigneEntreeLigne;
       'api::entree.entree': ApiEntreeEntree;
       'api::fournisseur.fournisseur': ApiFournisseurFournisseur;
+      'api::journal-action.journal-action': ApiJournalActionJournalAction;
       'api::material.material': ApiMaterialMaterial;
       'api::mouvement.mouvement': ApiMouvementMouvement;
       'api::notification-outbox.notification-outbox': ApiNotificationOutboxNotificationOutbox;
       'api::notification.notification': ApiNotificationNotification;
       'api::ouverture-exercice.ouverture-exercice': ApiOuvertureExerciceOuvertureExercice;
       'api::rapport.rapport': ApiRapportRapport;
+      'api::reception-ligne.reception-ligne': ApiReceptionLigneReceptionLigne;
       'api::reception-physique.reception-physique': ApiReceptionPhysiqueReceptionPhysique;
+      'api::reception.reception': ApiReceptionReception;
       'api::service.service': ApiServiceService;
       'api::session-role.session-role': ApiSessionRoleSessionRole;
       'api::sortie-ligne.sortie-ligne': ApiSortieLigneSortieLigne;

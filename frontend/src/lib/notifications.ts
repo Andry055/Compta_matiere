@@ -105,7 +105,8 @@ export function pushRealtimeNotification(
   type: AppNotification["type"],
   message: string,
   date: string,
-  id?: string
+  id?: string,
+  targetRole?: AppRole
 ): void {
   const notifs = readAll();
   const notificationId = id || `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -117,7 +118,7 @@ export function pushRealtimeNotification(
     type,
     message,
     date,
-    targetRole: 'demandeur',
+    targetRole: targetRole ?? 'demandeur',
     read: false,
   });
   // Garde-fou : on conserve les 50 plus récentes.
@@ -182,10 +183,19 @@ function writeIds(ids: string[]) {
   }
 }
 
-/** Liste des notifications du profil connecté */
+/** Liste des notifications du profil connecté.
+ *  - demandeur : flux dérivé des données + notifications temps réel targetRole 'demandeur'.
+ *  - magasinier / dépositaire : flux générique + notifications temps réel targetRole = leur rôle.
+ */
 export function getNotifications(user?: User): AppNotification[] {
   if (user?.role === "demandeur") {
     return getNotificationsDemandeur(user);
+  }
+  if (user?.role === "magasinier" || user?.role === "depositaire") {
+    return [
+      ...getNotificationsGeneriques(),
+      ...readAll().filter((n) => n.targetRole === user.role),
+    ].sort((a, b) => (a.date < b.date ? 1 : -1));
   }
   return getNotificationsGeneriques();
 }

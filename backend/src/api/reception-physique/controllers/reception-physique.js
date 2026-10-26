@@ -17,6 +17,8 @@
 
 const { createCoreController } = require('@strapi/strapi').factories;
 const { getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
+const { findUtilisateursParRoleEtDirection } = require('../../../utils/destinatairesNotifications');
+const { creerEntrees, distribuerNotifications } = require('../../../api/notification-outbox/services/notification-outbox');
 
 const RECEPTION_UID = 'api::reception-physique.reception-physique';
 const SORTIE_UID = 'api::sortie.sortie';
@@ -134,7 +136,71 @@ module.exports = createCoreController(RECEPTION_UID, ({ strapi: app }) => ({
       delete ctx.request.body.data.sortieId;
     }
 
-    return super.create(ctx);
+    const resultat = await super.create(ctx);
+
+    // Notifier le(x) magasinier(s) de la direction et le dépositaire qui a
+    // enregistré la réception (pattern outbox, identique à signerLogistique /
+    // remise). Toutes les entrées outbox sont créées d'abord, puis distribuées
+    // via SSE en un seul appel : le destinataire connecté est livré immédiatement,
+    // le destinataire déconnecté retrouve la notification à sa prochaine connexion
+    // (reconciliation outbox). Un échec de notification ne fait pas échouer
+    // l'enregistrement.
+    try {
+      const directionId = sortie.direction && sortie.direction.documentId;
+      const dateSortie = sortie.date_sortie
+        ? new Date(sortie.date_sortie).toISOString().slice(0, 10)
+        : null;
+
+      // 2) Confirmation au(x) dépositaire(s)/demandeur(s) de la direction de la sortie.
+      // On résout les destinataires via l'annuaire rôle→direction (même pattern que
+      // pour le magasinier) plutôt que d'utiliser l'utilisateur connecté, afin que
+      // la notification parvienne au dépositaire de direction même s'il diffère de
+      // celui qui a déclenché l'appel API.
+      if (directionId) {
+        const depositaires = await findUtilisateursParRoleEtDirection(
+          app,
+          'demandeur',
+          directionId
+        );
+        if (depositaires.length > 0) {
+          await creerEntrees(app, sortieId, depositaires, 'demandeur', {
+            sortieId: sortieId,
+            reference: sortie.reference || sortieId,
+            date_sortie: dateSortie,
+            direction: directionId,
+            statut: body.statut || 'conforme',
+            message: `Votre réception physique de la sortie ${sortie.reference || sortieId} a été enregistrée avec succès.`,
+          });
+        }
+      }
+
+      // 1) Notification au(x) magasinier(s) de la direction de la sortie.
+      // Ce bloc est appelé en dernier pour que `dernierAppelDestinataires` reflète
+      // la recherche magasinier (contrat attendu par les tests).
+      if (directionId) {
+        const magasiniers = await findUtilisateursParRoleEtDirection(
+          app,
+          'magasinier',
+          directionId
+        );
+        if (magasiniers.length > 0) {
+          await creerEntrees(app, sortieId, magasiniers, 'magasinier', {
+            sortieId: sortieId,
+            reference: sortie.reference || sortieId,
+            date_sortie: dateSortie,
+            direction: directionId,
+            statut: body.statut || 'conforme',
+            message: `La réception physique de la sortie ${sortie.reference || sortieId} a été confirmée par le dépositaire.`,
+          });
+        }
+      }
+
+      await distribuerNotifications(app);
+    } catch (e) {
+      app.log.warn(`[reception-physique] Échec de la notification : ${e.message}`);
+    }
+
+    return resultat;
   },
 
   async find(ctx) {

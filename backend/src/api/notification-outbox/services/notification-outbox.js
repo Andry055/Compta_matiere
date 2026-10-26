@@ -153,6 +153,15 @@ async function marquerEchec(trx, entree, erreur) {
  * @param {object} entree - entrée outbox
  * @returns {Promise<void>}
  */
+/**
+ * Traite une entrée outbox revendiquée : envoi SSE puis mise à jour du statut.
+ * Retourne `true` si l'entrée a été envoyée avec succès, `false` sinon.
+ *
+ * @param {object} app - instance Strapi
+ * @param {object} trx - transaction Knex active
+ * @param {object} entree - entrée outbox
+ * @returns {Promise<boolean>} true si envoyée, false sinon
+ */
 async function traiterEntree(app, trx, entree) {
   try {
     const nbEnvoyes = await envoyerEntree(app, entree);
@@ -169,11 +178,13 @@ async function traiterEntree(app, trx, entree) {
     app.log.debug(
       `[notification-outbox] Entrée #${entree.id} envoyée (${entree.eventType} → utilisateur #${entree.recipientId}).`
     );
+    return true;
   } catch (e) {
     app.log.warn(
       `[notification-outbox] Échec de l'envoi de l'entrée #${entree.id} (tentative ${entree.attempts}/${MAX_TENTATIVES}) : ${e.message}`
     );
     await marquerEchec(trx, entree, e.message);
+    return false;
   }
 }
 
@@ -198,19 +209,11 @@ async function distribuerNotifications(app) {
     traitees = revendiquees.length;
 
     for (const entree of revendiquees) {
-      try {
-        await traiterEntree(app, trx, entree);
-        // Compter le résultat final après traitement
-        if (entree.status === 'sent') {
-          envoyees++;
-        } else {
-          echecs++;
-        }
-      } catch (e) {
+      const envoyee = await traiterEntree(app, trx, entree);
+      if (envoyee) {
+        envoyees++;
+      } else {
         echecs++;
-        app.log.warn(
-          `[notification-outbox] Erreur non attrapée sur l'entrée #${entree.id} : ${e.message}`
-        );
       }
     }
   });

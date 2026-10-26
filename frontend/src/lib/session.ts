@@ -31,6 +31,7 @@ export function mapStrapiUser(
 
   return {
     id: user.documentId || String(user.id),
+    strapiId: user.id,
     name: user.username,
     email: user.email,
     role: role as User["role"],

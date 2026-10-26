@@ -14,6 +14,7 @@ export type UserRole = AppRole | 'admin' | 'staff' | null
 
 export interface User {
   id: string
+  strapiId?: number
   name: string
   email: string
   role: UserRole
@@ -80,12 +81,14 @@ export default function App() {
   }, [])
 
   // Connexion/déconnexion SSE pour les utilisateurs concernés (demandeur, dépositaire, magasinier).
+  // L'identifiant SSE est l'id NUMÉRIQUE Strapi (currentUser.strapiId), jamais le documentId
+  // (chaîne) qui donnerait NaN et empêcherait toute correspondance avec le flux backend.
   useEffect(() => {
     const rolesSSE = ['demandeur', 'depositaire', 'magasinier']
     if (currentUser?.role && rolesSSE.includes(currentUser.role)) {
       const jwt = getStrapiJwt()
-      if (jwt) {
-        connectSSE(Number(currentUser.id), jwt)
+      if (jwt && currentUser.strapiId != null) {
+        connectSSE(currentUser.strapiId, jwt)
       }
     } else {
       disconnectSSE()
@@ -101,21 +104,29 @@ export default function App() {
     if (!currentUser?.role || !rolesSSE.includes(currentUser.role)) return
 
     const unsubscribe = onSSEEvent((event) => {
-      if (event.type === 'demande_aboutie' && currentUser.role === 'demandeur') {
+      if (event.type === 'demande_aboutie' && (currentUser.role === 'demandeur' || currentUser.role === 'depositaire')) {
         const { message, date, demandeReference, sortieReference } = event.data
 
+        const estReceptionConfirmee = typeof message === 'string' && /réception physique/i.test(message)
+
         // Notification push persistée dans localStorage (visible dans la cloche).
+        // targetRole = rôle de l'utilisateur connecté qui reçoit l'événement SSE,
+        // jamais 'demandeur' hardcodé.
         pushRealtimeNotification(
           'sortie',
           message || `Votre demande ${demandeReference || ''} est maintenant aboutie.`,
-          date || new Date().toISOString()
+          date || new Date().toISOString(),
+          undefined,
+          currentUser.role
         )
 
         // Toast d'alerte immédiate.
-        toast.success("Demande aboutie", {
+        toast.success(estReceptionConfirmee ? "Réception confirmée" : "Demande aboutie", {
           description:
             message ||
-            `Votre demande ${demandeReference || sortieReference || ''} est passée en sortie effectuée.`,
+            (estReceptionConfirmee
+              ? `Votre réception physique de la sortie ${sortieReference || ''} a été enregistrée avec succès.`
+              : `Votre demande ${demandeReference || sortieReference || ''} est passée en sortie effectuée.`),
         })
 
         // Rafraîchit la cloche (incrémente la version pour forcer le re-rendu).
@@ -126,7 +137,9 @@ export default function App() {
         pushRealtimeNotification(
           'sortie',
           message || `Un ordre de sortie (${reference || ''}) est prêt à être distribué vers votre direction.`,
-          date_sortie || new Date().toISOString()
+          date_sortie || new Date().toISOString(),
+          undefined,
+          currentUser.role
         )
 
         toast.success("Ordre prêt à distribuer", {
@@ -139,16 +152,22 @@ export default function App() {
       } else if (event.type === 'ordre_sortie_autorise' && currentUser.role === 'magasinier') {
         const { reference, date_sortie, direction, message } = event.data
 
+        const estReceptionConfirmee = typeof message === 'string' && /réception physique/i.test(message)
+
         pushRealtimeNotification(
           'sortie',
           message || `Un ordre de sortie (${reference || ''}) est autorisé à la sortie.`,
-          date_sortie || new Date().toISOString()
+          date_sortie || new Date().toISOString(),
+          undefined,
+          currentUser.role
         )
 
-        toast.success("Ordre autorisé", {
+        toast.success(estReceptionConfirmee ? "Réception confirmée" : "Ordre autorisé", {
           description:
             message ||
-            `L'ordre ${reference || ''} est autorisé : préparez les matériels pour l'expédition.`,
+            (estReceptionConfirmee
+              ? `La réception physique de la sortie ${reference || ''} a été confirmée par le dépositaire.`
+              : `L'ordre ${reference || ''} est autorisé : préparez les matériels pour l'expédition.`),
         })
 
         setNotificationVersion((v) => v + 1)
@@ -178,6 +197,35 @@ export default function App() {
           message,
           n.createdAt || new Date().toISOString(),
           `outbox-${n.id}`
+        )
+      }
+    })()
+    return () => {
+      mounted = false
+    }
+  }, [currentUser?.role])
+
+  // Réconciliation des notifications outbox manquées pour le magasinier et
+  // le dépositaire. Même principe que pour le demandeur : les notifications
+  // de réception physique émises pendant une déconnexion SSE sont persistées
+  // en outbox et doivent être rejouées à la reconnexion.
+  useEffect(() => {
+    if (currentUser?.role !== 'magasinier' && currentUser?.role !== 'depositaire') return
+    const jwt = getStrapiJwt()
+    if (!jwt) return
+    let mounted = true
+    ;(async () => {
+      const notifications = await fetchNotificationsOutbox()
+      if (!mounted) return
+      for (const n of notifications ?? []) {
+        const message =
+          typeof n.payload?.message === 'string' ? n.payload.message : `Une notification de réception est en attente.`
+        pushRealtimeNotification(
+          'sortie',
+          message,
+          n.createdAt || new Date().toISOString(),
+          `outbox-${n.id}`,
+          currentUser.role
         )
       }
     })()

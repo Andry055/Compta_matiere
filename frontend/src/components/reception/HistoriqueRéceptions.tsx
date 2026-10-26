@@ -22,6 +22,11 @@ const STATUT_LABEL: Record<string, string> = {
 };
 
 interface HistoriqueRéceptionsProps {
+  // Données serveur réelles déjà chargées par le parent (EcranReception via
+  // listerReceptionsPhysiques). Ce ne sont PAS des entrées locales fabriquées
+  // à partir de l'état React : c'est le même jeu de données que celui affiché
+  // dans « À réceptionner », simplement présenté sous forme d'historique.
+  receptionsServeur?: ReceptionPhysiqueRecord[];
   // Rétrocompatibilité : une liste locale peut encore être fournie, mais
   // les données affichées proviennent de l'API backend.
   receptionsList?: Array<{
@@ -36,7 +41,7 @@ interface HistoriqueRéceptionsProps {
   }>;
 }
 
-export function HistoriqueRéceptions({ receptionsList }: HistoriqueRéceptionsProps) {
+export function HistoriqueRéceptions({ receptionsServeur, receptionsList }: HistoriqueRéceptionsProps) {
   const [receptions, setReceptions] = useState<ReceptionPhysiqueRecord[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [erreur, setErreur] = useState<string | null>(null);
@@ -59,16 +64,21 @@ export function HistoriqueRéceptions({ receptionsList }: HistoriqueRéceptionsP
     fetchReceptions();
   }, [fetchReceptions]);
 
-  // Si l'API n'a rien retourné, on tombe sur la liste locale fournie en prop
-  // (rétrocompatibilité). Sinon on affiche les données du serveur.
+  // Source de vérité : les données serveur transmises par le parent (fraîches,
+  // rechargées après chaque confirmation de réception via chargerDonnées()),
+  // sinon les données chargées par l'API dans ce composant, enfin la prop
+  // receptionsList en rétrocompatibilité. Jamais d'entrée fabriquée à partir
+  // du seul état React local.
   const receptionsAffiches =
-    receptions.length > 0 ? receptions : (receptionsList ?? []);
+    (receptionsServeur && receptionsServeur.length > 0)
+      ? receptionsServeur
+      : (receptions.length > 0 ? receptions : (receptionsList ?? []));
 
   const receptionsTriees = useMemo(
     () =>
       [...receptionsAffiches].sort(
         (a, b) =>
-          new Date(b.dateRéception).getTime() - new Date(a.dateRéception).getTime()
+          new Date(b.date_reception).getTime() - new Date(a.date_reception).getTime()
       ),
     [receptionsAffiches]
   );

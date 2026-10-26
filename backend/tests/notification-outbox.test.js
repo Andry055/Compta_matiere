@@ -435,3 +435,35 @@ test('11 – remise demandeur : creerEntrees avec le rôle demandeur produit une
   assert.ok(entree, 'Une entrée demande_aboutie a été créée pour le demandeur');
   assert.strictEqual(entree.recipientRole, 'demandeur', 'Le rôle destinataire est demandeur');
 });
+
+test('12 – comptage envoyees/echecs : distribuerNotifications compte correctement', async () => {
+  resetMock();
+  const { distribuerNotifications, creerEntrees } = require('../src/api/notification-outbox/services/notification-outbox');
+
+  const app = creerStrapiMock();
+
+  // Deux entrées : une pour l'utilisateur 42 (flux SSE ouvert → envoyée),
+  // une pour l'utilisateur 99 (aucun flux → échec, reste pending).
+  await app.db.transaction(async () => {
+    await creerEntrees(app, 'sortie-1', [{ id: 42, email: 'a@x.com', username: 'A' }], 'depositaire', {
+      sortieId: 'sortie-1', reference: 'REF-1', message: 'envoyée',
+    });
+    await creerEntrees(app, 'sortie-2', [{ id: 99, email: 'b@x.com', username: 'B' }], 'magasinier', {
+      sortieId: 'sortie-2', reference: 'REF-2', message: 'échec',
+    });
+  });
+
+  // Flux SSE ouvert seulement pour l'utilisateur 42.
+  sseRegister(42, mockSseRes());
+
+  const r = await distribuerNotifications(app);
+  assert.strictEqual(r.traitees, 2, 'Deux entrées traitées');
+  assert.strictEqual(r.envoyees, 1, 'Une entrée comptée comme envoyée');
+  assert.strictEqual(r.echecs, 1, 'Une entrée comptée comme en échec');
+
+  // Vérifier l'état en base.
+  const entree42 = entreesOutbox.find((e) => e.recipientId === 42);
+  const entree99 = entreesOutbox.find((e) => e.recipientId === 99);
+  assert.strictEqual(entree42.status, 'sent', 'Entrée 42 marquée sent en base');
+  assert.strictEqual(entree99.status, 'pending', 'Entrée 99 restée pending (reprise ultérieure)');
+});

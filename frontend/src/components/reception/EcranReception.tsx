@@ -245,7 +245,7 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
           />
         )}
         {onglet === "historique" && (
-          <HistoriqueRéceptions />
+          <HistoriqueRéceptions receptionsServeur={receptionsServeur} />
         )}
         {onglet === "anomalies" && (
           <div className="msr-liste">
@@ -269,6 +269,7 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
           sortie={sortieOuverte}
           receptionsServeur={receptionsServeur}
           onClose={() => setSortieOuverte(null)}
+          onReceptionConfirmée={chargerDonnées}
         />
       )}
 

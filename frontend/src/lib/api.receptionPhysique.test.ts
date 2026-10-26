@@ -108,6 +108,31 @@ describe("api — réceptions physiques (/api/receptions-physiques)", () => {
     expect(resultat).toEqual([{ id: 1, documentId: "doc-1" }]);
   });
 
+  it("listerReceptionsPhysiques extrait sortieId depuis la relation sortie (populate)", async () => {
+    const getSpy = vi
+      .spyOn(api, "get")
+      .mockResolvedValue({
+        data: {
+          data: [
+            {
+              id: 1,
+              documentId: "rec-1",
+              sortieId: undefined, // Strapi ne retourne pas de champ plat
+              sortie: { documentId: "sortie-doc-1", id: 42 },
+              quantite_recue: 5,
+            },
+          ],
+          meta: { pagination: { total: 1 } },
+        },
+      } as never);
+
+    const resultat = await listerReceptionsPhysiques();
+
+    expect(resultat).toHaveLength(1);
+    expect(resultat![0].sortieId).toBe("sortie-doc-1");
+    expect(resultat![0].quantite_recue).toBe(5);
+  });
+
   it("listerReceptionsPhysiques retourne null en cas d'échec réseau", async () => {
     vi.spyOn(api, "get").mockRejectedValue(new Error("Network error"));
 

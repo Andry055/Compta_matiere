@@ -36,9 +36,13 @@ interface FormulaireRéceptionProps {
   sortie: SortieRecord;
   receptionsServeur?: ReceptionPhysiqueRecord[];
   onClose: () => void;
+  /** Appelée après un enregistrement serveur réussi, afin que le parent
+   *  rafraîchisse ses données (receptionsServeur / sortiesServeur) et que
+   *  la liste « À réceptionner » se recalcule (disparition si reliquat nul). */
+  onReceptionConfirmée?: () => void;
 }
 
-export function FormulaireRéception({ sortie, receptionsServeur, onClose }: FormulaireRéceptionProps) {
+export function FormulaireRéception({ sortie, receptionsServeur, onClose, onReceptionConfirmée }: FormulaireRéceptionProps) {
   const [quantiteRecue, setQuantiteRecue] = useState("");
   const [declarationAnomalie, setDeclarationAnomalie] = useState(false);
   const [descriptionAnomalie, setDescriptionAnomalie] = useState("");
@@ -137,6 +141,10 @@ export function FormulaireRéception({ sortie, receptionsServeur, onClose }: For
         stockDebite: false,
       };
       receptions.push(nouvelleReception);
+
+      // Rafraîchir les données côté parent pour que la liste « À réceptionner »
+      // se recalcule avec la nouvelle réception (disparition si reliquat nul).
+      onReceptionConfirmée?.();
 
       setIsSubmitting(false);
       toast.success("Réception enregistrée", {

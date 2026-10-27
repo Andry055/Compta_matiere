@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { Eye, EyeOff, LogIn, Loader2, Users } from "lucide-react";
+import { Eye, EyeOff, LogIn, Loader2, Users, Sun, Moon } from "lucide-react";
 import { User as UserType } from "../App";
 import logoMtefop from "../../assets/LogoMETFOP.png";
 import logo from "../../assets/logo.png";
@@ -87,6 +87,24 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showDemoCredentials, setShowDemoCredentials] = useState(false);
+
+  // Thème : on applique immédiatement le choix enregistré (même clé « theme »
+  // que le bouton du tableau de bord) pour que connexion et application
+  // restent en cohérence. Défaut : mode clair si rien n'a encore été choisi.
+  const [isDark, setIsDark] = useState(() => {
+    const saved = localStorage.getItem("theme");
+    const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+    const dark = saved === "dark" || (saved === "system" && prefersDark);
+    document.documentElement.classList.toggle("dark", dark);
+    return dark;
+  });
+
+  const toggleTheme = () => {
+    const next = !isDark;
+    setIsDark(next);
+    document.documentElement.classList.toggle("dark", next);
+    localStorage.setItem("theme", next ? "dark" : "light");
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -276,6 +294,56 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         .lg-footer-line { width: 56px; height: 1px; background: rgba(30,136,216,.5); }
         .lg-footer-sep { width: 1px; height: 16px; background: #c9d9ea; }
 
+        /* Bascule de thème clair / sombre */
+        .lg-toggle { position: fixed; top: 20px; right: 20px; z-index: 40;
+          width: 44px; height: 44px; border-radius: 12px;
+          display: flex; align-items: center; justify-content: center;
+          background: rgba(255,255,255,.9); border: 1px solid #c9d9ea;
+          color: #0f3a6b; cursor: pointer;
+          box-shadow: 0 6px 16px rgba(20,60,110,.15);
+          transition: transform .2s, background .2s, border-color .2s, color .2s; }
+        .lg-toggle:hover { transform: translateY(-1px); border-color: #1e88d8; color: #1e88d8; }
+        .lg-toggle:focus-visible { outline: 2px solid #1e88d8; outline-offset: 2px; }
+
+        /* ===== Mode sombre (jetons alignés sur la console « Nébuleuse ») ===== */
+        .dark .lg-page { background: #0d1929; }
+        .dark .lg-bg-left { filter: brightness(.5) saturate(.85); }
+        .dark .lg-bg-right { filter: blur(1px) brightness(.5); }
+        .dark .lg-veil { background: linear-gradient(90deg, rgba(13,25,41,0) 0%, rgba(13,25,41,.88) 55%, #0d1929 100%); }
+        .dark .lg-dots { opacity: .3; }
+        .dark .lg-sep { background: #2c4a6b; }
+        .dark .lg-brand-title { color: #eef5fc; }
+        .dark .lg-brand-sub { color: #9db3cc; }
+        .dark .lg-card { background: #132239; border-color: #27405f;
+          box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+        .dark .lg-avatar { background: #1b3453; color: #7fc4ff; }
+        .dark .lg-title { color: #eef5fc; }
+        .dark .lg-sub { color: #9db3cc; }
+        .dark .lg-alert { background: #3a1418; border-color: #7f2a30; }
+        .dark .lg-alert span { color: #ff9d9d; }
+        .dark .lg-label { color: #dcebf9; }
+        .dark .lg-input { background: #0e1b2e; border-color: #2c4a6b; color: #e8f1fb; }
+        .dark .lg-input::placeholder { color: #5f7b99; }
+        .dark .lg-icon { color: #7fc4ff; }
+        .dark .lg-eye { color: #9db3cc; }
+        .dark .lg-remember span { color: #b6c8dc; }
+        .dark .lg-remember input { accent-color: #5aa9f0; }
+        .dark .lg-forgot { color: #5aa9f0; }
+        .dark .lg-btn:disabled { background: #2a3d55; color: #8fa3bd; }
+        .dark .lg-demo { color: #7d93ad; }
+        .dark .lg-demo-link { color: #5aa9f0; }
+        .dark .lg-account { background: #0f1e33; border-color: #27405f; }
+        .dark .lg-account:hover { background: #17304f; border-color: #5aa9f0; }
+        .dark .lg-account-name { color: #eef5fc; }
+        .dark .lg-account-dept { color: #9db3cc; }
+        .dark .lg-account-creds { color: #5aa9f0; }
+        .dark .lg-footer { color: #9db3cc; }
+        .dark .lg-footer-pin { color: #5aa9f0; }
+        .dark .lg-footer-line { background: rgba(90,169,240,.4); }
+        .dark .lg-footer-sep { background: #2c4a6b; }
+        .dark .lg-toggle { background: rgba(19,34,57,.9); border-color: #2c4a6b; color: #9fd4ff; }
+        .dark .lg-toggle:hover { border-color: #5aa9f0; color: #5aa9f0; }
+
         /* Responsive */
         @media (max-width: 640px) {
           .lg-bg { display: none; }
@@ -293,6 +361,17 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         .lg-spin { animation: lg-rotate 1s linear infinite; }
         @keyframes lg-rotate { to { transform: rotate(360deg); } }
       `}</style>
+
+      {/* Bascule clair / sombre — coin supérieur droit */}
+      <button
+        type="button"
+        className="lg-toggle"
+        onClick={toggleTheme}
+        aria-label={isDark ? "Passer en mode clair" : "Passer en mode sombre"}
+        title={isDark ? "Mode clair" : "Mode sombre"}
+      >
+        {isDark ? <Sun size={18} aria-hidden="true" /> : <Moon size={18} aria-hidden="true" />}
+      </button>
 
       {/* ===== Arrière-plan ===== */}
       <img src={bgPhoto} alt="Bâtiment du Ministère" className="lg-bg lg-bg-left" />
@@ -338,7 +417,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
               <span className="lg-brand-title">
                 Asset<span className="lg-track">Track</span>
               </span>
-              <span className="lg-brand-sub">Système de Gestion d'Équipements</span>
+              <span className="lg-brand-sub">Système de Gestion et de Traçabilité des Matériels</span>
             </div>
           </div>
         </header>

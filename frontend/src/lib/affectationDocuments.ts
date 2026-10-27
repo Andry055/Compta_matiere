@@ -244,7 +244,7 @@ export async function genererPdfAffectation(
   );
   doc.text(`Référence : ${textePdf(a.reference)}`, MARGE + 36, cur + 18);
   doc.text(
-    `Édité le : ${dateFr(new Date().toISOString())} — ComptaMatière`,
+    `Édité le : ${dateFr(new Date().toISOString())} — AssetTrack`,
     MARGE + 36,
     cur + 23
   );
@@ -535,7 +535,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
     `B${ligne}:J${ligne}`,
     `Le scan du QR Code identifie l'affectation ${a.reference} (Direction ${a.direction} — ${a.serviceSource} → ${a.serviceDestinataire} — ${a.quantite} unité(s)).\n\nÉdité le ${dateFr(
       new Date().toISOString()
-    )} — ComptaMatière`,
+    )} — AssetTrack`,
     { font: { size: 9 } }
   );
   ws.getRow(ligne).height = 62;

@@ -243,7 +243,7 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
             {(!sidebarOpen || isMobile) && (
               <div className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
-                <span className="cm-title text-base hidden sm:inline">ComptaMatière</span>
+                <span className="cm-title text-base hidden sm:inline">AssetTrack</span>
               </div>
             )}
           </div>
@@ -314,7 +314,7 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
             </div>
             <div className="flex items-center gap-4">
               <div className="hidden lg:block">Version 1.0.0</div>
-              <div className="hidden xl:block">© 2025 ComptaMatière - Gestion Centralisée</div>
+              <div className="hidden xl:block">© 2025 AssetTrack</div>
             </div>
           </div>
         </footer>

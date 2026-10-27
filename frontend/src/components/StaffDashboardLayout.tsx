@@ -119,7 +119,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
               <div className="flex items-center gap-2">
                 <Package className="h-5 w-5 text-primary" />
                 <span className="cm-title text-base hidden sm:inline">
-                  ComptaMatière
+                  AssetTrack
                 </span>
               </div>
             )}
@@ -175,7 +175,7 @@ export function StaffDashboardLayout({ user, onLogout }: StaffDashboardLayoutPro
             </div>
             <div className="flex items-center gap-4">
               <div className="hidden lg:block">Personnel - Accès Limité</div>
-              <div className="hidden xl:block">© 2025 ComptaMatière</div>
+              <div className="hidden xl:block">© 2025 AssetTrack</div>
             </div>
           </div>
         </footer>

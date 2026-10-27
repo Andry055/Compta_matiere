@@ -574,7 +574,7 @@ export function NewEntryPage({ user, onClose, onCreated }: NewEntryPageProps) {
       <style>body{display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;font-family:sans-serif}
       img{width:380px;height:380px}p{font-size:16px;font-weight:bold}</style></head>
       <body><img src="data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(data)))}" />
-      <p>${referenceCreee || "Nouvelle entrée"} — ComptaMatière</p>
+      <p>${referenceCreee || "Nouvelle entrée"} — AssetTrack</p>
       <script>window.onload=()=>window.print()</script></body></html>`);
     win.document.close();
   };

@@ -506,6 +506,12 @@ const RECEPTION_PHYSIQUE_ACTIONS = [
   'api::reception-physique.reception-physique.create',
 ];
 
+// Lecture seule : `create` reste réservé aux rôles Demandeur/Dépositaire
+// (contrôle métier dans le contrôleur, voir isDemandeur()).
+const RECEPTION_PHYSIQUE_READ_ACTIONS = RECEPTION_PHYSIQUE_ACTIONS.filter(
+  (action) => !action.endsWith('.create')
+);
+
 // ---------------------------------------------------------------------------
 // Notification Outbox : lecture des notifications de l'utilisateur connecté.
 //
@@ -1017,6 +1023,24 @@ async function ensureAuthSetup(strapi) {
       const cle = `${roleDepositaire.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: roleDepositaire.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2treize ter) LECTURE DES RÉCEPTIONS PHYSIQUES pour l'admin APPLICATIF.
+  //
+  // Même défaut que les sorties (voir « 2septies ter ») : le rôle `admin`
+  // (« Administration Centrale ») a accès à TOUTES les rubriques côté
+  // frontend (SimpleSidebar : `allowedPages = navItems.map(...)`, et
+  // DashboardLayout ne le redirige jamais), mais `GET /api/receptions-physiques`
+  // lui renvoyait 403 et l'écran « Réception physique » affichait une erreur au
+  // chargement. Seules des permissions de LECTURE sont accordées — `create`
+  // reste réservé au Demandeur/Dépositaire.
+  if (roles.admin) {
+    for (const action of RECEPTION_PHYSIQUE_READ_ACTIONS) {
+      const cle = `admin:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roles.admin.id } });
       accordees.add(cle);
     }
   }

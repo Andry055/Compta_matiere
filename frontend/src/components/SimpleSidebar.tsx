@@ -178,7 +178,7 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
             <span className="cm-brand-mark">
               <Package className="h-5 w-5" />
             </span>
-            <span className="cm-title text-base text-sidebar-foreground">ComptaMatière</span>
+            <span className="cm-title text-base text-sidebar-foreground">AssetTrack</span>
           </div>
           {isMobile && onClose && (
             <button

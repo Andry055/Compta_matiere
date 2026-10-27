@@ -268,7 +268,7 @@ export async function genererPdfTransfert(
   );
   doc.text(`Référence : ${textePdf(t.reference)}`, MARGE + 36, cur + 18);
   doc.text(
-    `Édité le : ${dateFr(new Date().toISOString())} — ComptaMatière`,
+    `Édité le : ${dateFr(new Date().toISOString())} — AssetTrack`,
     MARGE + 36,
     cur + 23
   );
@@ -601,7 +601,7 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
     `B${ligne}:J${ligne}`,
     `Le scan du QR Code identifie le transfert ${t.reference} (${t.directionOrigine} / ${t.serviceOrigine} → ${t.directionDestination} / ${t.serviceDestination} — ${t.quantite} unité(s)).\n\nÉdité le ${dateFr(
       new Date().toISOString()
-    )} — ComptaMatière`,
+    )} — AssetTrack`,
     { font: { size: 9 } }
   );
   ws.getRow(ligne).height = 62;

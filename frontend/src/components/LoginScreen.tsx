@@ -1,22 +1,16 @@
 import React, { useState } from "react";
-import {
-  Package,
-  Eye,
-  EyeOff,
-  LogIn,
-  AlertCircle,
-  Loader2,
-} from "lucide-react";
+import { Eye, EyeOff, LogIn, Loader2, Users } from "lucide-react";
 import { User as UserType } from "../App";
+import logoMtefop from "../../assets/LogoMETFOP.png";
+import logo from "../../assets/logo.png";
+import bgPhoto from "../../assets/METFOP.jpg";
 import { strapiLogin, fetchSessionRole, setStrapiSession } from "../lib/api";
-import type { StrapiLoginResult } from "../lib/api";
 import { mapStrapiUser } from "../lib/session";
 
 interface LoginScreenProps {
   onLogin: (user: UserType) => void;
 }
 
-// Mock user database with credentials - 5 rôles réglementaires MTEFoP
 const mockUserDatabase: Array<UserType & { password: string }> = [
   {
     id: "admin-1",
@@ -69,8 +63,6 @@ const mockUserDatabase: Array<UserType & { password: string }> = [
     email: "tolotra.randria@mtefop.gov.mg",
     password: "demandeur123",
     role: "demandeur",
-    // Libellé aligné sur l'organigramme réel : c'est lui qui détermine la
-    // direction et le service portés par les demandes du compte.
     department: "DRH - Service Gestion Personnel",
     permissions: ["equipment.view"],
     demandeurLevel: "service",
@@ -81,24 +73,17 @@ const mockUserDatabase: Array<UserType & { password: string }> = [
     email: "jean.rakoto@mtefop.gov.mg",
     password: "direction123",
     role: "demandeur",
-    // Le libellé doit correspondre à l'organigramme RÉEL (c'est lui qui
-    // détermine la direction de la demande côté serveur) : une direction
-    // existante, pas un libellé fantaisiste.
     department: "Direction Logistique",
     permissions: ["equipment.view"],
     demandeurLevel: "direction",
   },
 ];
 
-// NB : les rôles métier reconnus et la transformation Strapi -> profil
-// applicatif vivent dans ../lib/session (partagés avec App.tsx, qui les
-// applique aussi à la reprise de session).
-
 export function LoginScreen({ onLogin }: LoginScreenProps) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
+  const [bMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [showDemoCredentials, setShowDemoCredentials] = useState(false);
@@ -109,31 +94,19 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setIsLoading(true);
 
     const applyRememberMe = () => {
-      if (rememberMe) {
-        localStorage.setItem("rememberMe", "true");
+      if (bMe) {
+        localStorage.setItem("bMe", "true");
         localStorage.setItem("savedEmail", email);
       } else {
-        localStorage.removeItem("rememberMe");
+        localStorage.removeItem("bMe");
         localStorage.removeItem("savedEmail");
       }
     };
 
-    // -----------------------------------------------------------------------
-    // 1) API Strapi (JWT) : la vraie persistance côté serveur
-    // -----------------------------------------------------------------------
     const strapiAuth = await strapiLogin(email, password);
 
-    // Cas 1 : authentification Strapi réussie (JWT reçu).
     if (strapiAuth.ok) {
-      // La réponse de /api/auth/local ne contient PAS `role` (le sanitizer
-      // Content API retire la relation vers users-permissions.user) : on va
-      // le chercher sur /api/session/role, qui lit le rôle réel du jeton.
-      // SANS cette étape, le rôle restait indéfini et l'écran basculait sur
-      // les comptes de démonstration — affichant parfois « Magasinier » alors
-      // que le jeton appartenait à un autre compte, signature refusée en 403.
       const user = await fetchSessionRole();
-      // On remplace l'utilisateur stocké (sans rôle) par celui, complet, renvoyé
-      // par /api/session/role : la reprise de session repartira de la même donnée.
       if (user) setStrapiSession(strapiAuth.jwt, user);
       const mapped = mapStrapiUser(user ?? strapiAuth.user);
       if (mapped) {
@@ -142,19 +115,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
         onLogin(mapped);
         return;
       }
-      // Rôle inconnu ou session/role inaccessible : l'utilisateur est bien
-      // authentifié chez Strapi mais son rôle n'est pas reconnu. On ne bascule
-      // PAS en mode démo : cela masquerait un problème de configuration.
-      setError(
-        "Authentification Strapi réussie, mais le rôle utilisateur est indisponible."
-      );
+      setError("Authentification Strapi réussie, mais le rôle utilisateur est indisponible.");
       setIsLoading(false);
       return;
     }
 
-    // Cas 2 : Strapi a rejeté les identifiants (403 ou 401).
-    // On ne bascule PAS en mode démo : cela masquerait l'échec réel.
-    if (!strapiAuth.ok && strapiAuth.code === 'auth_echec') {
+    if (!strapiAuth.ok && strapiAuth.code === "auth_echec") {
       setError(
         strapiAuth.status === 403
           ? "Authentification refusée : compte bloqué ou non confirmé."
@@ -164,26 +130,15 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
     }
 
-    // Cas 3 : erreur réseau — Strapi injoignable. Repli autorisé sur le mode démo.
-
-    // -----------------------------------------------------------------------
-    // 2) Repli hors ligne : comptes de démonstration de l'application
-    // -----------------------------------------------------------------------
-    // Simulate API call delay
     await new Promise((resolve) => setTimeout(resolve, 1000));
 
-    // Find user in mock database
     const user = mockUserDatabase.find(
-      (u) =>
-        u.email.toLowerCase() === email.toLowerCase() && u.password === password
+      (u) => u.email.toLowerCase() === email.toLowerCase() && u.password === password
     );
 
     if (user) {
-      // Remove password from user object before passing to parent
       const { password: _, ...userWithoutPassword } = user;
       onLogin(userWithoutPassword);
-
-      // Store remember me preference
       applyRememberMe();
     } else {
       setError("Email ou mot de passe incorrect");
@@ -192,10 +147,9 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     setIsLoading(false);
   };
 
-  // Load saved email if remember me was checked
   useState(() => {
     const savedEmail = localStorage.getItem("savedEmail");
-    const rememberMeValue = localStorage.getItem("rememberMe");
+    const rememberMeValue = localStorage.getItem("bMe");
     if (savedEmail && rememberMeValue === "true") {
       setEmail(savedEmail);
       setRememberMe(true);
@@ -209,60 +163,243 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
   };
 
   return (
-    <div className="cm-shell min-h-screen flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Logo and Title */}
-        <div className="text-center mb-8 cm-rise">
-          <div className="cm-brand-mark w-16 h-16 mx-auto mb-5 rounded-2xl">
-            <Package className="h-7 w-7" />
-          </div>
-          <p className="cm-eyebrow cm-eyebrow-accent mb-2">Ministère · Gestion Centralisée</p>
-          <h1 className="cm-title text-3xl sm:text-4xl mb-2">ComptaMatière</h1>
-          <p className="cm-subtitle">
-            Système de Gestion d'Équipements
-          </p>
-        </div>
+    <div className="lg-page">
+      {/* Styles scoped — Tailwind du projet est figé : CSS maison garanti */}
+      <style>{`
+        .lg-page { position: relative; min-height: 100vh; background: #f3f8fd; overflow-x: hidden; }
+        .lg-bg { position: fixed; top: 0; bottom: 0; height: 100vh; object-fit: cover; pointer-events: none; z-index: 0; }
+        .lg-bg-left { left: 0; width: 45%; }
+        .lg-bg-right { right: 0; width: 35%; opacity: 0.07; filter: blur(1px); }
+        .lg-veil { position: fixed; inset: 0; pointer-events: none; z-index: 0;
+          background: linear-gradient(90deg, rgba(243,248,253,0) 0%, rgba(243,248,253,.85) 55%, #f3f8fd 100%); }
+        .lg-curve { position: fixed; pointer-events: none; z-index: 0; }
+        .lg-curve-tl { top: 0; left: 0; }
+        .lg-curve-br { bottom: 0; right: 0; }
+        .lg-dots { position: fixed; width: 130px; height: 76px; pointer-events: none; z-index: 0; opacity: .5;
+          background-image: radial-gradient(circle, #7ec3f0 1.6px, transparent 1.7px);
+          background-size: 22px 22px; }
+        .lg-dots-tr { top: 26px; right: 34px; }
+        .lg-dots-bl { bottom: 34px; left: 34px; }
 
-        {/* Login Form */}
-        <div className="cm-panel cm-panel-solid rounded-xl p-6 sm:p-7 cm-rise" style={{ ["--cm-i" as string]: 1 }}>
-          <div className="mb-6">
-            <h2 className="cm-title text-lg mb-1.5">Connexion</h2>
-            <p className="cm-subtitle">
-              Accédez à votre espace personnel
-            </p>
+        .lg-content { position: relative; z-index: 10; min-height: 100vh; display: flex;
+          flex-direction: column; align-items: center; padding: 32px 16px; box-sizing: border-box; }
+
+        /* En-tête logos */
+        .lg-header { display: flex; align-items: center; justify-content: center; gap: 20px;
+          flex-wrap: wrap; margin-bottom: 32px; }
+        .lg-logo-m { height: 64px; width: auto; object-fit: contain; }
+        .lg-sep { width: 1px; height: 48px; background: #c9d9ea; flex-shrink: 0; }
+        .lg-brand { display: flex; align-items: center; gap: 12px; }
+        .lg-brand-icon { height: 56px; width: 56px; border-radius: 12px; object-fit: contain;
+          background: #0B2A4A; flex-shrink: 0; }
+        .lg-brand-text { display: flex; flex-direction: column; align-items: flex-start; }
+        .lg-brand-title { font-size: 32px; font-weight: 800; letter-spacing: -0.02em;
+          line-height: 1; white-space: nowrap; color: #0B2A4A; margin: 0; }
+        .lg-brand-title .lg-track { color: #1AA39A; }
+        .lg-brand-sub { display: block; font-size: 13px; color: #4B5563; margin-top: 5px;
+          white-space: nowrap; line-height: 1.4; }
+
+        /* Carte */
+        .lg-card { width: 100%; max-width: 560px; background: #fff; border-radius: 22px;
+          border: 1px solid #dce9f5; box-shadow: 0 20px 50px rgba(20,60,110,.12);
+          padding: 40px; box-sizing: border-box; }
+        .lg-card-head { display: flex; align-items: center; gap: 16px; }
+        .lg-avatar { width: 60px; height: 60px; border-radius: 50%; background: #eef3f9;
+          display: flex; align-items: center; justify-content: center; flex-shrink: 0; color: #0f3a6b; }
+        /* l'h2 global non-calqué ajoute border-b pb-2 : on neutralise ici */
+        .lg-title { font-size: 28px; font-weight: 700; color: #0f3a6b; line-height: 1.25;
+          margin: 0; border: none; padding-bottom: 0; letter-spacing: normal; }
+        .lg-sub { display: block; font-size: 14px; color: #5b6e87; line-height: 1.375; margin-top: 2px; }
+        .lg-bar { height: 4px; width: 96px; border-radius: 4px; margin: 22px auto 34px;
+          background: linear-gradient(90deg,#0b78d6,#2fe085); }
+
+        /* Formulaire */
+        .lg-form { display: flex; flex-direction: column; gap: 20px; }
+        .lg-alert { display: flex; align-items: center; gap: 8px; padding: 12px;
+          background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; }
+        .lg-alert span { font-size: 14px; color: #b91c1c; }
+        .lg-label { display: block; font-size: 14px; font-weight: 600; color: #0f3a6b; margin-bottom: 8px; }
+        .lg-field { position: relative; }
+        .lg-input { width: 100%; height: 52px; box-sizing: border-box; padding: 0 16px 0 48px;
+          border-radius: 12px; border: 1.5px solid #c9d9ea; background: #f6f9fd;
+          font-size: 15px; color: #34465f; font-family: inherit; outline: none;
+          transition: border-color .2s, box-shadow .2s; }
+        .lg-input::placeholder { color: #9aabc0; }
+        .lg-input:focus { border-color: #1e88d8; box-shadow: 0 0 0 4px rgba(30,136,216,.15); }
+        .lg-input-pw { padding-right: 48px; }
+        .lg-icon { position: absolute; left: 16px; top: 50%; transform: translateY(-50%);
+          color: #0f3a6b; pointer-events: none; display: flex; }
+        .lg-eye { position: absolute; right: 10px; top: 50%; transform: translateY(-50%);
+          background: none; border: none; cursor: pointer; color: #5b6e87; padding: 6px;
+          border-radius: 6px; display: flex; }
+        .lg-eye:hover { color: #1e88d8; }
+        .lg-options { display: flex; align-items: center; justify-content: space-between;
+          gap: 12px; flex-wrap: wrap; }
+        .lg-remember { display: flex; align-items: center; gap: 10px; cursor: pointer;
+          user-select: none; }
+        .lg-remember input { width: 18px; height: 18px; accent-color: #1273de; cursor: pointer; margin: 0; }
+        .lg-remember span { font-size: 14px; color: #5b6e87; }
+        .lg-forgot { font-size: 14px; font-weight: 500; color: #1273de; white-space: nowrap;
+          text-decoration: none; }
+        .lg-forgot:hover { color: #0e5db3; }
+
+        /* Bouton */
+        .lg-btn { width: 100%; height: 54px; margin-top: 4px; border: none; border-radius: 12px;
+          font-size: 16px; font-weight: 600; color: #fff; font-family: inherit; cursor: pointer;
+          display: flex; align-items: center; justify-content: center; gap: 10px;
+          background: linear-gradient(90deg,#0b78d6 0%,#12a58f 55%,#2fe085 100%);
+          box-shadow: 0 8px 20px rgba(11,120,214,.3);
+          transition: transform .2s, box-shadow .2s; }
+        .lg-btn:hover:not(:disabled) { transform: translateY(-1px);
+          box-shadow: 0 12px 28px rgba(11,120,214,.4); }
+        .lg-btn:active:not(:disabled) { transform: translateY(0); }
+        .lg-btn:disabled { background: #d1d5db; cursor: not-allowed; box-shadow: none; }
+        .lg-demo { margin-top: 24px; text-align: center; font-size: 12px; color: #9aabc0; }
+        .lg-demo-link { background: none; border: none; font-family: inherit; font-size: 13px;
+          color: #1273de; cursor: pointer; padding: 4px 8px; border-radius: 6px; }
+        .lg-demo-link:hover { color: #0e5db3; text-decoration: underline; }
+        .lg-accounts { margin-top: 12px; max-height: 232px; overflow-y: auto; display: flex;
+          flex-direction: column; gap: 8px; text-align: left; }
+        .lg-account { display: flex; flex-direction: column; gap: 2px; padding: 10px 12px;
+          border: 1px solid #e3ecf7; border-radius: 10px; background: #f8fbff; cursor: pointer;
+          font-family: inherit; text-align: left; transition: border-color .15s, background .15s; }
+        .lg-account:hover { border-color: #1e88d8; background: #eef6ff; }
+        .lg-account-name { font-size: 13px; font-weight: 600; color: #0f3a6b; }
+        .lg-account-dept { font-size: 11px; color: #5b6e87; }
+        .lg-account-creds { font-size: 12px; color: #1273de;
+          font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+        /* Pied de page */
+        .lg-footer { margin-top: 40px; display: flex; align-items: center; justify-content: center;
+          gap: 12px; flex-wrap: wrap; font-size: 13px; color: #5b6e87; text-align: center; }
+        .lg-footer-pin { display: flex; align-items: center; gap: 6px; font-weight: 600; color: #1273de; }
+        .lg-footer-line { width: 56px; height: 1px; background: rgba(30,136,216,.5); }
+        .lg-footer-sep { width: 1px; height: 16px; background: #c9d9ea; }
+
+        /* Responsive */
+        @media (max-width: 640px) {
+          .lg-bg { display: none; }
+          .lg-logo-m { height: 48px; }
+          .lg-sep { height: 36px; }
+          .lg-brand-icon { height: 44px; width: 44px; border-radius: 10px; }
+          .lg-brand-title { font-size: 24px; }
+          .lg-brand-sub { font-size: 11px; }
+          .lg-card { padding: 24px 20px; }
+          .lg-title { font-size: 24px; }
+          .lg-avatar { width: 52px; height: 52px; }
+          .lg-footer-line { display: none; }
+          .lg-dots { width: 90px; height: 54px; }
+        }
+        .lg-spin { animation: lg-rotate 1s linear infinite; }
+        @keyframes lg-rotate { to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* ===== Arrière-plan ===== */}
+      <img src={bgPhoto} alt="Bâtiment du Ministère" className="lg-bg lg-bg-left" />
+      <div className="lg-veil" aria-hidden="true" />
+      <img src={bgPhoto} alt="" aria-hidden="true" className="lg-bg lg-bg-right" />
+
+      {/* Courbes décoratives */}
+      <svg className="lg-curve lg-curve-tl" width="240" height="190" viewBox="0 0 240 190" fill="none" aria-hidden="true">
+        <path d="M0 0 H180 C140 45 70 90 0 115 Z" fill="url(#lgGradTL)" />
+        <path d="M0 105 C70 80 140 40 180 0" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.75" />
+        <defs>
+          <linearGradient id="lgGradTL" x1="0" y1="0" x2="180" y2="115" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#17A398" 
+ />
+            <stop offset="1" stopColor="#56C1E8" />
+          </linearGradient>
+        </defs>
+      </svg>
+      <svg className="lg-curve lg-curve-br" width="260" height="200" viewBox="0 0 260 200" fill="none" aria-hidden="true">
+        <path d="M260 200 H70 C115 155 185 110 260 85 Z" fill="url(#lgGradBR)" />
+        <path d="M260 95 C185 120 115 160 70 200" stroke="#ffffff" strokeWidth="2.5" fill="none" opacity="0.6" />
+        <defs>
+          <linearGradient id="lgGradBR" x1="260" y1="200" x2="70" y2="85" gradientUnits="userSpaceOnUse">
+            <stop stopColor="#2FE085" />
+            <stop offset="1" stopColor="#0B78D6" />
+          </linearGradient>
+        </defs>
+      </svg>
+
+      {/* Grilles de points */}
+      <div className="lg-dots lg-dots-tr" aria-hidden="true" />
+      <div className="lg-dots lg-dots-bl" aria-hidden="true" />
+
+      {/* ===== Contenu ===== */}
+      <div className="lg-content">
+        {/* En-tête : logos côte à côte */}
+        <header className="lg-header">
+          <img src={logoMtefop} alt="Logo du Ministère MTEFoP" className="lg-logo-m" />
+          <div className="lg-sep" aria-hidden="true" />
+          <div className="lg-brand">
+            <img src={logo} alt="Logo AssetTrack" className="lg-brand-icon" />
+            <div className="lg-brand-text">
+              <span className="lg-brand-title">
+                Asset<span className="lg-track">Track</span>
+              </span>
+              <span className="lg-brand-sub">Système de Gestion d'Équipements</span>
+            </div>
+          </div>
+        </header>
+
+        {/* Carte de connexion */}
+        <main className="lg-card">
+          {/* En-tête de la carte */}
+          <div className="lg-card-head">
+            <div className="lg-avatar">
+              <Users size={26} stroke="currentColor" aria-hidden="true" />
+            </div>
+            <div>
+              <h2 className="lg-title">Connexion</h2>
+              <span className="lg-sub">Entrez vos identifiants pour accéder à votre espace</span>
+            </div>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Error Message */}
+          {/* Barre dégradée sous l'en-tête */}
+          <div className="lg-bar" aria-hidden="true" />
+
+          <form onSubmit={handleSubmit} className="lg-form">
             {error && (
-              <div className="flex items-center gap-2 p-3 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <AlertCircle className="h-4 w-4 text-destructive" />
-                <span className="text-sm text-destructive">{error}</span>
+              <div role="alert" className="lg-alert">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style={{ color: "#dc2626", flexShrink: 0 }}>
+                  <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-2h2v2zm0-4h-2V7h2v6z" />
+                </svg>
+                <span>{error}</span>
               </div>
             )}
 
-            {/* Email Field */}
+            {/* Champ Adresse email */}
             <div>
-              <label htmlFor="email" className="cm-label">
-                Adresse email
-              </label>
-              <input
-                id="email"
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="votre.email@entreprise.com"
-                required
-                className="cm-field w-full px-3 py-2.5 rounded-lg text-sm"
-              />
+              <label htmlFor="email" className="lg-label">Adresse email</label>
+              <div className="lg-field">
+                <span className="lg-icon" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z" />
+                  </svg>
+                </span>
+                <input
+                  id="email"
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="admin@compta.mg"
+                  required
+                  autoComplete="email"
+                  className="lg-input"
+                />
+              </div>
             </div>
 
-            {/* Password Field */}
+            {/* Champ Mot de passe */}
             <div>
-              <label htmlFor="password" className="cm-label">
-                Mot de passe
-              </label>
-              <div className="relative">
+              <label htmlFor="password" className="lg-label">Mot de passe</label>
+              <div className="lg-field">
+                <span className="lg-icon" aria-hidden="true">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
+                    <path d="M18 8h-1V6c0-2.76-2.24-5-5-5S7 3.24 7 6v2H6c-1.1 0-2 .9-2 2v10c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V10c0-1.1-.9-2-2-2zM12 17c-1.1 0-2-.9-2-2s.9-2 2-2 2 .9 2 2-.9 2-2 2zm3.1-9H8.9V6c0-1.71 1.39-3.1 3.1-3.1s3.1 1.39 3.1 3.1v2z" />
+                  </svg>
+                </span>
                 <input
                   id="password"
                   type={showPassword ? "text" : "password"}
@@ -270,206 +407,94 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
                   required
-                  className="cm-field w-full px-3 py-2.5 pr-10 rounded-lg text-sm"
+                  autoComplete="current-password"
+                  className="lg-input lg-input-pw"
                 />
                 <button
                   type="button"
-                  onClick={() => setShowPassword(!showPassword)}
+                  onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? "Masquer le mot de passe" : "Afficher le mot de passe"}
-                  className="absolute right-3 top-1/2 transform -translate-y-1/2 text-muted-foreground hover:text-primary transition-colors"
+                  className="lg-eye"
                 >
-                  {showPassword ? (
-                    <EyeOff className="h-4 w-4" />
-                  ) : (
-                    <Eye className="h-4 w-4" />
-                  )}
+                  {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                 </button>
               </div>
             </div>
 
-            {/* Remember Me */}
-            <div className="flex items-center justify-between gap-3">
-              <label className="flex items-center gap-2 cursor-pointer">
+            {/* Options : remember me + mot de passe oublié */}
+            <div className="lg-options">
+              <label className="lg-remember">
                 <input
                   type="checkbox"
-                  checked={rememberMe}
+                  checked={bMe}
                   onChange={(e) => setRememberMe(e.target.checked)}
-                  className="rounded border-border focus:ring-2 focus:ring-ring"
                 />
-                <span className="text-sm text-card-foreground">
-                  Se souvenir de moi
-                </span>
+                <span>Se souvenir de moi</span>
               </label>
-              <button
-                type="button"
-                className="text-sm text-primary hover:text-primary/80 transition-colors"
-              >
-                Mot de passe oublié ?
-              </button>
+              <a href="#" className="lg-forgot">Mot de passe oublié ?</a>
             </div>
 
-            {/* Login Button */}
-            <button
-              type="submit"
-              disabled={isLoading}
-              className={`w-full flex items-center justify-center gap-2 px-4 py-3 rounded-lg text-sm font-medium transition-all duration-200 ${
-                isLoading
-                  ? "bg-muted text-muted-foreground cursor-not-allowed"
-                  : "cm-btn-primary"
-              }`}
-            >
+            {/* Bouton Se connecter */}
+            <button type="submit" disabled={isLoading} className="lg-btn">
               {isLoading ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <Loader2 size={20} className="lg-spin" aria-hidden="true" />
                   Connexion en cours...
                 </>
               ) : (
                 <>
-                  <LogIn className="h-4 w-4" />
+                  <LogIn size={20} aria-hidden="true" />
                   Se connecter
                 </>
               )}
             </button>
           </form>
 
-          {/* Demo Credentials */}
-          <div className="mt-6">
+          {/* Comptes existants — lien d'affichage */}
+          <div className="lg-demo">
             <button
-              onClick={() => setShowDemoCredentials(!showDemoCredentials)}
-              className="w-full text-center text-sm text-muted-foreground hover:text-foreground transition-colors"
+              type="button"
+              className="lg-demo-link"
+              onClick={() => setShowDemoCredentials((v) => !v)}
             >
-              {showDemoCredentials ? "Masquer" : "Afficher"} les comptes
+              {showDemoCredentials ? "Masquer les comptes" : "Afficher les comptes"}
             </button>
-
             {showDemoCredentials && (
-              <div className="cm-panel-flat mt-4 p-4 cm-fade">
-                <h4 className="cm-eyebrow mb-3">
-                  Comptes de test disponibles
-                </h4>
-                <div className="space-y-2 text-xs">
-                  <div className="grid gap-2">
-                    <button
-                      onClick={() =>
-                        fillDemoCredentials(
-                          "m.rakoto@ministere.gov.mg",
-                          "admin123"
-                        )
-                      }
-                      className="text-left p-2.5 rounded-lg border border-red-500/30 bg-red-500/10 transition-colors hover:bg-red-500/20"
-                    >
-                      <div className="text-red-700 dark:text-red-300">
-                        👑 <strong>Marie RAKOTO</strong> - Administrateur
-                        Système
-                      </div>
-                      <div className="text-red-600 dark:text-red-400">
-                        m.rakoto@ministere.gov.mg / admin123
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        fillDemoCredentials(
-                          "hery.rakoto@mtefop.gov.mg",
-                          "depositaire123"
-                        )
-                      }
-                      className="text-left p-2.5 rounded-lg border border-blue-500/30 bg-blue-500/10 transition-colors hover:bg-blue-500/20"
-                    >
-                      <div className="text-blue-700 dark:text-blue-300">
-                        👤 <strong>Rakotomalala Hery</strong> - Dépositaire
-                        par service
-                      </div>
-                      <div className="text-blue-600 dark:text-blue-400">
-                        hery.rakoto@mtefop.gov.mg / depositaire123
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        fillDemoCredentials(
-                          "fara.andriam@mtefop.gov.mg",
-                          "magasinier123"
-                        )
-                      }
-                      className="text-left p-2.5 rounded-lg border border-blue-500/30 bg-blue-500/10 transition-colors hover:bg-blue-500/20"
-                    >
-                      <div className="text-blue-700 dark:text-blue-300">
-                        👤 <strong>Andriamampianina Fara</strong> -
-                        Magasinier
-                      </div>
-                      <div className="text-blue-600 dark:text-blue-400">
-                        fara.andriam@mtefop.gov.mg / magasinier123
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        fillDemoCredentials(
-                          "tojo.razaf@mtefop.gov.mg",
-                          "logistique123"
-                        )
-                      }
-                      className="text-left p-2.5 rounded-lg border border-green-500/30 bg-green-500/10 transition-colors hover:bg-green-500/20"
-                    >
-                      <div className="text-green-700 dark:text-green-300">
-                        📦 <strong>Razafindrakoto Tojo</strong> - Chef
-                        logistique
-                      </div>
-                      <div className="text-green-600 dark:text-green-400">
-                        tojo.razaf@mtefop.gov.mg / logistique123
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        fillDemoCredentials(
-                          "nirina.ravao@mtefop.gov.mg",
-                          "comptable123"
-                        )
-                      }
-                      className="text-left p-2.5 rounded-lg border border-purple-500/30 bg-purple-500/10 transition-colors hover:bg-purple-500/20"
-                    >
-                      <div className="text-purple-700 dark:text-purple-300">
-                        👥 <strong>Ravaomanana Nirina</strong> - Comptable
-                      </div>
-                      <div className="text-purple-600 dark:text-purple-400">
-                        nirina.ravao@mtefop.gov.mg / comptable123
-                      </div>
-                    </button>
-
-                    <button
-                      onClick={() =>
-                        fillDemoCredentials(
-                          "tolotra.randria@mtefop.gov.mg",
-                          "demandeur123"
-                        )
-                      }
-                      className="text-left p-2.5 rounded-lg border border-orange-500/30 bg-orange-500/10 transition-colors hover:bg-orange-500/20"
-                    >
-                      <div className="text-orange-700 dark:text-orange-300">
-                        💻 <strong>Randriamampionona Tolotra</strong> -
-                        Demandeur (Service)
-                      </div>
-                      <div className="text-orange-600 dark:text-orange-400">
-                        tolotra.randria@mtefop.gov.mg / demandeur123
-                      </div>
-                    </button>
-                  </div>
-                </div>
+              <div className="lg-accounts" role="list">
+                {mockUserDatabase.map((u) => (
+                  <button
+                    key={u.id}
+                    type="button"
+                    className="lg-account"
+                    role="listitem"
+                    onClick={() => {
+                      fillDemoCredentials(u.email, u.password);
+                      setShowDemoCredentials(false);
+                    }}
+                  >
+                    <span className="lg-account-name">{u.name}</span>
+                    <span className="lg-account-dept">{u.department}</span>
+                    <span className="lg-account-creds">{u.email} · {u.password}</span>
+                  </button>
+                ))}
               </div>
             )}
           </div>
-        </div>
+        </main>
 
-        {/* Footer */}
-        <div className="text-center mt-6 cm-rise" style={{ ["--cm-i" as string]: 2 }}>
-          <p className="text-xs text-muted-foreground">
-            © 2025 ComptaMatière - Gestion Centralisée d'Équipements
-          </p>
-          <p className="text-xs text-muted-foreground mt-1">
-            Version 1.0.0 - Sécurisé et Confidentiel
-          </p>
-        </div>
+        {/* Pied de page institutionnel */}
+        <footer className="lg-footer">
+          <span className="lg-footer-line" aria-hidden="true" />
+          <span className="lg-footer-pin">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" />
+            </svg>
+            MTEFoP
+          </span>
+          <span className="lg-footer-sep" aria-hidden="true" />
+          <span>Une gestion efficace pour un meilleur service</span>
+          <span className="lg-footer-line" aria-hidden="true" />
+        </footer>
       </div>
     </div>
   );

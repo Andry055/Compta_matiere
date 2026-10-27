@@ -59,7 +59,7 @@ export function AppSidebar() {
       <SidebarHeader className="border-b border-sidebar-border">
         <div className="flex items-center gap-2 px-4 py-2">
           <Package className="h-6 w-6 text-primary" />
-          <span className="text-sidebar-foreground">ComptaMatière</span>
+          <span className="text-sidebar-foreground">AssetTrack</span>
         </div>
       </SidebarHeader>
       <SidebarContent>

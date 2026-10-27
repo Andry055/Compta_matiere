@@ -45,6 +45,9 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
   // Pièce à ouvrir dans l'écran Arrivée Matériel, demandée par un clic sur une
   // notification de la cloche du navbar (les 3 rôles du flux de réception).
   const [entreeCibleId, setEntreeCibleId] = useState<string | number | null>(null)
+  // Demande à ouvrir dans l'écran Demandes, demandée par un clic sur une
+  // notification « nouvelle demande » de la cloche (dépositaire général).
+  const [demandeCibleId, setDemandeCibleId] = useState<string | null>(null)
   // Demande APPROUVÉE à transformer en ordre de sortie (étape 3) : posée par
   // l'écran Décision (clic « Créer l'ordre de sortie »), elle ouvre la page
   // Distribution sur l'onglet « Ordres de sortie » avec le formulaire prérempli.
@@ -135,6 +138,8 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
             user={user}
             detailRequestId={requestDetailId ?? undefined}
             onDetailConsumed={() => setRequestDetailId(null)}
+            demandeCibleId={demandeCibleId ?? undefined}
+            onDemandeCibleConsumed={() => setDemandeCibleId(null)}
             onCreerOrdreSortie={handleCreerOrdreSortie}
           />
         )
@@ -154,6 +159,9 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
     // Une navigation classique invalide la pièce demandée par une notification :
     // l'utilisateur choisit librement son écran d'arrivée.
     setEntreeCibleId(null)
+    // …ainsi que la demande visée par une notification : elle ne doit être
+    // ouverte que par le clic correspondant.
+    setDemandeCibleId(null)
     // …ainsi que la demande en attente de transformation en ordre de sortie :
     // seul un clic sur « Créer l'ordre de sortie » doit ouvrir le formulaire
     // prérempli.
@@ -173,6 +181,18 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
   const handleOuvrirNotification = (entreeId: string | number) => {
     setEntreeCibleId(entreeId)
     setActiveSection("arrivee")
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
+  }
+
+  // Ouverture d'une DEMANDE depuis une notification « nouvelle demande » de
+  // la cloche : la cible est posée AVANT le changement d'écran (handleSectionChange
+  // effacerait toute cible), pour que l'écran Demandes s'ouvre directement sur
+  // la demande concernée.
+  const handleOuvrirDemande = (demandeDocumentId: string) => {
+    setDemandeCibleId(demandeDocumentId)
+    setActiveSection("requests")
     if (isMobile) {
       setMobileMenuOpen(false)
     }
@@ -266,12 +286,14 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
 
             {/* Notifications : actions en attente du rôle + informations. Un clic sur une
                 notification de réception ouvre la pièce dans Arrivée Matériel ; une
-                notification de sortie acceptée (dépositaire) ouvre Distribution. */}
+                notification de sortie acceptée (dépositaire) ouvre Distribution ; une
+                notification « nouvelle demande » ouvre la demande concernée. */}
             <NotificationBell
               user={user}
               version={notificationVersion}
               onOpenEntree={handleOuvrirNotification}
               onOpenSortie={() => handleSectionChange("distribution")}
+              onOpenDemande={handleOuvrirDemande}
             />
 
             {/* Theme Toggle */}

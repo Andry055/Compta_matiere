@@ -171,6 +171,43 @@ export default function App() {
         })
 
         setNotificationVersion((v) => v + 1)
+      } else if (event.type === 'nouvelle_demande' && currentUser.role === 'depositaire') {
+        const {
+          notifId,
+          demandeDocumentId,
+          demandeReference,
+          demandeDate,
+          demandeur,
+          message,
+        } = event.data
+
+        // L'identifiant de la notification est STABLE (clé d'idempotence
+        // calculée par le serveur) : l'événement SSE et la réconciliation de
+        // l'outbox produisent le MÊME identifiant, donc la notification
+        // n'apparaît jamais deux fois.
+        const notificationId =
+          typeof notifId === 'string' && notifId
+            ? notifId
+            : typeof demandeDocumentId === 'string' && demandeDocumentId
+              ? `nouvelle_demande-${demandeDocumentId}`
+              : undefined
+
+        pushRealtimeNotification(
+          'nouvelle_demande',
+          message || `Une nouvelle demande (${demandeReference || ''}) a été déposée.`,
+          demandeDate || new Date().toISOString(),
+          notificationId,
+          currentUser.role,
+          typeof demandeDocumentId === 'string' ? demandeDocumentId : undefined
+        )
+
+        toast.success("Nouvelle demande", {
+          description:
+            message ||
+            `La demande ${demandeReference || ''} a été déposée${demandeur ? ` par ${demandeur}` : ''}.`,
+        })
+
+        setNotificationVersion((v) => v + 1)
       }
     })
 
@@ -209,6 +246,11 @@ export default function App() {
   // le dépositaire. Même principe que pour le demandeur : les notifications
   // de réception physique émises pendant une déconnexion SSE sont persistées
   // en outbox et doivent être rejouées à la reconnexion.
+  //
+  // L'événement `nouvelle_demande` est traité À PART : il porte son propre
+  // identifiant stable (`payload.notifId`) et cible une demande précise. Il
+  // ne doit donc JAMAIS être réinjecté comme une notification générique
+  // « sortie », sous peine d'apparaître deux fois.
   useEffect(() => {
     if (currentUser?.role !== 'magasinier' && currentUser?.role !== 'depositaire') return
     const jwt = getStrapiJwt()
@@ -218,6 +260,35 @@ export default function App() {
       const notifications = await fetchNotificationsOutbox()
       if (!mounted) return
       for (const n of notifications ?? []) {
+        if (n.eventType === 'nouvelle_demande') {
+          const payload = n.payload ?? {}
+          const demandeDocumentId =
+            typeof payload.demandeDocumentId === 'string'
+              ? payload.demandeDocumentId
+              : undefined
+          // MÊME identifiant que celui utilisé par l'événement SSE : la
+          // notification déjà reçue en direct n'est pas dupliquée.
+          const notificationId =
+            typeof payload.notifId === 'string' && payload.notifId
+              ? payload.notifId
+              : demandeDocumentId
+                ? `nouvelle_demande-${demandeDocumentId}`
+                : `outbox-${n.id}`
+          pushRealtimeNotification(
+            'nouvelle_demande',
+            typeof payload.message === 'string'
+              ? payload.message
+              : `Une nouvelle demande (${payload.demandeReference || ''}) a été déposée.`,
+            (typeof payload.demandeDate === 'string' && payload.demandeDate) ||
+              n.createdAt ||
+              new Date().toISOString(),
+            notificationId,
+            currentUser.role,
+            demandeDocumentId
+          )
+          continue
+        }
+
         const message =
           typeof n.payload?.message === 'string' ? n.payload.message : `Une notification de réception est en attente.`
         pushRealtimeNotification(

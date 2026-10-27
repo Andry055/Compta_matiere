@@ -16,24 +16,36 @@
       "type": "relation",
       "relation": "manyToOne",
       "target": "api::sortie.sortie",
-      "required": true
+      "required": false
+    },
+    "demande": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::demande.demande",
+      "required": false
     },
     "eventType": {
       "type": "enumeration",
       "enum": [
         "ordre_pret_distribution",
         "ordre_sortie_autorise",
-        "demande_aboutie"
+        "demande_aboutie",
+        "nouvelle_demande"
       ],
       "required": true
     },
     "recipientId": {
       "type": "integer",
-      "required": true
+      "required": false
     },
     "recipientRole": {
       "type": "string",
-      "required": true
+      "required": false
+    },
+    "cleUnicite": {
+      "type": "string",
+      "required": false,
+      "unique": true
     },
     "payload": {
       "type": "json",

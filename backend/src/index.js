@@ -1264,20 +1264,31 @@ module.exports = {
       strapi.log.error(`[seed-materiels] Échec : ${err.message}`);
     }
 
-    // Garantit que la colonne lastAttemptAt existe sur la table
-    // notification_outboxes. Déclarée dans schema.json mais absente des tables
-    // créées avant son ajout : le UPDATE dans reclamerEntrees échouait avec
-    // "no such column: lastAttemptAt", bloquant toute distribution outbox.
-    try {
-      await strapi.db.connection.raw(
-        `ALTER TABLE notification_outboxes ADD COLUMN lastAttemptAt DATETIME`
-      );
-      strapi.log.info('[notification-outbox] Colonne lastAttemptAt ajoutée.');
-    } catch (e) {
-      if (!/duplicate column/i.test(e.message || '')) {
-        strapi.log.warn(
-          `[notification-outbox] Impossible d'ajouter lastAttemptAt : ${e.message}`
+    // Garantit que les colonnes utilisées par le SQL BRUT du distributeur
+    // existent sur la table notification_outboxes.
+    //
+    // ATTENTION — ce sont les noms de COLONNES de la table (snake_case) :
+    // `last_attempt_at` et `last_error`. Les former camelCase
+    // ('lastAttemptAt', 'lastError') fait échouer les UPDATE du
+    // distributeur avec « no such column » et bloque TOUTE distribution de
+    // notification. La colonne `cle_unicite` (clé d'idempotence de
+    // l'événement `nouvelle_demande`) est également garantie ici.
+    for (const [colonne, type] of [
+      ['last_attempt_at', 'DATETIME'],
+      ['last_error', 'TEXT'],
+      ['cle_unicite', 'VARCHAR(255)'],
+    ]) {
+      try {
+        await strapi.db.connection.raw(
+          `ALTER TABLE notification_outboxes ADD COLUMN ${colonne} ${type}`
         );
+        strapi.log.info(`[notification-outbox] Colonne ${colonne} ajoutée.`);
+      } catch (e) {
+        if (!/duplicate column/i.test(e.message || '')) {
+          strapi.log.warn(
+            `[notification-outbox] Impossible d'ajouter ${colonne} : ${e.message}`
+          );
+        }
       }
     }
 

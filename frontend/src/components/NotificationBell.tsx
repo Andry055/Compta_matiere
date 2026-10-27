@@ -5,6 +5,7 @@ import {
   ChevronRight,
   Clipboard,
   ClipboardCheck,
+  ClipboardPlus,
   Inbox,
   Lock,
   Package,
@@ -35,6 +36,8 @@ function notifIcon(type: AppNotification["type"]) {
   switch (type) {
     case "demande":
       return Clipboard;
+    case "nouvelle_demande":
+      return ClipboardPlus;
     case "sortie":
       return ArrowUpFromLine;
     case "entree":
@@ -128,6 +131,8 @@ interface NotificationBellProps {
   onOpenEntree?: (entreeId: string | number) => void;
   /** Ouvre l'espace Distribution sur une notification de sortie (dépositaire). */
   onOpenSortie?: () => void;
+  /** Ouvre l'espace Demandes sur la demande visée par une notification. */
+  onOpenDemande?: (demandeDocumentId: string) => void;
 }
 
 /**
@@ -152,6 +157,7 @@ export function NotificationBell({
   version = 0,
   onOpenEntree,
   onOpenSortie,
+  onOpenDemande,
 }: NotificationBellProps) {
   const [open, setOpen] = useState(false);
   const [items, setItems] = useState<AppNotification[]>([]);
@@ -265,9 +271,20 @@ export function NotificationBell({
     setOpen((v) => !v);
   };
 
-  const handleOpenItem = (id: string) => {
-    markNotificationRead(id);
+  /**
+   * Clic sur une notification d'information.
+   *
+   * Si la notification porte une demande (événement `nouvelle_demande`), le
+   * clic ouvre DIRECTEMENT cette demande dans l'espace Demandes ; sinon la
+   * notification est simplement marquée comme lue.
+   */
+  const handleOpenItem = (item: AppNotification) => {
+    markNotificationRead(item.id);
     refresh();
+    if (item.demandeDocumentId && onOpenDemande) {
+      setOpen(false);
+      onOpenDemande(item.demandeDocumentId);
+    }
   };
 
   const handleMarkAll = () => {
@@ -492,10 +509,14 @@ export function NotificationBell({
               items.map((item) => {
                 const Icon = notifIcon(item.type);
                 const isUnread = unread.some((n) => n.id === item.id);
+                // Une notification rattachée à une demande est OUVRABLE : le
+                // clic mène à la demande concernée.
+                const ouvrable = !!item.demandeDocumentId && !!onOpenDemande;
                 return (
                   <button
                     key={item.id}
-                    onClick={() => handleOpenItem(item.id)}
+                    onClick={() => handleOpenItem(item)}
+                    title={ouvrable ? "Ouvrir cette demande" : undefined}
                     className={`w-full flex items-start gap-3 px-4 py-3 text-left border-b border-border last:border-b-0 hover:bg-accent/40 transition-colors ${
                       isUnread ? "bg-blue-50/60 dark:bg-blue-900/10" : ""
                     }`}
@@ -519,6 +540,9 @@ export function NotificationBell({
                     </span>
                     {isUnread && (
                       <span className="mt-2 h-2 w-2 rounded-full bg-blue-500 flex-shrink-0" />
+                    )}
+                    {ouvrable && (
+                      <ChevronRight className="mt-1.5 h-4 w-4 flex-shrink-0 text-muted-foreground" />
                     )}
                   </button>
                 );

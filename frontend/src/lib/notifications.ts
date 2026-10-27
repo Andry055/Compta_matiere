@@ -27,6 +27,7 @@ export type NotificationType =
   | "correction"
   | "reception_confirmee"
   | "demande"
+  | "nouvelle_demande"
   | "sortie"
   | "entree"
   | "stock";
@@ -44,6 +45,11 @@ export interface AppNotification {
   numeroBL?: string;
   // ── Flux dérivé des données (espace Demandeur / cloche) ──
   message?: string;
+  /**
+   * documentId de la DEMANDE concernée (événement `nouvelle_demande`).
+   * Présent, le clic sur la notification ouvre directement cette demande.
+   */
+  demandeDocumentId?: string;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -100,13 +106,17 @@ export function pushNotification(
  * Ajoute une notification push temps réel (SSE) pour le demandeur.
  * Écrite dans le même localStorage que les notifications par rôle, avec
  * `targetRole: 'demandeur'`, afin d'apparaître dans la cloche du header.
+ *
+ * `demandeDocumentId` identifie la demande concernée : le clic sur la
+ * notification ouvre alors CETTE demande (et non la liste entière).
  */
 export function pushRealtimeNotification(
   type: AppNotification["type"],
   message: string,
   date: string,
   id?: string,
-  targetRole?: AppRole
+  targetRole?: AppRole,
+  demandeDocumentId?: string
 ): void {
   const notifs = readAll();
   const notificationId = id || `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -120,6 +130,7 @@ export function pushRealtimeNotification(
     date,
     targetRole: targetRole ?? 'demandeur',
     read: false,
+    demandeDocumentId,
   });
   // Garde-fou : on conserve les 50 plus récentes.
   writeAll(notifs.slice(0, 50));

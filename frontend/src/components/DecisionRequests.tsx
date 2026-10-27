@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Check,
   Clock,
@@ -24,6 +24,14 @@ import { Message } from "./ui/message";
 
 interface DecisionRequestsProps {
   user?: User;
+  /**
+   * documentId de la demande visée par une notification « nouvelle demande »
+   * (clic dans la cloche). La carte correspondante est mise en évidence et
+   * défile jusqu'à elle : le clic ouvre bien LA demande concernée.
+   */
+  demandeCibleId?: string;
+  /** Notifie le parent que la demande visée a été prise en compte. */
+  onDemandeCibleConsumed?: () => void;
   /**
    * ÉTAPE 3 « ouverte » : au lieu de créer l'ordre d'un seul clic (le
    * serveur préremplirait tout en base), le bouton transmet la demande au
@@ -55,7 +63,12 @@ interface DecisionRequestsProps {
  * validation, refuse un second ordre et renvoie un message d'erreur qui est
  * AFFICHÉ tel quel (jamais de fausse réussite).
  */
-export function DecisionRequests({ user, onCreerOrdreSortie }: DecisionRequestsProps) {
+export function DecisionRequests({
+  user,
+  demandeCibleId,
+  onDemandeCibleConsumed,
+  onCreerOrdreSortie,
+}: DecisionRequestsProps) {
   const [demandes, setDemandes] = useState<DemandeRecord[] | null>(null);
   const [origineDetail, setOrigineDetail] = useState<string | null>(null);
   const [chargement, setChargement] = useState(true);
@@ -71,6 +84,12 @@ export function DecisionRequests({ user, onCreerOrdreSortie }: DecisionRequestsP
   const [motif, setMotif] = useState("");
   /** Demande dont l'ordre de sortie est en cours de création (étape 3). */
   const [ordreEnCours, setOrdreEnCours] = useState<string | null>(null);
+  /** Demande mise en évidence (cible d'une notification « nouvelle demande »). */
+  const [demandeMiseEnEvidence, setDemandeMiseEnEvidence] = useState<string | null>(
+    null
+  );
+  /** Carte de la demande cible, pour la faire défiler jusqu'à elle. */
+  const refDemandeCible = useRef<HTMLElement | null>(null);
 
   const charger = useCallback(async () => {
     const resultat = await fetchDemandesDetail();
@@ -97,6 +116,32 @@ export function DecisionRequests({ user, onCreerOrdreSortie }: DecisionRequestsP
   useEffect(() => {
     charger();
   }, [charger]);
+
+  /**
+   * Clic sur une notification « nouvelle demande » → la demande visée est
+   * mise en évidence et défile jusqu'à elle.
+   *
+   * L'effet attend le chargement de la liste (`demandes`) : sans les données
+   * réelles, la cible est introuvable. La cible est ensuite « consommée »
+   * auprès du parent : elle ne serait sinon réappliquée à chaque rechargement
+   * de la liste.
+   */
+  useEffect(() => {
+    if (!demandeCibleId || !demandes) return;
+
+    const cible = demandes.find((d) => d.documentId === demandeCibleId);
+    if (cible) {
+      setDemandeMiseEnEvidence(demandeCibleId);
+      // Le défilement attend le rendu de la carte mise en évidence.
+      window.requestAnimationFrame(() => {
+        refDemandeCible.current?.scrollIntoView({
+          behavior: "smooth",
+          block: "center",
+        });
+      });
+    }
+    onDemandeCibleConsumed?.();
+  }, [demandes, demandeCibleId, onDemandeCibleConsumed]);
 
   /** Seules les demandes EN ATTENTE sont à traiter (une seule validation). */
   const aTraiter = useMemo(
@@ -284,10 +329,17 @@ export function DecisionRequests({ user, onCreerOrdreSortie }: DecisionRequestsP
 
         {aTraiter.map((demande) => {
         const occupée = enCours === demande.documentId;
+        const miseEnEvidence = demandeMiseEnEvidence === demande.documentId;
         return (
           <article
             key={demande.documentId || demande.id}
-            className="rounded-lg border border-border cm-panel cm-panel-solid p-4"
+            ref={miseEnEvidence ? refDemandeCible : undefined}
+            data-demande-cible={miseEnEvidence ? "true" : undefined}
+            className={`rounded-lg border cm-panel cm-panel-solid p-4 ${
+              miseEnEvidence
+                ? "border-primary ring-2 ring-primary/40"
+                : "border-border"
+            }`}
           >
             <header className="mb-3 flex flex-wrap items-center gap-2">
               <span className="font-medium text-foreground">
@@ -444,10 +496,18 @@ export function DecisionRequests({ user, onCreerOrdreSortie }: DecisionRequestsP
         {approuvees.map((demande) => {
           const occupe = ordreEnCours === demande.documentId;
           const dejaOrdonnee = !!demande.sortieReference;
+          const miseEnEvidence =
+            demandeMiseEnEvidence === demande.documentId;
           return (
             <article
               key={`ordre-${demande.documentId || demande.id}`}
-              className="rounded-lg border border-border cm-panel cm-panel-solid p-4"
+              ref={miseEnEvidence ? refDemandeCible : undefined}
+              data-demande-cible={miseEnEvidence ? "true" : undefined}
+              className={`rounded-lg border cm-panel cm-panel-solid p-4 ${
+                miseEnEvidence
+                  ? "border-primary ring-2 ring-primary/40"
+                  : "border-border"
+              }`}
             >
               <header className="mb-3 flex flex-wrap items-center gap-2">
                 <span className="font-medium text-foreground">

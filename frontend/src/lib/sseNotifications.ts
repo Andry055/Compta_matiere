@@ -45,11 +45,14 @@ export function connectSSE(userId: number, jwt: string): void {
     console.log('[SSE] Connecté (utilisateur #' + userId + ')');
   };
 
-  es.onmessage = (event) => {
-    // Le type provient du champ `event:` du flux SSE (ex. 'demande_aboutie',
-    // 'ordre_pret_distribution', 'ordre_sortie_autorise').
-    // Les messages sans `event:` explicite sont de type 'message'.
-    const type = (event as any).type || 'message';
+  /**
+   * Distribution d'un événement SSE aux abonnés de l'application.
+   *
+   * Le type de l'événement est celui du champ `event:` du flux SSE
+   * (ex. 'nouvelle_demande').
+   */
+  const traiterEvenement = (event: MessageEvent) => {
+    const type = event.type || "message";
     try {
       const data = JSON.parse(event.data);
       listeners.forEach((cb) => cb({ type, data }));
@@ -57,6 +60,20 @@ export function connectSSE(userId: number, jwt: string): void {
       listeners.forEach((cb) => cb({ type, data: event.data }));
     }
   };
+
+  es.onmessage = traiterEvenement;
+
+  // Les événements qui portent un NOM dans le champ `event:` ne déclenchent
+  // PAS `onmessage` : le navigateur ne les distribue qu'aux écouteurs
+  // enregistrés pour ce type précis (cf. spec EventSource). Sans cet
+  // abonnement, l'événement « nouvelle_demande » n'arriverait jamais au
+  // client et la notification n'apparaîtrait qu'au rechargement de la page
+  // (réconciliation de l'outbox).
+  //
+  // L'abonnement est volontairement limité au flux « nouvelle demande » : les
+  // autres types d'événements gardent exactement leur comportement actuel
+  // (ils ne sont pas modifiés).
+  es.addEventListener("nouvelle_demande", traiterEvenement as EventListener);
 
   es.onerror = () => {
     es.close();

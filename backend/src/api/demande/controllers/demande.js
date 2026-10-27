@@ -27,6 +27,13 @@
 
 const { createCoreController } = require('@strapi/strapi').factories;
 const { assertCanWrite, getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
+const {
+  resoudreDepositaireGeneral,
+} = require('../../../utils/resolveDepositaireGeneral');
+const {
+  creerEntreeNouvelleDemande,
+  distribuerNotifications,
+} = require('../../notification-outbox/services/notification-outbox');
 // Étape 3 « Ordre de sortie » : la création d'un ordre passe par la MÊME
 // logique que le formulaire de distribution (contrôles, transaction, référence).
 const {
@@ -366,6 +373,66 @@ async function isDemandeur(app, ctx) {
   return code === DEMANDEUR_ROLE;
 }
 
+/**
+ * NOTIFICATION « nouvelle demande » : prévient le DÉPOSITAIRE GÉNÉRAL qu'une
+ * demande de matériel vient d'être déposée.
+ *
+ * Le destinataire est EXCLUSIVEMENT `hery.rakoto@mtefop.gov.mg` : il n'est pas
+ * cherché par rôle ni par direction. La notification est idempotente (clé
+ * unique en base), elle ne peut donc pas être dupliquée pour une même
+ * demande.
+ *
+ * DOIT être appelée dans la transaction de création de la demande : la
+ * demande et sa notification sont alors écrites ensemble.
+ *
+ * Une résolution de destinataire impossible (compte absent, bloqué, non
+ * confirmé…) n'annule PAS la demande : elle est seulement journalisée, la
+ * demande reste enregistrable.
+ *
+ * @param {object} app - instance Strapi
+ * @param {object} demande - demande créée (avec `documentId` et `reference`)
+ * @param {object} demandeur - utilisateur connecté (demandeur)
+ * @param {object} organigramme - `{ direction, service }` déduits du compte
+ * @returns {Promise<boolean>} true si une entrée outbox a été créée
+ */
+async function notifierNouvelleDemande(app, demande, demandeur, organigramme) {
+  const resolution = await resoudreDepositaireGeneral(app);
+
+  if (!resolution.ok) {
+    app.log.warn(
+      `[demande] Demande ${demande.reference} créée mais AUCUNE notification « nouvelle_demande » envoyée : destinataire introuvable (raison : ${resolution.reason}).`
+    );
+    return false;
+  }
+
+  const direction = organigramme && organigramme.direction;
+  const service = organigramme && organigramme.service;
+  const priorite = demande.priorite || 'normal';
+
+  const payload = {
+    demandeDocumentId: demande.documentId,
+    demandeId: demande.id,
+    demandeReference: demande.reference,
+    demandeDate: demande.date_demande || null,
+    demandeur: nomUtilisateur(demandeur),
+    direction: direction ? direction.nom_direction || direction.abreviation : null,
+    service: service ? service.nom_service : null,
+    priorite,
+    message:
+      `Nouvelle demande ${demande.reference} (${priorite}) déposée par ` +
+      `${nomUtilisateur(demandeur)}.`,
+  };
+
+  await creerEntreeNouvelleDemande(
+    app,
+    demande.documentId,
+    resolution.user,
+    payload
+  );
+
+  return true;
+}
+
 module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
   /** Le Demandeur ne list que ses propres demandes (contrôle serveur). */
   async find(ctx) {
@@ -460,7 +527,49 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
 
     // 5. Écriture (service du content-type : la référence DEM-AAAA-NNN y est
     //    générée par le service de la demande).
-    const entite = await app.service(DEMANDE_UID).create({ data });
+    //
+    //    La création et sa notification « nouvelle_demande » forment UNE
+    //    transaction : en Strapi 5, une transaction imbriquée réutilise la
+    //    transaction ambiante, la demande et son entrée outbox sont donc
+    //    écrites ensemble — ou pas du tout. Une notification orpheline
+    //    (demande absente) est ainsi impossible, comme une demande sans sa
+    //    notification quand l'insertion outbox échoue pour une raison
+    //    technique.
+    let notificationCreee = false;
+    const entite = await app.db.transaction(async () => {
+      const created = await app.service(DEMANDE_UID).create({ data });
+
+      // Seule une demande DÉPOSÉE (en attente de décision) est notifiée :
+      // un brouillon n'est pas visible du côté dépositaire et sa notification
+      // ne pourrait mener à aucune demande à ouvrir.
+      if (created.statut === 'en_attente') {
+        notificationCreee = await notifierNouvelleDemande(
+          app,
+          created,
+          user,
+          organigramme
+        );
+      }
+
+      return created;
+    });
+
+    // --- Distribution des notifications outbox (APRÈS transaction réussie) ---
+    // L'entrée « nouvelle_demande » a été créée dans la transaction (atomicité
+    // avec la demande). Le distributeur la revendique et l'envoie via SSE, avec
+    // reprise en cas d'échec. Un échec d'envoi n'annule PAS la demande déjà
+    // enregistrée : la notification sera rejouée à la reconnexion du
+    // dépositaire (réconciliation de l'outbox côté frontend).
+    if (notificationCreee) {
+      try {
+        await distribuerNotifications(app);
+      } catch (e) {
+        app.log.warn(
+          `[demande] Échec de la distribution des notifications outbox : ${e.message}`
+        );
+      }
+    }
+
     const sanitized = await this.sanitizeOutput(entite, ctx);
     ctx.status = 201;
     return this.transformResponse(sanitized);

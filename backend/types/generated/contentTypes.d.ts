@@ -1070,11 +1070,18 @@ export interface ApiNotificationOutboxNotificationOutbox
     attempts: Schema.Attribute.Integer &
       Schema.Attribute.Required &
       Schema.Attribute.DefaultTo<0>;
+    cleUnicite: Schema.Attribute.String & Schema.Attribute.Unique;
     createdAt: Schema.Attribute.DateTime;
     createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
       Schema.Attribute.Private;
+    demande: Schema.Attribute.Relation<'manyToOne', 'api::demande.demande'>;
     eventType: Schema.Attribute.Enumeration<
-      ['ordre_pret_distribution', 'ordre_sortie_autorise', 'demande_aboutie']
+      [
+        'ordre_pret_distribution',
+        'ordre_sortie_autorise',
+        'demande_aboutie',
+        'nouvelle_demande',
+      ]
     > &
       Schema.Attribute.Required;
     lastAttemptAt: Schema.Attribute.DateTime;
@@ -1087,10 +1094,9 @@ export interface ApiNotificationOutboxNotificationOutbox
       Schema.Attribute.Private;
     payload: Schema.Attribute.JSON & Schema.Attribute.Required;
     publishedAt: Schema.Attribute.DateTime;
-    recipientId: Schema.Attribute.Integer & Schema.Attribute.Required;
-    recipientRole: Schema.Attribute.String & Schema.Attribute.Required;
-    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'> &
-      Schema.Attribute.Required;
+    recipientId: Schema.Attribute.Integer;
+    recipientRole: Schema.Attribute.String;
+    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'>;
     status: Schema.Attribute.Enumeration<
       ['pending', 'processing', 'sent', 'failed']
     > &

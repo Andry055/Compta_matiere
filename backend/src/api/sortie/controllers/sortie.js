@@ -657,6 +657,45 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       null,
       nomUtilisateur(user)
     );
+
+    // --- Notification aux magasiniers de la direction (création d'ordre) ---
+    // Le dépositaire crée l'ordre → les magasiniers de la même direction sont
+    // notifiés immédiatement via outbox + SSE pour qu'ils puissent signer
+    // l'étape 1 (préparation). Même pattern que signerLogistique (ÉTAPE 4).
+    try {
+      const directionId = sortieComplete.direction?.documentId;
+      const reference = sortieComplete.reference || sortieComplete.documentId;
+      const dateSortie = sortieComplete.date_sortie
+        ? new Date(sortieComplete.date_sortie).toISOString().slice(0, 10)
+        : null;
+
+      const magasiniers = await findUtilisateursParRoleEtDirection(
+        app,
+        'magasinier',
+        directionId
+      );
+
+      if (magasiniers.length > 0) {
+        const payloadMag = {
+          sortieId: sortieComplete.documentId,
+          reference,
+          date_sortie: dateSortie,
+          direction: directionId,
+          message: `Un nouvel ordre de sortie (${reference}) a été créé et attend votre signature de préparation.`,
+        };
+
+        await creerEntrees(app, sortieComplete.documentId, magasiniers, 'magasinier', payloadMag);
+        await distribuerNotifications(app);
+      } else {
+        app.log.debug(
+          `[sortie] Création ${reference} : aucun magasinier trouvé pour la direction ${directionId}, notification non envoyée.`
+        );
+      }
+    } catch (e) {
+      // Ne fait pas échouer la création si la notification ne peut pas être envoyée/persistée.
+      app.log.warn(`[sortie] Échec de la notification 'ordre_sortie_autorise' à la création : ${e.message}`);
+    }
+
     ctx.status = 201;
     return { data: sortieComplete };
   },

@@ -129,8 +129,10 @@ interface NotificationBellProps {
   version?: number;
   /** Ouvre l'écran Arrivée Matériel sur la pièce visée par une notification. */
   onOpenEntree?: (entreeId: string | number) => void;
-  /** Ouvre l'espace Distribution sur une notification de sortie (dépositaire). */
-  onOpenSortie?: () => void;
+  /** Ouvre l'espace Distribution sur une notification de sortie.
+   *  Pour le dépositaire (sortie acceptée) : sans argument.
+   *  Pour le magasinier/logistique (préparation/autorisation) : reçoit le sortieId. */
+  onOpenSortie?: (sortieId?: string | number) => void;
   /** Ouvre l'espace Demandes sur la demande visée par une notification. */
   onOpenDemande?: (demandeDocumentId: string) => void;
 }
@@ -294,10 +296,15 @@ export function NotificationBell({
 
   const handleOpenEtape = (etape: NotificationEtape) => {
     setOpen(false);
-    // For entrée notifications, open the entrée detail
-    // For sortie notifications, we could open sortie detail if callback existed
-    // For now, we use the same callback and let the caller handle the ID appropriately
+    // For entrée notifications (circuit Arrivée Matériel), open the entrée detail
     if (onOpenEntree) onOpenEntree(etape.entreeId);
+  };
+
+  /** Ouvre l'espace Distribution pour les notifications de préparation des sorties
+   *  (magasinier : signature 1, logistique : autorisation). */
+  const handleOpenSortieEtape = (etape: NotificationEtape) => {
+    setOpen(false);
+    if (onOpenSortie) onOpenSortie(etape.entreeId);
   };
 
   /** Notification « sortie acceptée » du dépositaire : ouvre l'espace
@@ -409,13 +416,13 @@ export function NotificationBell({
                 </p>
                 {etapesSortie.map((n) => {
                   const Icon = etapeIcon(n.type);
-                  const ouvrable = !!onOpenEntree;
+                  const ouvrable = !!onOpenSortie;
                   return (
                     <button
                       key={n.id}
-                      onClick={() => handleOpenEtape(n)}
+                      onClick={() => handleOpenSortieEtape(n)}
                       disabled={!ouvrable}
-                      title={ouvrable ? "Ouvrir cette pièce" : undefined}
+                      title={ouvrable ? "Ouvrir l'espace Distribution" : undefined}
                       className={`w-full flex items-start gap-3 px-4 py-3 text-left transition-colors ${
                         ouvrable ? "hover:bg-accent/40 cursor-pointer" : ""
                       }`}

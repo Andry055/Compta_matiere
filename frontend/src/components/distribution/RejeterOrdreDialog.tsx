@@ -70,7 +70,7 @@ export function RejeterOrdreDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <button type="button" className="msa-bouton msa-bouton--danger">
+        <button type="button" className="msa-bouton msa-bouton--danger msa-bouton--compact">
           <AlertTriangle style={{ width: 14, height: 14 }} aria-hidden="true" /> Rejeter
         </button>
       </DialogTrigger>
@@ -109,6 +109,7 @@ export function RejeterOrdreDialog({
                 Annuler
               </Button>
               <Button
+                variant="destructive"
                 onClick={(e) => { e.preventDefault(); handleSubmit(e); }}
                 isLoading={isLoading}
                 size="sm"

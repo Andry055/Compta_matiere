@@ -186,7 +186,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       <style>{`
         .lg-page { position: relative; min-height: 100vh; background: #f3f8fd; overflow-x: hidden; }
         .lg-bg { position: fixed; top: 0; bottom: 0; height: 100vh; object-fit: cover; pointer-events: none; z-index: 0; }
-        .lg-bg-left { left: 0; width: 45%; }
+        .lg-bg-left { left: 0; width: 45%; filter: brightness(1.25) contrast(1.05); }
         .lg-bg-right { right: 0; width: 35%; opacity: 0.07; filter: blur(1px); }
         .lg-veil { position: fixed; inset: 0; pointer-events: none; z-index: 0;
           background: linear-gradient(90deg, rgba(243,248,253,0) 0%, rgba(243,248,253,.85) 55%, #f3f8fd 100%); }
@@ -307,7 +307,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
 
         /* ===== Mode sombre (jetons alignés sur la console « Nébuleuse ») ===== */
         .dark .lg-page { background: #0d1929; }
-        .dark .lg-bg-left { filter: brightness(.5) saturate(.85); }
+        .dark .lg-bg-left { filter: brightness(.7) saturate(.85); }
         .dark .lg-bg-right { filter: blur(1px) brightness(.5); }
         .dark .lg-veil { background: linear-gradient(90deg, rgba(13,25,41,0) 0%, rgba(13,25,41,.88) 55%, #0d1929 100%); }
         .dark .lg-dots { opacity: .3; }

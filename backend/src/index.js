@@ -125,7 +125,7 @@ const SEED_DIRECTIONS = [
   },
   {
     nom_direction: 'Direction Financière',
-    abreviation: 'DF',
+    abreviation: 'DAF',
     description: 'Direction en charge de la gestion financière et budgétaire',
     directeur: 'Dr. RANDRIAMALALA Miangaly',
     directeur_email: 'm.randriamalala@ministere.gov.mg',

@@ -198,7 +198,7 @@ export function SignatureControleSortie({
           </Button>
           <Button
             onClick={handleSigner}
-            isLoading={isLoading}
+            disabled={isLoading}
             size="sm"
           >
             Signer la sortie

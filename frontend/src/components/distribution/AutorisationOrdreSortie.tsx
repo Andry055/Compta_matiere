@@ -599,7 +599,7 @@ export function AutorisationOrdreSortie({
                     await handleSigner();
                     setIsConfirmationOpen(false);
                   }}
-                  isLoading={isLoading}
+                  disabled={isLoading}
                   size="sm"
                 >
                   Confirmer et autoriser

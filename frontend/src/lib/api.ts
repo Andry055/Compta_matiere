@@ -59,6 +59,7 @@ export interface StrapiAuthUser {
   department?: string | null;
   fonction?: string | null;
   role?: StrapiRole | null;
+  direction?: { id: number; nom_direction: string } | null;
 }
 
 /**
@@ -123,6 +124,7 @@ export async function fetchSessionRole(): Promise<StrapiAuthUser | null> {
       department: u.department ?? null,
       fonction: u.fonction ?? null,
       role: { id: u.role.id, type: u.role.type, name: u.role.name },
+      direction: u.direction ?? null,
     };
   } catch {
     return null;

@@ -26,14 +26,47 @@ const EVENT_TYPE_PAR_ROLE = {
   depositaire: 'ordre_pret_distribution',
   magasinier: 'ordre_sortie_autorise',
   demandeur: 'demande_aboutie',
+  // Nouveaux types pour les notifications de préparation (magasinier → dépositaire)
+  depositaire_preparation_terminee: 'preparation_terminee',
+  depositaire_preparation_rejetee: 'preparation_rejetee',
+};
+
+/**
+ * Mappe le paramètre de rôle (clé EVENT_TYPE_PAR_ROLE) vers le rôle métier réel
+ * pour le champ recipientRole en base.
+ */
+const ROLE_REEL_PAR_PARAM = {
+  depositaire: 'depositaire',
+  magasinier: 'magasinier',
+  demandeur: 'demandeur',
+  depositaire_preparation_terminee: 'depositaire',
+  depositaire_preparation_rejetee: 'depositaire',
 };
 
 const OUTBOX_UID = 'api::notification-outbox.notification-outbox';
 
 /**
+ * Clé d'idempotence pour une entrée outbox liée à une sortie.
+ * Format : `<eventType>:<sortieDocumentId>:<recipientId>` — identique à la
+ * convention utilisée par `nouvelle_demande`
+ * (`nouvelle_demande:${demandeDocumentId}:${recipientId}`).
+ *
+ * @param {string} eventType - type d'événement outbox
+ * @param {string} sortieDocumentId - documentId de la sortie
+ * @param {number|string} recipientId - identifiant du destinataire
+ * @returns {string}
+ */
+function cleUniciteSortie(eventType, sortieDocumentId, recipientId) {
+  return `${eventType}:${sortieDocumentId}:${recipientId}`;
+}
+
+/**
  * Crée les entrées outbox pour une liste de destinataires.
  * Doit être appelée à l'intérieur d'un rappel `app.db.transaction(...)` pour
  * que les insertions rejoignent automatiquement la transaction en cours.
+ *
+ * IDEMPOTENCE : une entrée portant la même `cleUnicite` (`<eventType>:<sortieId>:<recipientId>`)
+ * n'est pas recréée si elle existe déjà.
  *
  * @param {object} app - instance Strapi
  * @param {string} sortieDocumentId - documentId de la sortie
@@ -48,20 +81,52 @@ async function creerEntrees(app, sortieDocumentId, destinataires, role, payload)
     throw new Error(`Rôle de destinataire inconnu pour l'outbox : ${role}`);
   }
 
-  const maintenant = new Date();
+  // Le recipientRole stocké en base doit être le rôle métier réel (ex: 'depositaire'),
+  // pas la clé du paramètre (ex: 'depositaire_preparation_terminee').
+  const recipientRole = ROLE_REEL_PAR_PARAM[role] || role;
 
   for (const destinataire of destinataires || []) {
-    await app.documents(OUTBOX_UID).create({
-      data: {
-        sortie: sortieDocumentId,
-        eventType,
-        recipientId: destinataire.id,
-        recipientRole: role,
-        payload,
-        status: 'pending',
-        attempts: 0,
-      },
-    });
+    const cleUnicite = cleUniciteSortie(eventType, sortieDocumentId, destinataire.id);
+
+    // Idempotence : ne pas recréer une entrée déjà présente.
+    let existante;
+    try {
+      existante = await app.documents(OUTBOX_UID).findOne({
+        where: { cleUnicite },
+      });
+    } catch (e) {
+      app.log.warn(
+        `[notification-outbox] Impossible de vérifier l'idempotence "${cleUnicite}" (sortie ${sortieDocumentId}, destinataire ${destinataire.id}) : ${e.message}`
+      );
+    }
+    if (existante) {
+      app.log.debug(
+        `[notification-outbox] Entrée outbox déjà existante (eventType=${eventType}, sortie=${sortieDocumentId}, destinataire=${destinataire.id}) : ignorée (idempotence).`
+      );
+      continue;
+    }
+
+    try {
+      await app.documents(OUTBOX_UID).create({
+        data: {
+          sortie: sortieDocumentId,
+          eventType,
+          recipientId: destinataire.id,
+          recipientRole: recipientRole,
+          cleUnicite,
+          payload,
+          status: 'pending',
+          attempts: 0,
+        },
+      });
+      app.log.debug(
+        `[notification-outbox] Entrée outbox créée (eventType=${eventType}, sortie=${sortieDocumentId}, destinataire=${destinataire.id}, recipientRole=${recipientRole}, cleUnicite=${cleUnicite}).`
+      );
+    } catch (e) {
+      app.log.warn(
+        `[notification-outbox] Échec de création de l'entrée outbox (eventType=${eventType}, sortie=${sortieDocumentId}, destinataire=${destinataire.id}) : ${e.message}`
+      );
+    }
   }
 }
 
@@ -214,17 +279,19 @@ async function reclamerEntrees(trx) {
  * @returns {Promise<number>} nombre de flux SSE sur lesquels l'événement a été écrit
  */
 async function envoyerEntree(app, entree) {
-  const userId = Number(entree.recipientId);
+  // La requête SQL brute de `reclamerEntrees` retourne les noms de colonnes
+  // en snake_case (recipient_id), pas en camelCase (recipientId).
+  const userId = Number(entree.recipient_id);
   if (!Number.isInteger(userId) || userId <= 0) {
     // Destinataire absent ou invalide : la notification ne peut pas être
     // adressée. On échoue explicitement plutôt que de diffuser à un
     // identifiant fantôme (qui renverrait 0 flux et ferait boucler les
     // tentatives sans jamais être délivrée).
     throw new Error(
-      `Destinataire invalide pour l'entrée #${entree.id} : ${entree.recipientId}`
+      `Destinataire invalide pour l'entrée #${entree.id} : ${entree.recipient_id}`
     );
   }
-  return sseBroadcastToUser(userId, entree.eventType, entree.payload || {});
+  return sseBroadcastToUser(userId, entree.event_type, entree.payload || {});
 }
 
 /**
@@ -287,7 +354,7 @@ async function traiterEntree(app, trx, entree) {
       // qu'elle soit reprise par un prochain passage du distributeur
       // (cron périodique) ou par la réconciliation frontend.
       throw new Error(
-        `Aucun flux SSE ouvert pour l'utilisateur #${entree.recipientId}`
+        `Aucun flux SSE ouvert pour l'utilisateur #${entree.recipient_id}`
       );
     }
     await marquerEnvoyee(trx, entree);
@@ -341,6 +408,7 @@ module.exports = {
   TABLE_OUTBOX,
   MAX_TENTATIVES,
   EVENT_TYPE_PAR_ROLE,
+  ROLE_REEL_PAR_PARAM,
   EVENT_TYPE_NOUVELLE_DEMANDE,
   OUTBOX_UID,
   creerEntrees,

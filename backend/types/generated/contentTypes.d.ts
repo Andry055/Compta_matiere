@@ -1081,6 +1081,8 @@ export interface ApiNotificationOutboxNotificationOutbox
         'ordre_sortie_autorise',
         'demande_aboutie',
         'nouvelle_demande',
+        'preparation_terminee',
+        'preparation_rejetee',
       ]
     > &
       Schema.Attribute.Required;

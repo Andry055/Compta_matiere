@@ -50,6 +50,12 @@ export interface AppNotification {
    * Présent, le clic sur la notification ouvre directement cette demande.
    */
   demandeDocumentId?: string;
+  /**
+   * documentId de la SORTIE concernée (événements `preparation_terminee`,
+   * `preparation_rejetee`). Présent, le clic ouvre directement cet ordre de
+   * sortie dans l'espace Distribution.
+   */
+  sortieDocumentId?: string;
 }
 
 /* ══════════════════════════════════════════════════════════════════════════
@@ -116,7 +122,8 @@ export function pushRealtimeNotification(
   date: string,
   id?: string,
   targetRole?: AppRole,
-  demandeDocumentId?: string
+  demandeDocumentId?: string,
+  sortieDocumentId?: string
 ): void {
   const notifs = readAll();
   const notificationId = id || `realtime-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
@@ -131,6 +138,7 @@ export function pushRealtimeNotification(
     targetRole: targetRole ?? 'demandeur',
     read: false,
     demandeDocumentId,
+    sortieDocumentId,
   });
   // Garde-fou : on conserve les 50 plus récentes.
   writeAll(notifs.slice(0, 50));
@@ -206,7 +214,7 @@ export function getNotifications(user?: User): AppNotification[] {
     return [
       ...getNotificationsGeneriques(),
       ...readAll().filter((n) => n.targetRole === user.role),
-    ].sort((a, b) => (a.date < b.date ? 1 : -1));
+    ].sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
   }
   return getNotificationsGeneriques();
 }
@@ -281,7 +289,7 @@ function getNotificationsDemandeur(user: User): AppNotification[] {
     ...readAll().filter((n) => n.targetRole === 'demandeur')
   );
 
-  return items.sort((a, b) => (a.date < b.date ? 1 : -1));
+  return items.sort((a, b) => (a.date > b.date ? -1 : a.date < b.date ? 1 : 0));
 }
 
 function getNotificationsGeneriques(): AppNotification[] {

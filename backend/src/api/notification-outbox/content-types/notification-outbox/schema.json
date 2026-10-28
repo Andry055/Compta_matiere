@@ -30,7 +30,9 @@
         "ordre_pret_distribution",
         "ordre_sortie_autorise",
         "demande_aboutie",
-        "nouvelle_demande"
+        "nouvelle_demande",
+        "preparation_terminee",
+        "preparation_rejetee"
       ],
       "required": true
     },

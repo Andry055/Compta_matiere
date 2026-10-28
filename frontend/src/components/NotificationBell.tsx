@@ -283,7 +283,13 @@ export function NotificationBell({
   const handleOpenItem = (item: AppNotification) => {
     markNotificationRead(item.id);
     refresh();
-    if (item.demandeDocumentId && onOpenDemande) {
+    // Une notification de préparation (sortieDocumentId) ouvre directement
+    // l'ordre de sortie dans l'espace Distribution ; sinon, une notification
+    // de nouvelle demande (demandeDocumentId) ouvre l'espace Demandes.
+    if (item.sortieDocumentId && onOpenSortie) {
+      setOpen(false);
+      onOpenSortie(item.sortieDocumentId);
+    } else if (item.demandeDocumentId && onOpenDemande) {
       setOpen(false);
       onOpenDemande(item.demandeDocumentId);
     }
@@ -516,9 +522,12 @@ export function NotificationBell({
               items.map((item) => {
                 const Icon = notifIcon(item.type);
                 const isUnread = unread.some((n) => n.id === item.id);
-                // Une notification rattachée à une demande est OUVRABLE : le
-                // clic mène à la demande concernée.
-                const ouvrable = !!item.demandeDocumentId && !!onOpenDemande;
+                // Une notification rattachée à une demande OU à une sortie est
+                // OUVRABLE : le clic mène à la demande concernée ou à l'ordre
+                // de sortie dans l'espace Distribution.
+                const ouvrable =
+                  (!!item.demandeDocumentId && !!onOpenDemande) ||
+                  (!!item.sortieDocumentId && !!onOpenSortie);
                 return (
                   <button
                     key={item.id}

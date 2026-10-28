@@ -16,80 +16,6 @@ interface LoginScreenProps {
   onLogin: (user: UserType) => void;
 }
 
-// Mock user database with credentials - 5 rôles réglementaires MTEFoP
-const mockUserDatabase: Array<UserType & { password: string }> = [
-  {
-    id: "admin-1",
-    name: "Marie RAKOTO",
-    email: "m.rakoto@ministere.gov.mg",
-    password: "admin123",
-    role: "admin",
-    department: "Administration Centrale",
-    permissions: ["all"],
-  },
-  {
-    id: "depositaire-1",
-    name: "Rakotomalala Hery",
-    email: "hery.rakoto@mtefop.gov.mg",
-    password: "depositaire123",
-    role: "depositaire",
-    department: "DAF - Service Comptabilité Matière",
-    permissions: ["equipment.view", "equipment.edit", "equipment.delete", "equipment.create"],
-  },
-  {
-    id: "magasinier-1",
-    name: "Andriamampianina Fara",
-    email: "fara.andriam@mtefop.gov.mg",
-    password: "magasinier123",
-    role: "magasinier",
-    department: "DAF - Magasin & Entrepôt",
-    permissions: ["equipment.view"],
-  },
-  {
-    id: "logistique-1",
-    name: "Razafindrakoto Tojo",
-    email: "tojo.razaf@mtefop.gov.mg",
-    password: "logistique123",
-    role: "logistique",
-    department: "DAF - Direction Logistique",
-    permissions: ["equipment.view"],
-  },
-  {
-    id: "comptable-1",
-    name: "Ravaomanana Nirina",
-    email: "nirina.ravao@mtefop.gov.mg",
-    password: "comptable123",
-    role: "comptable",
-    department: "DAF - Service Budget",
-    permissions: ["equipment.view"],
-  },
-  {
-    id: "demandeur-service-1",
-    name: "Randriamampionona Tolotra",
-    email: "tolotra.randria@mtefop.gov.mg",
-    password: "demandeur123",
-    role: "demandeur",
-    // Libellé aligné sur l'organigramme réel : c'est lui qui détermine la
-    // direction et le service portés par les demandes du compte.
-    department: "DRH - Service Gestion Personnel",
-    permissions: ["equipment.view"],
-    demandeurLevel: "service",
-  },
-  {
-    id: "demandeur-direction-1",
-    name: "Rakotoson Jean",
-    email: "jean.rakoto@mtefop.gov.mg",
-    password: "direction123",
-    role: "demandeur",
-    // Le libellé doit correspondre à l'organigramme RÉEL (c'est lui qui
-    // détermine la direction de la demande côté serveur) : une direction
-    // existante, pas un libellé fantaisiste.
-    department: "Direction Logistique",
-    permissions: ["equipment.view"],
-    demandeurLevel: "direction",
-  },
-];
-
 // NB : les rôles métier reconnus et la transformation Strapi -> profil
 // applicatif vivent dans ../lib/session (partagés avec App.tsx, qui les
 // applique aussi à la reprise de session).
@@ -164,32 +90,14 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       return;
     }
 
-    // Cas 3 : erreur réseau — Strapi injoignable. Repli autorisé sur le mode démo.
-
-    // -----------------------------------------------------------------------
-    // 2) Repli hors ligne : comptes de démonstration de l'application
-    // -----------------------------------------------------------------------
-    // Simulate API call delay
-    await new Promise((resolve) => setTimeout(resolve, 1000));
-
-    // Find user in mock database
-    const user = mockUserDatabase.find(
-      (u) =>
-        u.email.toLowerCase() === email.toLowerCase() && u.password === password
+    // Cas 3 : erreur réseau — Strapi injoignable. Aucun repli vers des comptes
+    // fictifs : on affiche une erreur claire et on reste sur l'écran de
+    // connexion. L'authentification ne peut avoir lieu que via le vrai backend.
+    setError(
+      "Serveur indisponible : vérifiez votre connexion ou réessayez plus tard."
     );
-
-    if (user) {
-      // Remove password from user object before passing to parent
-      const { password: _, ...userWithoutPassword } = user;
-      onLogin(userWithoutPassword);
-
-      // Store remember me preference
-      applyRememberMe();
-    } else {
-      setError("Email ou mot de passe incorrect");
-    }
-
     setIsLoading(false);
+    return;
   };
 
   // Load saved email if remember me was checked
@@ -344,7 +252,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
             {showDemoCredentials && (
               <div className="cm-panel-flat mt-4 p-4 cm-fade">
                 <h4 className="cm-eyebrow mb-3">
-                  Comptes de test disponibles
+                  Comptes pré-configurés (validés par le backend Strapi)
                 </h4>
                 <div className="space-y-2 text-xs">
                   <div className="grid gap-2">

@@ -111,7 +111,7 @@ export function RejeterOrdreDialog({
               <Button
                 variant="destructive"
                 onClick={(e) => { e.preventDefault(); handleSubmit(e); }}
-                isLoading={isLoading}
+                disabled={isLoading}
                 size="sm"
               >
                 {isLoading ? "Rejet en cours..." : "Rejeter la sortie"}

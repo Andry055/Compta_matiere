@@ -18,7 +18,8 @@ import { Users } from "./Users"
 import { Settings } from "./Settings"
 import { ThemeToggle } from "./ThemeToggle"
 import { NotificationBell } from "./NotificationBell"
-import { Menu, Package, Shield, X, LogOut } from "lucide-react"
+import { Menu, Shield, X, LogOut } from "lucide-react"
+import logo from "../../assets/logo.png"
 import { useState, useEffect } from "react"
 import { User } from "../App"
 import type { DemandeRecord } from "../lib/demandes"
@@ -207,7 +208,7 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
         ${isMobile ? 'z-50' : ''}
         ${!isMobile && !sidebarOpen ? '-translate-x-full' : ''}
         transition-transform duration-300 ease-in-out
-        ${isMobile ? 'w-80' : ''}
+        cm-sidebar-w
       `}>
         <SimpleSidebar
           activeSection={activeSection}
@@ -242,7 +243,7 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
             </button>
             {(!sidebarOpen || isMobile) && (
               <div className="flex items-center gap-2">
-                <Package className="h-5 w-5 text-primary" />
+                <img src={logo} alt="Logo AssetTrack" style={{ width: "2rem", height: "2rem" }} />
                 <span className="cm-title text-base hidden sm:inline">AssetTrack</span>
               </div>
             )}

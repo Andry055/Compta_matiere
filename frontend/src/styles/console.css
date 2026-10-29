@@ -67,6 +67,14 @@
   --sidebar-border: oklch(0.90 0.008 250);
   --sidebar-ring: oklch(0.53 0.13 233);
 
+  /* --- Bloc de marque (haut de la sidebar) — thème clair --- */
+  --sidebar-w: 300px; /* largeur de la sidebar pour la ligne de marque complète */
+  --brand-title: #0b2a4a;
+  --brand-accent: #0e9488;
+  --brand-sub: #5a6f7d;
+  --brand-sep: #c6d3db;
+  --brand-line: #dce6ec;
+
   /* --- Jetons d'extension « console » --- */
   --cm-accent: oklch(0.53 0.13 233);
   --cm-accent-soft: oklch(0.60 0.12 225);
@@ -132,6 +140,13 @@
   --sidebar-accent-foreground: oklch(0.95 0.008 240);
   --sidebar-border: oklch(0.30 0.018 248);
   --sidebar-ring: oklch(0.80 0.125 205);
+
+  /* --- Bloc de marque (haut de la sidebar) — thème sombre --- */
+  --brand-title: #f3f8fa;
+  --brand-accent: #2dd4bf;
+  --brand-sub: #93a8b5;
+  --brand-sep: #2a3b47;
+  --brand-line: #1d2d38;
 
   /* --- Jetons d'extension « console » --- */
   --cm-accent: oklch(0.80 0.125 205);
@@ -876,6 +891,111 @@ input[type="radio"] {
   -webkit-backdrop-filter: blur(20px) saturate(150%);
   backdrop-filter: blur(20px) saturate(150%);
   border-right: 1px solid var(--sidebar-border);
+}
+
+/* Largeur de la sidebar portant le bloc de marque (1ère page).
+   `w-72` (288px) est trop étroit pour la ligne complète : pilotée par
+   --sidebar-w. La position du contenu principal suit automatiquement
+   (conteneur flex, aucun décalage manuel). */
+.cm-sidebar-w {
+  width: var(--sidebar-w);
+}
+
+/* --- En-tête de marque : logo MTEFoP | icône AssetTrack + titre --- */
+.cm-brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: 72px; /* aligné sur la hauteur de la barre du haut */
+  padding: 0 16px;
+  border-bottom: 1px solid var(--brand-line);
+  overflow: hidden; /* jamais de débordement horizontal */
+}
+
+.cm-brand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  border-radius: calc(var(--radius) + 2px);
+  text-decoration: none;
+  color: inherit;
+  /* halo teal très discret derrière l'icône */
+  background-image: radial-gradient(
+    circle at 90px 50%,
+    rgba(45, 212, 191, 0.08),
+    transparent 65%
+  );
+}
+
+.cm-brand:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+.cm-brand-logo {
+  height: 44px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cm-brand-sep {
+  width: 1px;
+  height: 40px;
+  background-color: var(--brand-sep);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.cm-brand-icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  object-fit: contain;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* Titre + sous-titre : un seul bloc colonne, aligné à gauche. */
+.cm-brand-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 150px; /* le sous-titre passe sur 2 lignes, jamais tronqué */
+}
+
+.cm-brand-title {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--brand-title);
+}
+
+.cm-brand-title-accent {
+  color: var(--brand-accent);
+}
+
+.cm-brand-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--brand-sub);
+}
+
+/* Vue réduite / panneau mobile : icône + titre seuls. */
+@media (max-width: 899px) {
+  .cm-brand-logo,
+  .cm-brand-sep,
+  .cm-brand-sub {
+    display: none;
+  }
 }
 
 .cm-brand-mark {

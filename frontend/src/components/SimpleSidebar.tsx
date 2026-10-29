@@ -17,6 +17,8 @@ import {
   Truck,
   PackageCheck
 } from "lucide-react"
+import logoMtefop from "../../assets/LogoMETFOP.png"
+import logoAsset from "../../assets/logo.png"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
 import { sortiesActionsStore } from "@/lib/sortiesActionsStore"
@@ -134,7 +136,15 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
   const allowedPages = user?.role === 'admin'
     ? navItems.map((item) => item.key)
     : (ROLES_CONFIG[userRole]?.pages || navItems.map((item) => item.key))
-  const visibleItems = navItems.filter((item) => allowedPages.includes(item.key))
+  // Choix explicite : les entrées « Distribution » et « Demandes » sont
+  // retirées DU SEUL menu de l'admin. Les rôles métier (magasinier,
+  // logistique, dépositaire…) gardent leur entrée et leurs libellés dédiés ;
+  // rien d'autre n'est modifié.
+  const visibleItems = navItems.filter(
+    (item) =>
+      allowedPages.includes(item.key) &&
+      !(user?.role === 'admin' && (item.key === 'distribution' || item.key === 'requests'))
+  )
 
   const roleLabel = ROLES_CONFIG[userRole]?.label || (user?.role === 'admin' ? 'Administrateur Système' : 'Personnel')
 
@@ -170,28 +180,38 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
   }, [user, estLogistique])
 
   return (
-    <div className={`cm-sidebar ${isMobile ? 'w-80' : 'w-72'} flex flex-col h-full`}>
-      {/* Header */}
-      <div className="p-4 sm:p-5 border-b border-sidebar-border">
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2.5">
-            <span className="cm-brand-mark">
-              <Package className="h-5 w-5" />
+    <div className="cm-sidebar w-full flex flex-col h-full">
+      {/* En-tête de marque : logo MTEFoP | icône AssetTrack + titre */}
+      <div className="cm-brand-header">
+        <a
+          className="cm-brand"
+          href="#dashboard"
+          onClick={(event) => {
+            // SPA sans routeur : renvoie à l'accueil sans recharger la page.
+            event.preventDefault()
+            onSectionChange("dashboard")
+          }}
+        >
+          <img className="cm-brand-logo" src={logoMtefop} alt="Logo MTEFoP" />
+          <span className="cm-brand-sep" aria-hidden="true" />
+          <img className="cm-brand-icon" src={logoAsset} alt="Icône AssetTrack" />
+          <span className="cm-brand-text">
+            <span className="cm-brand-title">
+              Asset<span className="cm-brand-title-accent">Track</span>
             </span>
-            <span className="cm-title text-base text-sidebar-foreground">AssetTrack</span>
-          </div>
-          {isMobile && onClose && (
-            <button
-              onClick={onClose}
-              className="inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors hover:bg-sidebar-accent text-sidebar-foreground"
-            >
-              <X className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        <p className="cm-eyebrow mt-2 text-sidebar-foreground/60">
-          Gestion d'Équipements
-        </p>
+            <span className="cm-brand-sub">
+              Système de Gestion et de Traçabilité des Matériels
+            </span>
+          </span>
+        </a>
+        {isMobile && onClose && (
+          <button
+            onClick={onClose}
+            className="inline-flex items-center justify-center h-8 w-8 rounded-lg transition-colors hover:bg-sidebar-accent text-sidebar-foreground shrink-0"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        )}
       </div>
 
       {/* Navigation */}

@@ -23,6 +23,8 @@ import {
   calculerStock,
   getStatistiquesAffectations,
   getStatutAffectationAffiche,
+  directionDestinataireDe,
+  validationsAttendues,
   getValidationCount,
   listerAffectations,
   statutAffectationBadge,
@@ -113,7 +115,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
         a.reference.toLowerCase().includes(term) ||
         a.materiel.toLowerCase().includes(term) ||
         a.serviceSource.toLowerCase().includes(term) ||
-        a.serviceDestinataire.toLowerCase().includes(term) ||
+        directionDestinataireDe(a).toLowerCase().includes(term) ||
         (a.materielReference || "").toLowerCase().includes(term);
       const matchesStatus =
         statusFilter === "Tous" ||
@@ -145,7 +147,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
           setShowNewForm(false);
           recharger();
           setFlash(
-            `✓ Transfert ${ref} créé (0/4) — en attente des validations.`
+            `✓ Transfert ${ref} créé (0/2) — en attente des validations.`
           );
           window.setTimeout(() => setFlash(""), 6000);
         }}
@@ -238,10 +240,10 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
 
       {/* Rappel métier */}
       <Message variant="info" size="sm" icon={BadgeCheck}>
-        Transfert = réaffectation interne entre deux services d'une MÊME
-        Direction : pas de sortie, pas de nouvelle entrée, seulement la mise à
-        jour du stock et la traçabilité. Validation obligatoire en 4 étapes (0/4
-        → 4/4) ; un transfert validé n'est plus modifiable.
+        Transfert = déplacement d'un matériel vers une AUTRE Direction : pas
+        de sortie, pas de nouvelle entrée, seulement la mise à jour du stock et
+        la traçabilité. Validation obligatoire en 2 étapes (0/2 → 2/2) ; un
+        transfert validé n'est plus modifiable.
       </Message>
 
       {/* Indicateurs */}
@@ -379,7 +381,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
             Tableau des transferts ({filtered.length})
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Direction → Service origine → Transfert → Service destinataire →
+            Direction → Service origine → Transfert → Direction destinataire →
             Stock → Traçabilité
           </p>
         </div>
@@ -391,7 +393,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Référence</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service d'origine</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service destinataire</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction destinataire</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Matériel</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Quantité</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Date</th>
@@ -430,8 +432,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
                         <td className="py-3 px-3 text-sm text-card-foreground max-w-[150px] truncate">
                           {a.serviceSource}
                         </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[150px] truncate">
-                          {a.serviceDestinataire}
+                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[150px] truncate">                           {directionDestinataireDe(a)}
                         </td>
                         <td className="py-3 px-3 text-sm text-card-foreground max-w-[200px] truncate">
                           {a.materiel}
@@ -453,7 +454,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
                         </td>
                         <td className="py-3 px-3">
                           <span
-                            title={`${count}/4 validations`}
+                            title={`${count}/${validationsAttendues(a)} validations`}
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono ${
                               count >= 4
                                 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
@@ -462,7 +463,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
                                 : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400"
                             }`}
                           >
-                            {count}/4
+                            {count}/{validationsAttendues(a)}
                           </span>
                         </td>
                         <td className="py-3 px-3">

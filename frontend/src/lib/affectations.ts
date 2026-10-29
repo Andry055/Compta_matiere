@@ -11,10 +11,11 @@
 // (Direction A ≠ Direction B → il s'agit d'un TRANSFERT : SORTIE → ENTRÉE,
 //  opération distincte, gérée hors de cette rubrique.)
 //
-// Validation à QUATRE signatures obligatoires, dans l'ordre :
-//   0/4 En attente → 1/4 Responsable du transfert → 2/4 Dépositaire
-//   → 3/4 Chef de service 1 → 4/4 → ✓ AFFECTATION VALIDÉE
-// Une affectation validée n'est plus modifiable.
+// Validation à DEUX signatures obligatoires, dans l'ordre :
+//   0/2 En attente → 1/2 Responsable du transfert → 2/2 → ✓ TRANSFERT VALIDÉ
+// (les anciens transferts, créés avant la suppression des deux chefs de
+//  service, restent réglés sur 4 validations — cf. validationsAttendues).
+// Un transfert validé n'est plus modifiable.
 // ---------------------------------------------------------------------------
 
 import { EntreeRecord, getStatutEntreeAffiche } from "./movements";
@@ -29,6 +30,8 @@ export interface AffectationValidationInfo {
 export type AffectationCleValidation =
   | "responsableTransfert"
   | "depositaire"
+  // Conservées pour lire les anciens enregistrements (circuit à 4 signatures) :
+  // elles ne figurent plus dans AFFECTATION_VALIDATIONS, donc jamais proposées.
   | "chefService1"
   | "chefService2";
 
@@ -46,44 +49,67 @@ export interface AffectationRecord {
   /** Date de création (ISO yyyy-mm-dd) */
   date: string;
   direction: string;
+  /** Direction choisie comme destination : le matériel QUITTE la Direction du
+   *  compte (service d'origine automatique) pour rejoindre cette Direction. */
+  directionDestinataire: string;
   serviceSource: string;
+  /** Ancien format (transfert interne au sein d'une même Direction) : conservé
+   *  pour les enregistrements existants. Les nouveaux transferts ne renseignent
+   *  plus de service destinataire — la destination est une Direction. */
   serviceDestinataire: string;
   materiel: string;
   materielReference: string;
   quantite: number;
   motif: string;
   observation: string;
-  /** Créateur (nom + email) : signe la validation 1/4 « Responsable du transfert » */
+  /** Créateur (nom + email) : signe la validation 1/2 « Responsable du transfert » */
   createur: string;
   createurEmail: string;
   responsables: {
     responsableTransfert: string;
     depositaire: string;
-    chefService1: string;
-    chefService2: string;
+    /** Anciennes signatures : plus saisies depuis la suppression des deux
+     *  chefs de service (présentes uniquement sur les anciens transferts). */
+    chefService1?: string;
+    chefService2?: string;
   };
   validations: Partial<Record<AffectationCleValidation, AffectationValidationInfo>>;
   statut: AffectationStatut;
   historique: AffectationHistorique[];
 }
 
-/** Les 4 validations obligatoires (dans l'ordre du workflow) */
+/** Les 2 validations obligatoires (dans l'ordre du workflow) */
 export const AFFECTATION_VALIDATIONS: Array<{
   key: AffectationCleValidation;
   label: string;
 }> = [
   { key: "responsableTransfert", label: "Responsable du transfert" },
   { key: "depositaire", label: "Dépositaire" },
-  { key: "chefService1", label: "Chef de service 1" },
-  { key: "chefService2", label: "Chef de service 2" },
 ];
 
-/** Motifs d'affectation (liste imposée) */
-export const MOTIFS_AFFECTATION = [
-  "Réaffectation interne",
-  "Changement de service",
-  "Besoin du service",
-];
+/** Nombre de validations attendues par un transfert donné :
+ *  4 pour un enregistrement antérieur à la suppression des chefs de service
+ *  (il porte encore leurs responsables), 2 sinon. */
+export function validationsAttendues(a: AffectationRecord): number {
+  return clesAttendues(a).length;
+}
+
+/** Clés de validation attendues pour CE transfert : les 2 actuelles, ou les
+ *  4 de l'ancien circuit pour un enregistrement qui les porte encore. */
+export function clesAttendues(a: AffectationRecord): AffectationCleValidation[] {
+  const actuelles = AFFECTATION_VALIDATIONS.map((v) => v.key);
+  const ancienCircuit =
+    a.responsables.chefService1 !== undefined ||
+    a.responsables.chefService2 !== undefined ||
+    a.validations.chefService1 !== undefined ||
+    a.validations.chefService2 !== undefined;
+  return ancienCircuit
+    ? [...actuelles, "chefService1", "chefService2"]
+    : actuelles;
+}
+
+// Le motif est une donnée SAISIE par l'utilisateur (champ libre) : il n'y a
+// plus de liste de motifs imposée.
 
 const CLE = "comptamatiere_affectations_v2";
 
@@ -130,12 +156,14 @@ export function getValidationsAffectation(
 }
 
 export function getValidationCount(a: AffectationRecord): number {
-  return getValidationsAffectation(a).filter((v) => v.signed).length;
+  return clesAttendues(a).filter((cle) => a.validations[cle]).length;
 }
 
-/** 4/4 → « Validée », sinon « En attente » (progression affichée x/4) */
+/** 2/2 → « Validée », sinon « En attente » (progression affichée x/2) */
 export function getStatutAffectationAffiche(a: AffectationRecord): string {
-  return getValidationCount(a) >= 4 ? "Validée" : "En attente";
+  return getValidationCount(a) >= validationsAttendues(a)
+    ? "Validée"
+    : "En attente";
 }
 
 export function statutAffectationBadge(statut: string): string {
@@ -150,8 +178,10 @@ export function statutAffectationBadge(statut: string): string {
 
 export interface NouvelleAffectation {
   direction: string;
+  directionDestinataire: string;
   serviceSource: string;
-  serviceDestinataire: string;
+  /** Optionnel : seul l'ancien format interne le renseignait. */
+  serviceDestinataire?: string;
   materiel: string;
   materielReference?: string;
   quantite: number;
@@ -171,6 +201,12 @@ function prochaineReference(existantes: AffectationRecord[]): string {
   return `AFF-${annee}-${String(suivant).padStart(3, "0")}`;
 }
 
+/** Direction destinataire d'un transfert.
+ *  Anciens enregistrements (transfert interne) : la seule Direction du record. */
+export function directionDestinataireDe(a: AffectationRecord): string {
+  return (a.directionDestinataire || "").trim() || a.direction;
+}
+
 export function creerAffectation(
   input: NouvelleAffectation
 ): AffectationRecord {
@@ -184,8 +220,9 @@ export function creerAffectation(
     qrToken: reference,
     date,
     direction: input.direction,
+    directionDestinataire: input.directionDestinataire,
     serviceSource: input.serviceSource,
-    serviceDestinataire: input.serviceDestinataire,
+    serviceDestinataire: input.serviceDestinataire || "",
     materiel: input.materiel,
     materielReference: input.materielReference || "—",
     quantite: Math.max(1, Number(input.quantite) || 1),
@@ -204,7 +241,7 @@ export function creerAffectation(
 }
 
 // ---------------------------------------------------------------------------
-// Validation (workflow ordonné, immuable après 4/4)
+// Validation (workflow ordonné, immuable après 2/2)
 // ---------------------------------------------------------------------------
 
 export interface UtilisateurValidation {
@@ -215,12 +252,10 @@ export interface UtilisateurValidation {
 
 /**
  * Qui a le droit de poser la validation `key` ?
- *  - Responsable du transfert : le CRÉATEUR de l'affectation (ou l'admin),
- *  - Dépositaire              : rôle depositaire (ou admin),
- *  - Chef de service 1        : rôle magasinier (ou admin),
- *  - Chef de service 2        : rôle logistique (ou admin).
- * Un Demandeur ne signe JAMAIS à la place d'un responsable (sauf 1/4 sur sa
- * propre affectation, en tant que créateur/responsable du transfert).
+ *  - Responsable du transfert : le CRÉATEUR du transfert (ou l'admin),
+ *  - Dépositaire              : rôle depositaire (ou admin).
+ * Un Demandeur ne signe JAMAIS à la place d'un responsable (sauf 1/2 sur sa
+ * propre création, en tant que créateur/responsable du transfert).
  */
 export function peutValiderAffectation(
   user: UtilisateurValidation | undefined,
@@ -239,17 +274,15 @@ export function peutValiderAffectation(
   if (estAdmin) return true;
   if (user.role === "demandeur") return false; // jamais pour un responsable
   if (key === "depositaire") return user.role === "depositaire";
-  if (key === "chefService1") return user.role === "magasinier";
-  if (key === "chefService2") return user.role === "logistique";
+  // « chefService1 » / « chefService2 » : circuit supprimé, jamais posables.
   return false;
 }
 
 /**
  * Pose une validation. L'ordre est imposé (les validations précédentes
- * doivent exister) et une affectation validée (4/4) n'est plus modifiable.
- * À 4/4 : statut « Validée » + le stock du service est mis à jour
- * (source −quantité / destinataire +quantité ; le total de la Direction est
- * inchangé : ni entrée, ni sortie).
+ * doivent exister) et un transfert validé (2/2) n'est plus modifiable.
+ * À 2/2 : statut « Validée » + le stock est mis à jour (source −quantité /
+ * Direction destinataire +quantité).
  */
 export function validerAffectation(
   reference: string,
@@ -261,12 +294,14 @@ export function validerAffectation(
   if (!record) throw new Error("Transfert introuvable.");
   if (record.statut === "Validée")
     throw new Error(
-      "Transfert déjà validé (4/4) : il n'est plus modifiable."
+      `Transfert déjà validé (${validationsAttendues(record)}/${validationsAttendues(record)}) : il n'est plus modifiable.`
     );
   if (record.validations[key])
     throw new Error("Cette validation a déjà été enregistrée (jamais modifiable).");
 
   const indexCle = AFFECTATION_VALIDATIONS.findIndex((v) => v.key === key);
+  if (indexCle < 0)
+    throw new Error("Cette validation n'existe plus dans le circuit d'approbation.");
   for (let i = 0; i < indexCle; i += 1) {
     const precedent = AFFECTATION_VALIDATIONS[i].key;
     if (!record.validations[precedent]) {
@@ -289,18 +324,19 @@ export function validerAffectation(
   const label = AFFECTATION_VALIDATIONS[indexCle].label;
   record.historique = [
     ...record.historique,
-    { date: maintenant.slice(0, 10), libelle: `Validation ${label} (${indexCle + 1}/4) — ${signataire}` },
+    { date: maintenant.slice(0, 10), libelle: `Validation ${label} (${indexCle + 1}/${AFFECTATION_VALIDATIONS.length}) — ${signataire}` },
   ];
 
-  const total = AFFECTATION_VALIDATIONS.filter((v) => record.validations[v.key])
+  const attendues = validationsAttendues(record);
+  const total = clesAttendues(record).filter((cle) => record.validations[cle])
     .length;
-  if (total >= 4) {
+  if (total >= attendues) {
     record.statut = "Validée";
     record.historique = [
       ...record.historique,
       {
         date: maintenant.slice(0, 10),
-        libelle: `✓ Transfert validé (4/4) — stock mis à jour : −${record.quantite} (${record.serviceSource}) / +${record.quantite} (${record.serviceDestinataire})`,
+        libelle: `✓ Transfert validé (${attendues}/${attendues}) — stock mis à jour : −${record.quantite} (${record.serviceSource}) / +${record.quantite} (${directionDestinataireDe(record)})`,
       },
     ];
   }
@@ -376,7 +412,10 @@ export function calculerStock(
     reference: string | undefined,
     quantite: number
   ) => {
-    if (!direction || !service || !materiel || !quantite) return;
+    // `service` peut être vide : la destination d'un transfert est une
+    // Direction, pas un service (la ligne de stock est alors rattachée à la
+    // seule Direction destinataire).
+    if (!direction || !materiel || !quantite) return;
     const cle = cleStock(direction, service, materiel);
     const existant = map.get(cle);
     if (existant) {
@@ -409,7 +448,13 @@ export function calculerStock(
   for (const a of affectations) {
     if (getStatutAffectationAffiche(a) !== "Validée") continue;
     ajouter(a.direction, a.serviceSource, a.materiel, a.materielReference, -a.quantite);
-    ajouter(a.direction, a.serviceDestinataire, a.materiel, a.materielReference, a.quantite);
+    ajouter(
+      directionDestinataireDe(a),
+      a.serviceDestinataire,
+      a.materiel,
+      a.materielReference,
+      a.quantite
+    );
   }
 
   return Array.from(map.values()).filter((l) => l.quantite > 0);

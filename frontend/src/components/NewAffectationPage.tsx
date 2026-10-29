@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowLeftRight,
@@ -10,7 +10,6 @@ import {
   Info,
   Loader2,
   MapPin,
-  Package,
 } from "lucide-react";
 import { User } from "../App";
 import { Message } from "./ui/message";
@@ -22,8 +21,8 @@ import {
   responsablesDuService,
 } from "../lib/organigramme";
 import {
+  AFFECTATION_VALIDATIONS,
   AffectationRecord,
-  MOTIFS_AFFECTATION,
   calculerStock,
   creerAffectation,
   listerAffectations,
@@ -31,19 +30,17 @@ import {
 } from "../lib/affectations";
 
 // ---------------------------------------------------------------------------
-// NOUVELLE AFFECTATION — assistant en 5 étapes
-//   1 DIRECTION → 2 SERVICE D'ORIGINE → 3 SERVICE DESTINATAIRE
-//   → 4 MATÉRIEL → 5 MOTIF
-// Le service destinataire appartient à la MÊME Direction (interdire
-// Direction A → Direction B : ce serait un transfert, pas une affectation).
+// NOUVEAU TRANSFERT — assistant en 3 étapes
+//   1 DIRECTION DESTINATAIRE → 2 MATÉRIEL → 3 MOTIF ET CRÉATION
+// L'origine (Direction + service) n'est PAS à saisir : elle est déduite du
+// compte connecté et affichée en lecture seule. Le matériel quitte donc la
+// Direction du compte pour rejoindre la Direction destinataire choisie.
 // ---------------------------------------------------------------------------
 
 const ETAPES = [
-  { numero: 1, label: "Direction", icon: MapPin },
-  { numero: 2, label: "Service d'origine", icon: Package },
-  { numero: 3, label: "Service destinataire", icon: ArrowLeftRight },
-  { numero: 4, label: "Matériel", icon: Boxes },
-  { numero: 5, label: "Motif et création", icon: FileText },
+  { numero: 1, label: "Direction destinataire", icon: MapPin },
+  { numero: 2, label: "Matériel", icon: Boxes },
+  { numero: 3, label: "Motif et création", icon: FileText },
 ];
 
 interface NewAffectationPageProps {
@@ -63,28 +60,25 @@ export function NewAffectationPage({
   const [erreur, setErreur] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Étape 1 — Direction (les enregistrements stockent le NOM de la Direction)
+  // Origine — Direction du compte (les enregistrements stockent le NOM de la
+  // Direction) : pré-remplie automatiquement, cf. l'effet « Direction d'origine ».
   const [direction, setDirection] = useState("");
 
-  // Étape 2 — Service d'origine
-  const [serviceSource, setServiceSource] = useState("");
+  // Étape 1 — Direction destinataire. Le service d'origine n'est plus choisi :
+  // il est DÉDUIT DU COMPTE (cf. `serviceSource`, dérivé plus bas).
+  const [directionDestinataire, setDirectionDestinataire] = useState("");
 
-  // Étape 3 — Service destinataire
-  const [serviceDestinataire, setServiceDestinataire] = useState("");
-
-  // Étape 4 — Matériel
+  // Étape 2 — Matériel
   const [materielCle, setMaterielCle] = useState("");
   const [quantite, setQuantite] = useState(1);
 
-  // Étape 5 — Motif
-  const [motif, setMotif] = useState(MOTIFS_AFFECTATION[0]);
+  // Étape 3 — Motif (donnée SAISIE, plus une liste déroulante)
+  const [motif, setMotif] = useState("");
   const [observation, setObservation] = useState("");
 
   // Responsables (récupérés automatiquement, restent modifiables)
   const [responsableTransfert, setResponsableTransfert] = useState("");
   const [depositaire, setDepotParService] = useState("");
-  const [chefService1, setChefService1] = useState("");
-  const [chefService2, setChefService2] = useState("");
 
   // Référentiels
   const [directions, setDirections] = useState<RefOption[]>([]);
@@ -127,6 +121,35 @@ export function NewAffectationPage({
     return Array.from(noms.values());
   }, [directions, stock]);
 
+  // ---------------------------------------------------------------------
+  // Direction d'origine : DÉDUITE DU COMPTE CONNECTÉ
+  // ---------------------------------------------------------------------
+  // Le département du profil porte « Direction - Service » (ex. "DAF -
+  // Service Comptabilité Matière") ou le seul nom d'une Direction. On
+  // rapproche la 1ère composante de l'abréviation / du nom du référentiel —
+  // même correspondance que celle utilisée par l'écran Réception physique.
+  // Aucune correspondance ⇒ le champ reste à choisir manuellement ; le choix
+  // déjà fait par l'utilisateur n'est jamais écrasé (remplissage unique).
+  const directionInitialisee = useRef(false);
+  useEffect(() => {
+    if (directionInitialisee.current) return;
+    if (!directions.length) return; // référentiel pas encore chargé
+    directionInitialisee.current = true;
+
+    const departement = (user?.department || "").trim();
+    if (!departement) return;
+    const cle = departement.split(" - ")[0].trim().toLowerCase();  // Aucune correspondance ⇒ on garde la Direction brute du département :
+  // le sélecteur d'origine n'existe plus, le champ doit toujours avoir une
+  // valeur pour que la suite de l'assistant reste utilisable.
+  const trouve = directions.find(
+    (d) =>
+      (d.abbreviation && d.abbreviation.trim().toLowerCase() === cle) ||
+      (d.nom && d.nom.trim().toLowerCase() === cle) ||
+      (d.nom && d.nom.trim().toLowerCase() === departement.toLowerCase())
+  );
+  setDirection(trouve?.nom || departement.split(" - ")[0].trim());
+  }, [directions, user?.department]);
+
   /** Services de la Direction sélectionnée (∪ services détenant un stock) */
   const servicesOptions = useMemo(() => {
     if (!direction) return [];
@@ -147,6 +170,38 @@ export function NewAffectationPage({
     return Array.from(noms.values());
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [direction, services, stock, directions]);
+
+  // ---------------------------------------------------------------------
+  // Service d'origine : DÉDUIT DU COMPTE, jamais choisi
+  // ---------------------------------------------------------------------
+  // Département « Direction - Service » du profil → nom du service, rapproché
+  // du référentiel (casse/« Service » indifférents) puis du stock réel de la
+  // Direction. Replis successifs : service du compte → premier service doté
+  // d'un stock → 1er service du référentiel. Il est affiché en lecture seule.
+  const serviceSource = useMemo(() => {
+    if (!direction) return "";
+    const departement = (user?.department || "").trim();
+    const serviceCompte = departement.includes(" - ")
+      ? departement.split(" - ").slice(1).join(" - ").trim()
+      : "";
+    const norm = (v: string) => v.trim().toLowerCase().replace(/^service\s+/, "");
+    const cible = norm(serviceCompte);
+    const correspondance = cible
+      ? servicesOptions.find((c) => norm(c) === cible) ||
+        servicesOptions.find((c) => norm(c).includes(cible) || cible.includes(norm(c)))
+      : undefined;
+    if (correspondance) return correspondance;
+
+    const avecStock = stock
+      .filter(
+        (l) =>
+          l.direction.trim().toLowerCase() === direction.trim().toLowerCase() &&
+          l.quantite > 0
+      )
+      .map((l) => l.service);
+    if (serviceCompte && avecStock.includes(serviceCompte)) return serviceCompte;
+    return avecStock[0] || serviceCompte || servicesOptions[0] || "";
+  }, [direction, servicesOptions, stock, user?.department]);
 
   const materielsSource = useMemo(
     () => stockDuService(stock, direction, serviceSource),
@@ -170,8 +225,6 @@ export function NewAffectationPage({
     const r = responsablesDuService(svc, dir);
     setResponsableTransfert(svc?.responsable || r.depositaire || "");
     setDepotParService(r.depositaire);
-    setChefService1(r.chefService1);
-    setChefService2(r.chefService2);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [serviceSource, direction, services, directions]);
 
@@ -185,33 +238,31 @@ export function NewAffectationPage({
   // Validation par étape
   // ---------------------------------------------------------------------
   const validerEtape = (numeroEtape = etape): string => {
-    if (numeroEtape === 1 && !direction)
-      return "Veuillez sélectionner la Direction.";
+    if (numeroEtape === 1) {
+      if (!directionDestinataire)
+        return "Veuillez sélectionner la Direction destinataire.";
+      if (
+        directionDestinataire.trim().toLowerCase() ===
+        direction.trim().toLowerCase()
+      )
+        return "La Direction destinataire doit être différente de la Direction d'origine.";
+    }
     if (numeroEtape === 2) {
-      if (!serviceSource) return "Veuillez sélectionner le service d'origine.";
+      if (!serviceSource)
+        return "Aucun service d'origine n'est rattaché à votre compte.";
       if (materielsSource.length === 0)
-        return `Aucun matériel disponible dans « ${serviceSource} » : choisissez un autre service d'origine.`;
-    }
-    if (numeroEtape === 3) {
-      if (!serviceDestinataire)
-        return "Veuillez sélectionner le service destinataire.";
-      if (serviceDestinataire === serviceSource)
-        return "Le service destinataire doit être différent du service d'origine.";
-    }
-    if (numeroEtape === 4) {
+        return `Aucun matériel disponible dans « ${serviceSource} » : le stock de votre service est vide.`;
       if (!materielSelectionne)
-        return "Veuillez sélectionner le matériel à affecter.";
+        return "Veuillez sélectionner le matériel à transférer.";
       const q = Number(quantite);
       if (!Number.isFinite(q) || q < 1 || q > materielSelectionne.quantite)
         return `Quantité invalide : disponible = ${materielSelectionne.quantite}.`;
     }
-    if (numeroEtape === 5) {
-      if (!motif) return "Veuillez choisir le motif du transfert.";
+    if (numeroEtape === 3) {
+      if (!motif.trim()) return "Veuillez saisir le motif du transfert.";
       if (!responsableTransfert.trim())
         return "Responsable du transfert requis (fiche du service à compléter).";
       if (!depositaire.trim()) return "Le Dépositaire du service est requis.";
-      if (!chefService1.trim()) return "Le Chef de service 1 est requis.";
-      if (!chefService2.trim()) return "Le Chef de service 2 est requis.";
     }
     return "";
   };
@@ -219,11 +270,11 @@ export function NewAffectationPage({
   const suivant = () => {
     const err = validerEtape();
     setErreur(err);
-    if (!err) setEtape((e) => Math.min(5, e + 1));
+    if (!err) setEtape((e) => Math.min(ETAPES.length, e + 1));
   };
 
   const creer = () => {
-    for (let e = 1; e <= 5; e += 1) {
+    for (let e = 1; e <= ETAPES.length; e += 1) {
       const err = validerEtape(e);
       if (err) {
         setErreur(err);
@@ -236,8 +287,8 @@ export function NewAffectationPage({
     try {
       const record = creerAffectation({
         direction,
+        directionDestinataire,
         serviceSource,
-        serviceDestinataire,
         materiel: materielSelectionne!.materiel,
         materielReference: materielSelectionne!.reference,
         quantite: Number(quantite),
@@ -246,8 +297,6 @@ export function NewAffectationPage({
         responsables: {
           responsableTransfert,
           depositaire,
-          chefService1,
-          chefService2,
         },
         createur: user?.name || "—",
         createurEmail: user?.email || "",
@@ -289,8 +338,9 @@ export function NewAffectationPage({
             NOUVEAU TRANSFERT
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base mt-1">
-            Réaffectation interne d'un matériel entre deux services d'une même
-            Direction — sans sortie, sans nouvelle entrée.
+            Transfert d'un matériel vers une autre Direction : l'origine
+            (Direction et service) vient de votre compte — sans création de
+            sortie ni d'entrée.
           </p>
         </div>
       </div>
@@ -298,6 +348,31 @@ export function NewAffectationPage({
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
         {/* Colonne formulaire */}
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+          {/* Origine — issue du COMPTE : aucun sélecteur, lecture seule */}
+          <div className="cm-panel cm-panel-solid rounded-lg p-4">
+            <div className="text-xs font-medium text-muted-foreground mb-3">
+              ORIGINE — ISSUE DE VOTRE COMPTE
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">
+                  Direction d'origine
+                </div>
+                <div className="text-sm text-card-foreground">
+                  {direction || "—"}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">
+                  Service d'origine
+                </div>
+                <div className="text-sm text-card-foreground">
+                  {serviceSource || "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {erreur && (
             <Message variant="danger">
               {erreur}
@@ -358,104 +433,24 @@ export function NewAffectationPage({
                 <div
                   className={`${active ? "block" : "hidden"} p-4 sm:p-6 pt-0`}
                 >
-                  {/* ÉTAPE 1 — DIRECTION */}
+                  {/* ÉTAPE 1 — DIRECTION DESTINATAIRE */}
                   {etapeDef.numero === 1 && (
                     <div>
                       <label className={labelClass}>
-                        Direction <span className="text-red-500">*</span>
+                        Direction destinataire <span className="text-red-500">*</span>
                       </label>
                       <select
                         className={inputClass}
-                        value={direction}
-                        onChange={(e) => {
-                          setDirection(e.target.value);
-                          setServiceSource("");
-                          setServiceDestinataire("");
-                        }}
+                        value={directionDestinataire}
+                        onChange={(e) => setDirectionDestinataire(e.target.value)}
                       >
                         <option value="">Sélectionner une Direction</option>
-                        {directionsOptions.map((nom) => (
-                          <option key={nom} value={nom}>
-                            {nom}
-                          </option>
-                        ))}
-                      </select>
-                      <p className="mt-2 text-xs text-muted-foreground">
-                        Le transfert reste à l'intérieur de cette Direction
-                        (Direction A → Direction B = transfert entre
-                        Directions, opération distincte avec sortie puis
-                        entrée).
-                      </p>
-                    </div>
-                  )}
-
-                  {/* ÉTAPE 2 — SERVICE D'ORIGINE */}
-                  {etapeDef.numero === 2 && (
-                    <div className="space-y-3">
-                      <div>
-                        <label className={labelClass}>
-                          Service d'origine <span className="text-red-500">*</span>
-                        </label>
-                        <select
-                          className={inputClass}
-                          value={serviceSource}
-                          onChange={(e) => setServiceSource(e.target.value)}
-                          disabled={!direction}
-                        >
-                          <option value="">Sélectionner</option>
-                          {servicesOptions.map((nom) => (
-                            <option key={nom} value={nom}>
-                              {nom}
-                            </option>
-                          ))}
-                        </select>
-                        <p className="mt-1 text-xs text-muted-foreground">
-                          Seuls les matériels actuellement affectés à ce service
-                          seront proposés à l'étape 4.
-                        </p>
-                      </div>
-
-                      {serviceSource && materielsSource.length > 0 && (
-                        <div className="rounded-lg border border-border bg-muted/20 p-3">
-                          <div className="text-xs font-medium text-muted-foreground mb-2">
-                            MATÉRIAUX DISPONIBLES — {serviceSource}
-                          </div>
-                          <ul className="space-y-1 text-sm text-card-foreground">
-                            {materielsSource.map((l) => (
-                              <li
-                                key={`${l.materiel}`}
-                                className="flex justify-between gap-2"
-                              >
-                                <span className="truncate">
-                                  {l.reference ? `${l.reference} — ` : ""}
-                                  {l.materiel}
-                                </span>
-                                <span className="font-mono text-muted-foreground whitespace-nowrap">
-                                  {l.quantite}
-                                </span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ÉTAPE 3 — SERVICE DESTINATAIRE */}
-                  {etapeDef.numero === 3 && (
-                    <div>
-                      <label className={labelClass}>
-                        Service destinataire <span className="text-red-500">*</span>
-                      </label>
-                      <select
-                        className={inputClass}
-                        value={serviceDestinataire}
-                        onChange={(e) => setServiceDestinataire(e.target.value)}
-                        disabled={!serviceSource}
-                      >
-                        <option value="">Sélectionner</option>
-                        {servicesOptions
-                          .filter((nom) => nom !== serviceSource)
+                        {directionsOptions
+                          .filter(
+                            (nom) =>
+                              nom.trim().toLowerCase() !==
+                              direction.trim().toLowerCase()
+                          )
                           .map((nom) => (
                             <option key={nom} value={nom}>
                               {nom}
@@ -463,20 +458,21 @@ export function NewAffectationPage({
                           ))}
                       </select>
                       <Message variant="success" size="sm" className="mt-3">
-                        Le service destinataire appartient obligatoirement à la
-                        Direction « {direction || "—"} » : Direction A → Direction B
-                        est automatiquement bloquée (ce serait un transfert).
+                        Le matériel quitte votre Direction « {direction || "—"} »
+                        (origine issue de votre compte, non modifiable) pour
+                        rejoindre la Direction choisie ci-dessus.
                       </Message>
-                      {serviceSource && serviceDestinataire && (
+                      {directionDestinataire && (
                         <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 text-sm text-card-foreground">
-                          {direction} / {serviceSource} → {serviceDestinataire}
+                          {direction} / {serviceSource || "—"} →{" "}
+                          {directionDestinataire}
                         </div>
                       )}
                     </div>
                   )}
 
                   {/* ÉTAPE 4 — MATÉRIEL */}
-                  {etapeDef.numero === 4 && (
+                  {etapeDef.numero === 2 && (
                     <div className="space-y-3">
                       <div>
                         <label className={labelClass}>
@@ -552,24 +548,19 @@ export function NewAffectationPage({
                   )}
 
                   {/* ÉTAPE 5 — MOTIF */}
-                  {etapeDef.numero === 5 && (
+                  {etapeDef.numero === 3 && (
                     <div className="space-y-4">
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <label className={labelClass}>
                             Motif <span className="text-red-500">*</span>
                           </label>
-                          <select
+                          <input
                             className={inputClass}
+                            placeholder="Motif du transfert…"
                             value={motif}
                             onChange={(e) => setMotif(e.target.value)}
-                          >
-                            {MOTIFS_AFFECTATION.map((m) => (
-                              <option key={m} value={m}>
-                                {m}
-                              </option>
-                            ))}
-                          </select>
+                          />
                         </div>
                         <div>
                           <label className={labelClass}>Observation</label>
@@ -612,35 +603,15 @@ export function NewAffectationPage({
                               onChange={(e) => setDepotParService(e.target.value)}
                             />
                           </div>
-                          <div>
-                            <label className={labelClass}>
-                              Chef de service 1
-                            </label>
-                            <input
-                              className={inputClass}
-                              value={chefService1}
-                              onChange={(e) => setChefService1(e.target.value)}
-                            />
-                          </div>
-                          <div>
-                            <label className={labelClass}>
-                              Chef de service 2
-                            </label>
-                            <input
-                              className={inputClass}
-                              value={chefService2}
-                              onChange={(e) => setChefService2(e.target.value)}
-                            />
-                          </div>
                         </div>
                         </div>
                       </div>
 
                       <Message variant="info" size="sm" icon={Info}>
-                        Le transfert démarre « En attente » (0/4) : Responsable du
-                        transfert (créateur) → Dépositaire → Chef de service 1 →
-                        Chef de service 2. À 4/4, le stock est mis à jour (−source /
-                        +destinataire) et le transfert est verrouillé.
+                        Le transfert démarre « En attente » (0/2) : Responsable du
+                        transfert (créateur) → Dépositaire. À 2/2, le stock est mis
+                        à jour (−source / +Direction destinataire) et le transfert
+                        est verrouillé.
                       </Message>
                     </div>
                   )}
@@ -655,13 +626,13 @@ export function NewAffectationPage({
           <div className="lg:sticky lg:top-6 space-y-4">
             <div className="cm-panel cm-panel-solid rounded-lg p-4">
               <h3 className="text-sm font-medium text-card-foreground mb-3">
-                RÉSUMÉ DE L'AFFECTATION
+                RÉSUMÉ DU TRANSFERT
               </h3>
               <div className="space-y-2 text-sm">
                 {[
                   ["Direction", direction],
                   ["Service d'origine", serviceSource],
-                  ["Service destinataire", serviceDestinataire],
+                  ["Direction destinataire", directionDestinataire],
                   ["Matériel", materielSelectionne?.materiel || ""],
                   [
                     "Référence",
@@ -687,19 +658,20 @@ export function NewAffectationPage({
                   VALIDATION
                 </h3>
                 <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
-                  0 / 4
+                  {`0 / ${AFFECTATION_VALIDATIONS.length}`}
                 </span>
               </div>
               <ul className="space-y-2 text-sm">
-                <li className="text-card-foreground">1. Responsable du transfert</li>
-                <li className="text-card-foreground">2. Dépositaire</li>
-                <li className="text-card-foreground">3. Chef de service 1</li>
-                <li className="text-card-foreground">4. Chef de service 2</li>
+                {AFFECTATION_VALIDATIONS.map((v, i) => (
+                  <li key={v.key} className="text-card-foreground">
+                    {i + 1}. {v.label}
+                  </li>
+                ))}
               </ul>
               <div className="flex items-start gap-2 mt-3 px-3 py-2 bg-muted/30 rounded-lg text-xs text-muted-foreground">
                 <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
-                Aucune sortie, aucune nouvelle entrée : seul le service de
-                destination change, avec traçabilité complète.
+                Aucune sortie, aucune nouvelle entrée : seul le stock change de
+                Direction, avec traçabilité complète.
               </div>
             </div>
           </div>

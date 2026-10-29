@@ -314,7 +314,7 @@ export function MovementDetailModal({
     type === "entree"
       ? getHistoriqueAffectations(entree!.reference).map((ev) => ({
           date: ev.date,
-          utilisateur: "Affectation / transfert",
+          utilisateur: "Transfert",
           action: `${ev.libelle} — ${ev.detail}`,
           materiel: entree!.materiel,
           quantite: entree!.quantite,

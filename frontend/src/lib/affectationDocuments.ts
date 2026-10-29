@@ -14,8 +14,10 @@ import ExcelJS from "exceljs";
 import QRCode from "qrcode";
 import {
   AffectationRecord,
+  directionDestinataireDe,
   getStatutAffectationAffiche,
   getValidationsAffectation,
+  validationsAttendues,
 } from "./affectations";
 
 // ---------------------------------------------------------------------------
@@ -106,7 +108,7 @@ export async function genererPdfAffectation(
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
-  const titre = "AFFECTATION DE MATÉRIEL";
+  const titre = "TRANSFERT DE MATÉRIEL";
   doc.text(titre, 105, cur, { align: "center" });
   const wTitre = doc.getTextWidth(titre);
   doc.line(105 - wTitre / 2, cur + 1.6, 105 + wTitre / 2, cur + 1.6);
@@ -115,7 +117,7 @@ export async function genererPdfAffectation(
   doc.setFont("helvetica", "italic");
   doc.setFontSize(9);
   const intro = doc.splitTextToSize(
-    "Réaffectation interne d'un matériel déjà enregistré entre deux services d'une même Direction : sans sortie, sans nouvelle entrée — seule la destination du matériel est modifiée.",
+    "Transfert d'un matériel déjà enregistré vers une autre Direction : sans sortie, sans nouvelle entrée — seul le stock de la destination est crédité.",
     170
   );
   doc.text(intro, 105, cur, { align: "center" });
@@ -126,7 +128,7 @@ export async function genererPdfAffectation(
   const largeurs = [44, 47, 44, 47];
   const grille: Array<[{ label: string; value: string }, { label: string; value: string }]> = [
     [{ label: "Direction", value: a.direction }, { label: "Date", value: dateFr(a.date) }],
-    [{ label: "Service d'origine", value: a.serviceSource }, { label: "Service destinataire", value: a.serviceDestinataire }],
+    [{ label: "Service d'origine", value: a.serviceSource }, { label: "Direction destinataire", value: directionDestinataireDe(a) }],
     [{ label: "Matériel", value: a.materiel }, { label: "Référence", value: a.materielReference || "—" }],
     [{ label: "Quantité", value: String(a.quantite) }, { label: "Motif", value: a.motif || "—" }],
     [{ label: "Observation", value: a.observation || "—" }, { label: "Créateur", value: `${a.createur}` }],
@@ -162,7 +164,7 @@ export async function genererPdfAffectation(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
-  doc.text(`VALIDATION — ${nb}/4`, MARGE, cur);
+  doc.text(`VALIDATION — ${nb}/${validationsAttendues(a)}`, MARGE, cur);
   cur += 5;
 
   autoTable(doc, {
@@ -238,7 +240,7 @@ export async function genererPdfAffectation(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.text(
-    `Statut : ${textePdf(statut)} (${nb}/4 validations)`,
+    `Statut : ${textePdf(statut)} (${nb}/${validationsAttendues(a)} validations)`,
     MARGE + 36,
     cur + 13
   );
@@ -251,7 +253,7 @@ export async function genererPdfAffectation(
   doc.setTextColor(71, 85, 105);
   doc.setFontSize(7);
   doc.text(
-    "QR Code : le scan identifie l'affectation ; la validation exige un rôle habilité.",
+    "QR Code : le scan identifie le transfert ; la validation exige un rôle habilité.",
     MARGE + 36,
     cur + 29,
     { maxWidth: LARGEUR - 80 }
@@ -289,7 +291,7 @@ export async function genererPdfAffectation(
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
     doc.text(
-      `${a.reference} — AFFECTATION DE MATÉRIEL — page ${p}/${totalPages}`,
+      `${a.reference} — TRANSFERT DE MATÉRIEL — page ${p}/${totalPages}`,
       105,
       292,
       { align: "center" }
@@ -299,7 +301,7 @@ export async function genererPdfAffectation(
   if (action === "preview") {
     window.open(doc.output("bloburl"), "_blank");
   } else {
-    doc.save(`Affectation_${a.reference.replace(/[^\w-]/g, "")}.pdf`);
+    doc.save(`Transfert_${a.reference.replace(/[^\w-]/g, "")}.pdf`);
   }
 }
 
@@ -324,7 +326,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   );
 
   const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("AFFECTATION", {
+  const ws = wb.addWorksheet("TRANSFERT", {
     pageSetup: {
       paperSize: 9, // A4
       orientation: "landscape",
@@ -402,7 +404,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   ws.getRow(ligne).height = 18;
   ligne += 1;
 
-  fusionner(`A${ligne}:J${ligne}`, "AFFECTATION DE MATÉRIEL", {
+  fusionner(`A${ligne}:J${ligne}`, "TRANSFERT DE MATÉRIEL", {
     font: { bold: true, size: 18, color: { argb: ARGENT_TITRE } },
     alignment: { horizontal: "center" },
   });
@@ -411,7 +413,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
 
   fusionner(
     `A${ligne}:J${ligne}`,
-    "Réaffectation interne entre deux services d'une même Direction : pas de sortie, pas de nouvelle entrée — le total de la Direction est inchangé.",
+    "Transfert vers une autre Direction : pas de sortie, pas de nouvelle entrée — le total des Directions concernées est inchangé.",
     { font: { italic: true, size: 10 }, alignment: { horizontal: "center" } }
   );
   ws.getRow(ligne).height = 22;
@@ -440,7 +442,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   };
 
   infoLigne("Direction", a.direction, "Date", dateFr(a.date));
-  infoLigne("Service d'origine", a.serviceSource, "Service destinataire", a.serviceDestinataire);
+  infoLigne("Service d'origine", a.serviceSource, "Direction destinataire", directionDestinataireDe(a));
   infoLigne("Matériel", a.materiel, "Référence", a.materielReference || "—");
   infoLigne("Quantité", a.quantite, "Motif", a.motif || "—");
   infoLigne("Observation", a.observation || "—", "Créateur", a.createur);
@@ -449,7 +451,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   // ------------------------------------------------------- validations
   fusionner(
     `A${ligne}:J${ligne}`,
-    `VALIDATION — ${getValidationsAffectation(a).filter((v) => v.signed).length}/4 — ${getStatutAffectationAffiche(a).toUpperCase()}`,
+    `VALIDATION — ${getValidationsAffectation(a).filter((v) => v.signed).length}/${validationsAttendues(a)} — ${getStatutAffectationAffiche(a).toUpperCase()}`,
     {
       font: { bold: true, size: 11, color: { argb: "FFFFFFFF" } },
       alignment: { horizontal: "center" },
@@ -516,7 +518,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   const nb = validations.filter((v) => v.signed).length;
   fusionner(
     `A${ligne}:J${ligne}`,
-    `QR CODE — ${a.reference} — Statut : ${getStatutAffectationAffiche(a)} (${nb}/4 validations)`,
+    `QR CODE — ${a.reference} — Statut : ${getStatutAffectationAffiche(a)} (${nb}/${validationsAttendues(a)} validations)`,
     {
       font: { bold: true, size: 10, color: { argb: "FFFFFFFF" } },
       alignment: { horizontal: "center" },
@@ -533,7 +535,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   });
   fusionner(
     `B${ligne}:J${ligne}`,
-    `Le scan du QR Code identifie l'affectation ${a.reference} (Direction ${a.direction} — ${a.serviceSource} → ${a.serviceDestinataire} — ${a.quantite} unité(s)).\n\nÉdité le ${dateFr(
+    `Le scan du QR Code identifie le transfert ${a.reference} (Direction ${a.direction} — ${a.serviceSource} → ${directionDestinataireDe(a)} — ${a.quantite} unité(s)).\n\nÉdité le ${dateFr(
       new Date().toISOString()
     )} — AssetTrack`,
     { font: { size: 9 } }
@@ -567,7 +569,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   }
 
   ws.headerFooter = {
-    oddFooter: `&C&"Helvetica"&8 ${a.reference} — Affectation de matériel — Page &P / &N`,
+    oddFooter: `&C&"Helvetica"&8 ${a.reference} — Transfert de matériel — Page &P / &N`,
   };
   ws.pageSetup.printArea = `A1:J${ligne}`;
 
@@ -577,7 +579,7 @@ export async function genererExcelAffectation(a: AffectationRecord): Promise<voi
   });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `Affectation_${a.reference.replace(/[^\w-]/g, "")}.xlsx`;
+  link.download = `Transfert_${a.reference.replace(/[^\w-]/g, "")}.xlsx`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

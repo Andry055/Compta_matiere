@@ -21,6 +21,8 @@ import {
   AffectationRecord,
   StockLigne,
   getStatutAffectationAffiche,
+  directionDestinataireDe,
+  validationsAttendues,
   getValidationsAffectation,
   getValidationCount,
   peutValiderAffectation,
@@ -70,8 +72,9 @@ export function AffectationDetailModal({
   const record = locale && locale.reference === affectation.reference ? locale : affectation;
   const validations = getValidationsAffectation(record);
   const nb = getValidationCount(record);
+  const attendues = validationsAttendues(record);
   const statut = getStatutAffectationAffiche(record);
-  const validee = record.statut === "Validée" || nb >= 4;
+  const validee = record.statut === "Validée" || nb >= attendues;
   const qrValue = valeurQrAffectation(record);
   const poserValidation = (key: AffectationCleValidation) => {
     setBusy(true);
@@ -149,7 +152,7 @@ export function AffectationDetailModal({
   );
   const stockDest = stock.find(
     (l) =>
-      l.direction === record.direction &&
+      l.direction === directionDestinataireDe(record) &&
       l.service === record.serviceDestinataire &&
       l.materiel === record.materiel
   );
@@ -237,7 +240,10 @@ export function AffectationDetailModal({
             <div className="grid gap-4 md:grid-cols-3">
               <InfoField label="Direction" value={record.direction} />
               <InfoField label="Service d'origine" value={record.serviceSource} />
-              <InfoField label="Service destinataire" value={record.serviceDestinataire} />
+              <InfoField
+                label="Direction destinataire"
+                value={directionDestinataireDe(record)}
+              />
               <InfoField label="Matériel" value={record.materiel} />
               <InfoField label="Référence" value={record.materielReference || "—"} />
               <InfoField label="Quantité" value={record.quantite} />
@@ -257,14 +263,12 @@ export function AffectationDetailModal({
           {/* Responsables */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3">Responsables</h4>
-            <div className="grid gap-3 sm:grid-cols-4">
+            <div className="grid gap-3 sm:grid-cols-2">
               {(
                 [
                   ["Responsable du transfert", record.responsables.responsableTransfert],
                   ["Dépositaire", record.responsables.depositaire],
-                  ["Chef de service 1", record.responsables.chefService1],
-                  ["Chef de service 2", record.responsables.chefService2],
-                ] as Array<[string, string]>
+                ] as Array<[string, string | undefined]>
               ).map(([label, nom]) => (
                 <div key={label} className="rounded-lg border border-border bg-muted/20 p-3">
                   <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
@@ -281,7 +285,9 @@ export function AffectationDetailModal({
           <div>
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-sm text-card-foreground">Validation</h4>
-              <span className="text-xs font-mono text-muted-foreground">{nb} / 4</span>
+              <span className="text-xs font-mono text-muted-foreground">
+                {nb} / {attendues}
+              </span>
             </div>
             <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               {validations.map((v, idx) => {
@@ -319,7 +325,7 @@ export function AffectationDetailModal({
                           : "text-muted-foreground"
                       }`}
                     >
-                      {v.signed ? `${idx + 1}/4 signé` : "En attente"}
+                      {v.signed ? `${idx + 1}/${attendues} signé` : "En attente"}
                     </div>
                     {v.signed && (
                       <div className="text-xs text-muted-foreground mt-1">
@@ -351,17 +357,18 @@ export function AffectationDetailModal({
             </div>
             {validee ? (
               <Message variant="success" size="sm" className="mt-3">
-                <strong>TRANSFERT VALIDÉ (4/4)</strong> — stock mis à jour : −
+                <strong>{`TRANSFERT VALIDÉ (${attendues}/${attendues})`}</strong> —
+                stock mis à jour : −
                 {record.quantite} ({record.serviceSource}) / +
-                {record.quantite} ({record.serviceDestinataire}), total de la
-                Direction inchangé. Transfert verrouillé : plus modifiable sans
+                {record.quantite} ({directionDestinataireDe(record)}), total des
+                Directions inchangé. Transfert verrouillé : plus modifiable sans
                 nouvelle opération.
               </Message>
             ) : (
               <Message variant="info" size="sm" icon={PenTool} className="mt-3">
-                4 validations obligatoires dans l'ordre : Responsable du transfert
-                (créateur) → Dépositaire → Chef de service 1 → Chef de service 2.
-                Aucune sortie, aucune nouvelle entrée.
+                2 validations obligatoires dans l'ordre : Responsable du
+                transfert (créateur) → Dépositaire. Aucune sortie, aucune
+                nouvelle entrée.
               </Message>
             )}
           </div>
@@ -369,7 +376,7 @@ export function AffectationDetailModal({
           {validee && (stockSource || stockDest) && (
             <div>
               <h4 className="text-sm text-card-foreground mb-3">
-                Stock du service (après transfert)
+                Stock après transfert
               </h4>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
@@ -382,7 +389,7 @@ export function AffectationDetailModal({
                 </div>
                 <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
                   <div className="text-xs text-muted-foreground">
-                    {record.serviceDestinataire}
+                    {directionDestinataireDe(record)}
                   </div>
                   <div className="text-card-foreground font-mono">
                     {stockDest ? stockDest.quantite : 0} unité(s)

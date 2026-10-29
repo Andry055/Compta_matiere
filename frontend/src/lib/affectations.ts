@@ -196,7 +196,7 @@ export function creerAffectation(
     responsables: input.responsables,
     validations: {},
     statut: "En attente",
-    historique: [{ date, libelle: `Création de l'affectation par ${input.createur || "—"}` }],
+    historique: [{ date, libelle: `Création du transfert par ${input.createur || "—"}` }],
   };
 
   persister([record, ...existantes]);
@@ -258,10 +258,10 @@ export function validerAffectation(
 ): AffectationRecord {
   const records = listerAffectations();
   const record = records.find((a) => a.reference === reference);
-  if (!record) throw new Error("Affectation introuvable.");
+  if (!record) throw new Error("Transfert introuvable.");
   if (record.statut === "Validée")
     throw new Error(
-      "Affectation déjà validée (4/4) : elle n'est plus modifiable."
+      "Transfert déjà validé (4/4) : il n'est plus modifiable."
     );
   if (record.validations[key])
     throw new Error("Cette validation a déjà été enregistrée (jamais modifiable).");
@@ -300,7 +300,7 @@ export function validerAffectation(
       ...record.historique,
       {
         date: maintenant.slice(0, 10),
-        libelle: `✓ Affectation validée (4/4) — stock mis à jour : −${record.quantite} (${record.serviceSource}) / +${record.quantite} (${record.serviceDestinataire})`,
+        libelle: `✓ Transfert validé (4/4) — stock mis à jour : −${record.quantite} (${record.serviceSource}) / +${record.quantite} (${record.serviceDestinataire})`,
       },
     ];
   }

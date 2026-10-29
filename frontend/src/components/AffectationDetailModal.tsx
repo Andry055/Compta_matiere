@@ -161,7 +161,7 @@ export function AffectationDetailModal({
           <div>
             <h3 className="text-lg text-card-foreground flex items-center gap-2">
               <Package className="h-5 w-5 text-primary" />
-              Affectation <span className="font-mono text-primary">{record.reference}</span>
+              Transfert <span className="font-mono text-primary">{record.reference}</span>
             </h3>
             <div className="flex flex-wrap items-center gap-2 mt-2">
               <span
@@ -193,7 +193,7 @@ export function AffectationDetailModal({
             onClick={() => telechargerPdf("download")}
             disabled={busyDoc !== ""}
             className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-primary text-primary-foreground hover:bg-primary/90 disabled:opacity-50 transition-colors"
-            title="Télécharger l'affectation en PDF imprimable"
+            title="Télécharger le transfert en PDF imprimable"
           >
             {busyDoc === "pdf" ? (
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -232,7 +232,7 @@ export function AffectationDetailModal({
           {/* Informations */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3">
-              Informations de l'affectation
+              Informations du transfert
             </h4>
             <div className="grid gap-4 md:grid-cols-3">
               <InfoField label="Direction" value={record.direction} />
@@ -351,10 +351,10 @@ export function AffectationDetailModal({
             </div>
             {validee ? (
               <Message variant="success" size="sm" className="mt-3">
-                <strong>AFFECTATION VALIDÉE (4/4)</strong> — stock mis à jour : −
+                <strong>TRANSFERT VALIDÉ (4/4)</strong> — stock mis à jour : −
                 {record.quantite} ({record.serviceSource}) / +
                 {record.quantite} ({record.serviceDestinataire}), total de la
-                Direction inchangé. Affectation verrouillée : plus modifiable sans
+                Direction inchangé. Transfert verrouillé : plus modifiable sans
                 nouvelle opération.
               </Message>
             ) : (
@@ -369,7 +369,7 @@ export function AffectationDetailModal({
           {validee && (stockSource || stockDest) && (
             <div>
               <h4 className="text-sm text-card-foreground mb-3">
-                Stock du service (après affectation)
+                Stock du service (après transfert)
               </h4>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">

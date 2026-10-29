@@ -61,10 +61,10 @@ const navItems = [
     description: "Suivi des entrées de matériels"
   },
   {
-    title: "Affectations",
+    title: "Transferts",
     icon: ArrowLeftRight,
     key: "affectations",
-    description: "Affectations entre services"
+    description: "Transferts entre services"
   },
   {
     title: "Sorties",

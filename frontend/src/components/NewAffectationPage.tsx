@@ -206,7 +206,7 @@ export function NewAffectationPage({
         return `Quantité invalide : disponible = ${materielSelectionne.quantite}.`;
     }
     if (numeroEtape === 5) {
-      if (!motif) return "Veuillez choisir le motif de l'affectation.";
+      if (!motif) return "Veuillez choisir le motif du transfert.";
       if (!responsableTransfert.trim())
         return "Responsable du transfert requis (fiche du service à compléter).";
       if (!depositaire.trim()) return "Le Dépositaire du service est requis.";
@@ -273,10 +273,10 @@ export function NewAffectationPage({
           className="inline-flex items-center gap-1 hover:text-foreground transition-colors"
         >
           <ArrowLeft className="h-3.5 w-3.5" />
-          Affectations
+          Transferts
         </button>
         <span>/</span>
-        <span className="text-foreground font-medium">Nouvelle affectation</span>
+        <span className="text-foreground font-medium">Nouveau transfert</span>
       </div>
 
       {/* Header */}
@@ -286,7 +286,7 @@ export function NewAffectationPage({
         </div>
         <div>
           <h1 className="text-2xl sm:text-3xl tracking-tight text-foreground">
-            NOUVELLE AFFECTATION
+            NOUVEAU TRANSFERT
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base mt-1">
             Réaffectation interne d'un matériel entre deux services d'une même
@@ -381,9 +381,10 @@ export function NewAffectationPage({
                         ))}
                       </select>
                       <p className="mt-2 text-xs text-muted-foreground">
-                        L'affectation reste à l'intérieur de cette Direction
-                        (Direction A → Direction B = transfert, opération
-                        distincte avec sortie puis entrée).
+                        Le transfert reste à l'intérieur de cette Direction
+                        (Direction A → Direction B = transfert entre
+                        Directions, opération distincte avec sortie puis
+                        entrée).
                       </p>
                     </div>
                   )}
@@ -587,7 +588,7 @@ export function NewAffectationPage({
                           <div className="flex items-center gap-2 mb-3">
                             <Info className="msg-icon h-4 w-4" />
                             <span className="msg-title text-sm">
-                              Responsables de l'affectation (automatiques)
+                              Responsables du transfert (automatiques)
                             </span>
                           </div>
                         <div className="grid gap-4 sm:grid-cols-2">
@@ -636,10 +637,10 @@ export function NewAffectationPage({
                       </div>
 
                       <Message variant="info" size="sm" icon={Info}>
-                        L'affectation démarre « En attente » (0/4) : Responsable du
+                        Le transfert démarre « En attente » (0/4) : Responsable du
                         transfert (créateur) → Dépositaire → Chef de service 1 →
                         Chef de service 2. À 4/4, le stock est mis à jour (−source /
-                        +destinataire) et l'affectation est verrouillée.
+                        +destinataire) et le transfert est verrouillé.
                       </Message>
                     </div>
                   )}
@@ -742,7 +743,7 @@ export function NewAffectationPage({
               ) : (
                 <CheckCircle2 className="h-4 w-4" />
               )}
-              Créer l'affectation
+              Créer le transfert
             </button>
           )}
         </div>

@@ -5,7 +5,10 @@
 //     (département « Direction - Service » du profil) et affichés en lecture
 //     seule dans le bloc « ORIGINE — ISSUE DE VOTRE COMPTE » ;
 //   - l'assistant ne compte plus que 3 étapes, la première étant la
-//     « Direction destinataire » (jamais la Direction du compte).
+//     « Direction destinataire » (jamais la Direction du compte) ;
+//   - le motif est une donnée SAISIE (champ libre) et le circuit de
+//     validation ne compte plus que 2 signatures : Responsable du transfert
+//     puis Dépositaire (plus de chefs de service).
 //
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
@@ -49,7 +52,7 @@ function renderFormulaire(departement: string) {
   );
 }
 
-describe("Nouveau transfert — origine issue du compte", () => {
+describe("Nouveau transfert — origine issue du compte et formulaire", () => {
   it("affiche en lecture seule la Direction et le Service du compte", async () => {
     vi.mocked(fetchDirections).mockResolvedValue([
       {
@@ -102,6 +105,25 @@ describe("Nouveau transfert — origine issue du compte", () => {
     const valeurs = Array.from(destination.options).map((o) => o.value);
     expect(valeurs).not.toContain("Direction des Affaires Financières");
     expect(valeurs).toContain("Direction DRH");
+  });
+
+  it("propose le motif comme champ libre (donnée saisie, pas de liste)", async () => {
+    renderFormulaire("DRH - Service Gestion Personnel");
+
+    const champMotif = await screen.findByPlaceholderText("Motif du transfert…");
+    expect(champMotif.tagName).toBe("INPUT");
+    expect(
+      screen.queryByRole("option", { name: "Réaffectation interne" })
+    ).toBeNull();
+  });
+
+  it("n'affiche que 2 validations : Responsable du transfert puis Dépositaire", async () => {
+    renderFormulaire("DRH - Service Gestion Personnel");
+
+    expect(await screen.findByText("1. Responsable du transfert")).toBeTruthy();
+    expect(screen.getByText("2. Dépositaire")).toBeTruthy();
+    expect(screen.getByText("0 / 2")).toBeTruthy();
+    expect(screen.queryByText(/Chef de service/)).toBeNull();
   });
 
   it("affiche la Direction brute du département quand aucune ne correspond", async () => {

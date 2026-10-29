@@ -175,7 +175,7 @@ export function AffectationDetailModal({
                 {statut}
               </span>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-muted text-muted-foreground">
-                Validations : {nb} / 4
+                Validations : {nb} / {attendues}
               </span>
               <span className="text-xs text-muted-foreground">
                 {record.materiel} — {record.quantite} unité(s)

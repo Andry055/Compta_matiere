@@ -1,27 +1,27 @@
 'use strict';
 
 /**
- * affectation service
+ * transfert service
  *
- * Règle métier des affectations (validation à QUATRE signatures) :
+ * Règle métier des transferts (validation à QUATRE signatures) :
  *   0/4 -> En attente
  *   1/4, 2/4, 3/4 -> En attente (progression x/4 affichée côté client)
  *   4/4 (responsable_transfert_signed AND depositaire_signed
  *        AND chef_service_1_signed AND chef_service_2_signed)
- *        -> statut = validee  (affectation verrouillée, stock mis à jour côté client)
+ *        -> statut = validee  (transfert verrouillée, stock mis à jour côté client)
  *
  * La règle est appliquée côté serveur : le statut ne peut jamais devenir
- * « validee » sans les quatre signatures, et une affectation « validee » dont
+ * « validee » sans les quatre signatures, et un transfert « validee » dont
  * une signature est retirée redescend en « en_attente ».
  *
  * NB : la création passe par le contrôleur `createComplete` (jamais par un
  * create nu) : les drapeaux de signature y sont toujours initialisés à
- * false — impossible de fabriquer une affectation déjà validée.
+ * false — impossible de fabriquer un transfert déjà validée.
  */
 
 const { createCoreService } = require('@strapi/strapi').factories;
 
-const AFFECTATION_UID = 'api::affectation.affectation';
+const TRANSFERT_UID = 'api::transfert.transfert';
 
 const SIGNATURE_FLAGS = [
   'responsable_transfert_signed',
@@ -60,12 +60,12 @@ function applySignatureRule(data, existing) {
   if (total === SIGNATURE_FLAGS.length) {
     data.statut = 'validee';
   } else if (merged.statut === 'validee') {
-    // Une affectation sans ses 4 signatures ne peut pas rester « validée »
+    // Un transfert sans ses 4 signatures ne peut pas rester « validée »
     data.statut = 'en_attente';
   }
 }
 
-module.exports = createCoreService(AFFECTATION_UID, ({ strapi }) => ({
+module.exports = createCoreService(TRANSFERT_UID, ({ strapi }) => ({
   async create(params) {
     const data = params.data || {};
     applySignatureRule(data, null);
@@ -76,7 +76,7 @@ module.exports = createCoreService(AFFECTATION_UID, ({ strapi }) => ({
     const { documentId, data } = params;
     let existing = null;
     try {
-      existing = await strapi.documents(AFFECTATION_UID).findOne({
+      existing = await strapi.documents(TRANSFERT_UID).findOne({
         documentId,
         fields: ['statut', ...SIGNATURE_FLAGS],
       });

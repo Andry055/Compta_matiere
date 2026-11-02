@@ -12,25 +12,26 @@ import {
   History,
   Loader2,
   Maximize2,
-  XCircle,
 } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Message } from "./ui/message";
 import { User } from "../App";
 import {
+  TransfertCleValidation,
   TransfertRecord,
+  StockLigne,
   getStatutTransfertAffiche,
-  getValidationsSortie,
-  getValidationsReception,
-  getSignatureSortieCount,
-  getSignatureReceptionCount,
-  peutSignerSortie,
-  peutSignerReception,
+  directionDestinataireDe,
+  validationsAttendues,
+  clesAttendues,
+  TRANSFERT_VALIDATIONS,
+  getValidationsTransfert,
+  getValidationCount,
+  peutValiderTransfert,
   statutTransfertBadge,
-  signerSortie,
-  signerReception,
-  rejeterTransfert,
+  validerTransfert,
 } from "../lib/transferts";
+import { estTransfertServeur, signerTransfertServeur } from "../lib/api";
 import {
   genererPdfTransfert,
   genererExcelTransfert,
@@ -39,6 +40,8 @@ import {
 interface TransfertDetailModalProps {
   open: boolean;
   transfert: TransfertRecord | null;
+  /** Stock consolidé (pour afficher l'état après validation) */
+  stock?: StockLigne[];
   user?: User;
   onChanged?: () => void;
   onClose: () => void;
@@ -51,19 +54,17 @@ function InfoField({ label, value }: { label: string; value: string | number }) 
     </div>
   );
 }
-type CleSignature = "depositaire" | "chefService1" | "chefService2";
 export function TransfertDetailModal({
   open,
   transfert,
+  stock = [],
   user,
   onChanged,
   onClose,
 }: TransfertDetailModalProps) {
-  const [confirm, setConfirm] = useState<{
-    type: "sortie" | "reception";
-    key: CleSignature;
-  } | null>(null);
-  const [confirmRejet, setConfirmRejet] = useState(false);
+  const [confirmKey, setConfirmKey] = useState<TransfertCleValidation | null>(
+    null
+  );
   const [busy, setBusy] = useState(false);
   const [busyDoc, setBusyDoc] = useState<"" | "pdf" | "excel">("");
   const [erreur, setErreur] = useState("");
@@ -71,55 +72,37 @@ export function TransfertDetailModal({
   // Copie locale mise à jour après chaque signature
   const [locale, setLocale] = useState<TransfertRecord | null>(null);
   if (!open || !transfert) return null;
-  const record =
-    locale && locale.reference === transfert.reference ? locale : transfert;
-  const validationsSortie = getValidationsSortie(record);
-  const validationsReception = getValidationsReception(record);
-  const nbSortie = getSignatureSortieCount(record);
-  const nbReception = getSignatureReceptionCount(record);
+  const record = locale && locale.reference === transfert.reference ? locale : transfert;
+  const validations = getValidationsTransfert(record);
+  const nb = getValidationCount(record);
+  const attendues = validationsAttendues(record);
   const statut = getStatutTransfertAffiche(record);
-  const termine = nbSortie >= 3 && nbReception >= 3;
-  const rejetee = record.statut === "Rejeté";
+  const validee = record.statut === "Validée" || nb >= attendues;
   const qrValue = valeurQrTransfert(record);
-  const poserSignature = (type: "sortie" | "reception", key: CleSignature) => {
+  const poserValidation = async (key: TransfertCleValidation) => {
     setBusy(true);
     setErreur("");
     try {
-      const maj =
-        type === "sortie"
-          ? signerSortie(record.reference, key, {
-              name: user?.name,
-              email: user?.email,
-              role: user?.role,
-            })
-          : signerReception(record.reference, key, {
-              name: user?.name,
-              email: user?.email,
-              role: user?.role,
-            });
+      const maj = estTransfertServeur(record)
+        ? // Transfert stocké en base : le serveur contrôle le rôle, l'ordre
+          // du circuit (3 validations) et l'immuabilité de la signature.
+          await signerTransfertServeur(record.id, key)
+        : // Trace locale historique : workflow appliqué côté client.
+          validerTransfert(record.reference, key, {
+            name: user?.name,
+            email: user?.email,
+            role: user?.role,
+          });
       setLocale(maj);
-      setConfirm(null);
+      setConfirmKey(null);
       onChanged?.();
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : "Signature impossible.");
-    } finally {
-      setBusy(false);
-    }
-  };
-  const rejeter = () => {
-    setBusy(true);
-    setErreur("");
-    try {
-      const maj = rejeterTransfert(record.reference, {
-        name: user?.name,
-        email: user?.email,
-        role: user?.role,
-      });
-      setLocale(maj);
-      setConfirmRejet(false);
-      onChanged?.();
-    } catch (e) {
-      setErreur(e instanceof Error ? e.message : "Rejet impossible.");
+      setErreur(
+        (e as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ||
+          (e instanceof Error ? e.message : "") ||
+          "Validation impossible."
+      );
     } finally {
       setBusy(false);
     }
@@ -146,6 +129,7 @@ export function TransfertDetailModal({
       setBusyDoc("");
     }
   };
+  /** Téléchargement du QR Code en PNG */
   const telechargerQr = () => {
     const svg = document.getElementById(
       `qr-transfert-${record.reference}`
@@ -173,77 +157,18 @@ export function TransfertDetailModal({
     };
     img.src = url;
   };
-  const carteValidation = (
-    v: { key: CleSignature; label: string; signed: boolean; date?: string; signataire?: string },
-    idx: number,
-    total: 3,
-    type: "sortie" | "reception",
-    precedentesSignees: boolean
-  ) => {
-    const autorise =
-      !termine &&
-      !rejetee &&
-      precedentesSignees &&
-      (type === "sortie"
-        ? peutSignerSortie(
-            { name: user?.name, email: user?.email, role: user?.role },
-            record,
-            v.key
-          )
-        : peutSignerReception(
-            { name: user?.name, email: user?.email, role: user?.role },
-            record,
-            v.key
-          ));
-    return (
-      <div
-        key={`${type}-${v.key}`}
-        className={`border rounded-lg p-3 ${
-          v.signed
-            ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
-            : "border-border bg-muted/20"
-        }`}
-      >
-        <div className="flex items-center gap-2 mb-1">
-          {v.signed ? (
-            <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
-          ) : (
-            <Circle className="h-4 w-4 text-muted-foreground" />
-          )}
-          <span className="text-sm text-card-foreground">{v.label}</span>
-        </div>
-        <div
-          className={`text-xs ${
-            v.signed ? "text-green-700 dark:text-green-400" : "text-muted-foreground"
-          }`}
-        >
-          {v.signed ? `${idx + 1}/${total} signé` : "En attente"}
-        </div>
-        {v.signed && (
-          <div className="text-xs text-muted-foreground mt-1">
-            {v.signataire}
-            <br />
-            {v.date ? new Date(v.date).toLocaleString("fr-FR") : ""}
-          </div>
-        )}
-        {autorise && (
-          <button
-            onClick={() => setConfirm({ type, key: v.key })}
-            disabled={busy}
-            className="mt-2 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors text-xs"
-          >
-            <PenTool className="h-3.5 w-3.5" />
-            Valider
-          </button>
-        )}
-        {!v.signed && !autorise && !termine && !rejetee && !precedentesSignees && (
-          <div className="mt-2 text-[11px] text-muted-foreground">
-            Workflow : la validation précédente est requise.
-          </div>
-        )}
-      </div>
-    );
-  };
+  const stockSource = stock.find(
+    (l) =>
+      l.direction === record.direction &&
+      l.service === record.serviceSource &&
+      l.materiel === record.materiel
+  );
+  const stockDest = stock.find(
+    (l) =>
+      l.direction === directionDestinataireDe(record) &&
+      l.service === record.serviceDestinataire &&
+      l.materiel === record.materiel
+  );
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
       <div className="cm-modal border bg-popover w-full max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -263,10 +188,7 @@ export function TransfertDetailModal({
                 {statut}
               </span>
               <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-muted text-muted-foreground">
-                Sortie : {nbSortie}/3
-              </span>
-              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono bg-muted text-muted-foreground">
-                Réception : {nbReception}/3
+                Validations : {nb} / {attendues}
               </span>
               <span className="text-xs text-muted-foreground">
                 {record.materiel} — {record.quantite} unité(s)
@@ -316,17 +238,6 @@ export function TransfertDetailModal({
             )}
             Excel
           </button>
-          {!termine && !rejetee && nbSortie < 3 && (
-            <button
-              onClick={() => setConfirmRejet(true)}
-              disabled={busy}
-              className="ml-auto inline-flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border border-red-200 text-red-600 hover:bg-red-50 dark:border-red-800 dark:hover:bg-red-900/20 disabled:opacity-50 transition-colors"
-              title="Rejeter le transfert (sortie non encore validée)"
-            >
-              <XCircle className="h-4 w-4" />
-              Rejeter
-            </button>
-          )}
         </div>
         <div className="p-6 space-y-6">
           {erreur && (
@@ -340,25 +251,19 @@ export function TransfertDetailModal({
               Informations du transfert
             </h4>
             <div className="grid gap-4 md:grid-cols-3">
-              <InfoField label="Direction d'origine" value={record.directionOrigine} />
-              <InfoField label="Service d'origine" value={record.serviceOrigine} />
+              <InfoField label="Direction" value={record.direction} />
+              <InfoField label="Service d'origine" value={record.serviceSource} />
+              <InfoField
+                label="Direction destinataire"
+                value={directionDestinataireDe(record)}
+              />
               <InfoField label="Matériel" value={record.materiel} />
-              <InfoField label="Direction destinataire" value={record.directionDestination} />
-              <InfoField label="Service destinataire" value={record.serviceDestination} />
-              <InfoField label="Référence matériel" value={record.materielReference || "—"} />
+              <InfoField label="Référence" value={record.materielReference || "—"} />
               <InfoField label="Quantité" value={record.quantite} />
               <InfoField label="Motif" value={record.motif || "—"} />
               <InfoField
                 label="Date"
                 value={new Date(`${record.date}T00:00:00`).toLocaleDateString("fr-FR")}
-              />
-              <InfoField
-                label="Date de sortie"
-                value={record.dateSortie ? new Date(record.dateSortie).toLocaleString("fr-FR") : "—"}
-              />
-              <InfoField
-                label="Date de réception"
-                value={record.dateReception ? new Date(record.dateReception).toLocaleString("fr-FR") : "—"}
               />
               <InfoField label="Créateur" value={record.createur} />
               {record.observation && (
@@ -368,123 +273,164 @@ export function TransfertDetailModal({
               )}
             </div>
           </div>
-          {/* Trajet */}
-          <div className="rounded-lg border border-border bg-muted/20 p-4">
-            <div className="flex flex-col sm:flex-row items-center gap-3 text-sm text-center">
-              <div className="flex-1">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Origine
+          {/* Responsables */}
+          <div>
+            <h4 className="text-sm text-card-foreground mb-3">Responsables</h4>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {(
+                [
+                  ["Responsable du transfert", record.responsables.responsableTransfert],
+                  ["Dépositaire", record.responsables.depositaire],
+                  ["Chef logistique", record.responsables.logistique],
+                ] as Array<[string, string | undefined]>
+              ).map(([label, nom]) => (
+                <div key={label} className="rounded-lg border border-border bg-muted/20 p-3">
+                  <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
+                    {label}
+                  </div>
+                  <div className="text-sm text-card-foreground mt-0.5">
+                    {nom || "—"}
+                  </div>
                 </div>
-                <div className="text-card-foreground font-medium">
-                  {record.directionOrigine} / {record.serviceOrigine}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  −{record.quantite} unité(s) après sortie validée
-                </div>
-              </div>
-              <div className="text-primary">
-                <X className="h-4 w-4 rotate-90" />
-              </div>
-              <div className="flex-1">
-                <div className="text-[11px] uppercase tracking-wide text-muted-foreground">
-                  Destination
-                </div>
-                <div className="text-card-foreground font-medium">
-                  {record.directionDestination} / {record.serviceDestination}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  +{record.quantite} unité(s) après réception validée
-                </div>
-              </div>
+              ))}
             </div>
           </div>
-          {/* Validation de la SORTIE */}
+          {/* Validation */}
           <div>
             <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm text-card-foreground">
-                Validation de la sortie — Direction d'origine
-              </h4>
-              <span className="text-xs font-mono text-muted-foreground">{nbSortie} / 3</span>
-            </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {validationsSortie.map((v, idx) =>
-                carteValidation(
-                  v,
-                  idx,
-                  3,
-                  "sortie",
-                  idx === 0 || validationsSortie.slice(0, idx).every((p) => p.signed)
-                )
-              )}
-            </div>
-            {nbSortie < 3 ? (
-              <Message variant="info" size="sm" icon={PenTool} className="mt-3">
-                Les 3 responsables de la Direction d'origine valident la SORTIE
-                (Dépositaire → Chef de service 1 → Chef de service 2). Le stock
-                d'origine est diminué uniquement après la 3ᵉ signature.
-              </Message>
-            ) : (
-              <Message variant="info" size="sm" className="mt-3">
-                <strong>SORTIE VALIDÉE (3/3) — EN TRANSFERT</strong> : le matériel
-                n'est plus dans le stock de {record.directionOrigine} /{" "}
-                {record.serviceOrigine}.
-              </Message>
-            )}
-          </div>
-          {/* Validation de la RÉCEPTION */}
-          <div>
-            <div className="flex items-center justify-between mb-3">
-              <h4 className="text-sm text-card-foreground">
-                Validation de la réception — Direction destinataire
-              </h4>
+              <h4 className="text-sm text-card-foreground">Validation</h4>
               <span className="text-xs font-mono text-muted-foreground">
-                {nbReception} / 3
+                {nb} / {attendues}
               </span>
             </div>
-            {nbSortie < 3 && (
-              <div className="mb-3 text-[11px] text-muted-foreground">
-                La réception sera ouverte après la validation complète de la
-                sortie (3/3).
-              </div>
-            )}
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {validationsReception.map((v, idx) =>
-                carteValidation(
-                  v,
-                  idx,
-                  3,
-                  "reception",
-                  idx === 0 ||
-                    (validationsReception.slice(0, idx).every((p) => p.signed) &&
-                      nbSortie >= 3)
-                )
-              )}
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              {validations.map((v, idx) => {
+                const precedenteSignee =
+                  idx === 0 || validations.slice(0, idx).every((p) => p.signed);
+                const autorise =
+                  !validee &&
+                  precedenteSignee &&
+                  peutValiderTransfert(
+                    { name: user?.name, email: user?.email, role: user?.role },
+                    record,
+                    v.key
+                  );
+                return (
+                  <div
+                    key={v.key}
+                    className={`border rounded-lg p-3 ${
+                      v.signed
+                        ? "border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-900/20"
+                        : "border-border bg-muted/20"
+                    }`}
+                  >
+                    <div className="flex items-center gap-2 mb-1">
+                      {v.signed ? (
+                        <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />
+                      ) : (
+                        <Circle className="h-4 w-4 text-muted-foreground" />
+                      )}
+                      <span className="text-sm text-card-foreground">{v.label}</span>
+                    </div>
+                    <div
+                      className={`text-xs ${
+                        v.signed
+                          ? "text-green-700 dark:text-green-400"
+                          : "text-muted-foreground"
+                      }`}
+                    >
+                      {v.signed ? `${idx + 1}/${attendues} signé` : "En attente"}
+                    </div>
+                    {v.signed && (
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {v.signataire}
+                        <br />
+                        {v.date
+                          ? new Date(v.date).toLocaleString("fr-FR")
+                          : ""}
+                      </div>
+                    )}
+                    {autorise && (
+                      <button
+                        onClick={() => setConfirmKey(v.key)}
+                        disabled={busy}
+                        className="mt-2 w-full inline-flex items-center justify-center gap-1.5 px-2 py-1.5 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 disabled:opacity-50 transition-colors text-xs"
+                      >
+                        <PenTool className="h-3.5 w-3.5" />
+                        Valider
+                      </button>
+                    )}
+                    {!v.signed && !autorise && !validee && !precedenteSignee && (
+                      <div className="mt-2 text-[11px] text-muted-foreground">
+                        Workflow : la validation précédente est requise.
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
             </div>
-            {termine && (
+            {validee ? (
               <Message variant="success" size="sm" className="mt-3">
-                <strong>TRANSFERT RÉCEPTIONNÉ — ENTRÉE EN STOCK VALIDÉE</strong> : +
-                {record.quantite} unité(s) dans {record.directionDestination} /{" "}
-                {record.serviceDestination}. Transfert terminé et verrouillé.
+                <strong>{`TRANSFERT VALIDÉ (${attendues}/${attendues})`}</strong> —
+                stock mis à jour : −
+                {record.quantite} ({record.serviceSource}) / +
+                {record.quantite} ({directionDestinataireDe(record)}), total des
+                Directions inchangé. Transfert verrouillé : plus modifiable sans
+                nouvelle opération.
+              </Message>
+            ) : (
+              <Message variant="info" size="sm" icon={PenTool} className="mt-3">
+                {attendues} validation{attendues > 1 ? "s" : ""} obligatoire
+                {attendues > 1 ? "s" : ""} dans l'ordre :{" "}
+                {clesAttendues(record)
+                  .map((cle) =>
+                    cle === "responsableTransfert"
+                      ? "Responsable du transfert (créateur)"
+                      : TRANSFERT_VALIDATIONS.find((v) => v.key === cle)?.label ||
+                        cle
+                  )
+                  .join(" → ")}
+                . Aucune sortie, aucune nouvelle entrée.
               </Message>
             )}
           </div>
+          {/* Stock après transfert */}
+          {validee && (stockSource || stockDest) && (
+            <div>
+              <h4 className="text-sm text-card-foreground mb-3">
+                Stock après transfert
+              </h4>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                  <div className="text-xs text-muted-foreground">
+                    {record.serviceSource}
+                  </div>
+                  <div className="text-card-foreground font-mono">
+                    {stockSource ? stockSource.quantite : 0} unité(s) restante(s)
+                  </div>
+                </div>
+                <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+                  <div className="text-xs text-muted-foreground">
+                    {directionDestinataireDe(record)}
+                  </div>
+                  <div className="text-card-foreground font-mono">
+                    {stockDest ? stockDest.quantite : 0} unité(s)
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
           {/* Historique */}
           <div>
             <h4 className="text-sm text-card-foreground mb-3 flex items-center gap-2">
               <History className="h-4 w-4 text-primary" />
-              Historique — du départ à l'arrivée
+              Historique
             </h4>
             <ul className="space-y-2">
               {record.historique.map((ev, i) => (
                 <li key={i} className="flex items-start gap-3 text-sm">
                   <span className="font-mono text-xs text-muted-foreground whitespace-nowrap pt-0.5">
-                    {new Date(ev.date).toLocaleString("fr-FR", {
-                      day: "2-digit",
-                      month: "2-digit",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
+                    {new Date(`${ev.date}T00:00:00`).toLocaleDateString("fr-FR")}
                   </span>
                   <span className="text-card-foreground">{ev.libelle}</span>
                 </li>
@@ -507,9 +453,8 @@ export function TransfertDetailModal({
                 QR Code — {record.reference}
               </h4>
               <p className="text-xs text-muted-foreground mt-1">
-                Le scan retrouve la référence, les Directions et services,
-                le matériel, la quantité, les dates de sortie et de réception,
-                le statut, les responsables et l'historique.
+                Le scan retrouve la référence, la Direction, les services,
+                le matériel, la quantité, la date, le statut et l'historique.
               </p>
               <div className="flex flex-wrap gap-2 mt-2">
                 <button
@@ -530,8 +475,8 @@ export function TransfertDetailModal({
             </div>
           </div>
         </div>
-        {/* Confirmation de signature */}
-        {confirm && (
+        {/* Confirmation de validation */}
+        {confirmKey && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
             <div className="cm-modal border bg-popover p-6 w-full max-w-md">
               <div className="flex items-center gap-3 mb-4">
@@ -543,25 +488,22 @@ export function TransfertDetailModal({
                     Confirmer cette validation ?
                   </h3>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {confirm.type === "sortie" ? "Sortie" : "Réception"} —{" "}
-                    {(confirm.type === "sortie"
-                      ? validationsSortie.find((v) => v.key === confirm.key)?.label
-                      : validationsReception.find((v) => v.key === confirm.key)?.label) ||
-                      ""}{" "}
-                    au nom de {user?.name}. Action tracée et non modifiable.
+                    «{" "}
+                    {validations.find((v) => v.key === confirmKey)?.label} » au
+                    nom de {user?.name}. Action tracée et non modifiable.
                   </p>
                 </div>
               </div>
               <div className="flex gap-3">
                 <button
-                  onClick={() => setConfirm(null)}
+                  onClick={() => setConfirmKey(null)}
                   disabled={busy}
                   className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition-colors"
                 >
                   Annuler
                 </button>
                 <button
-                  onClick={() => poserSignature(confirm.type, confirm.key)}
+                  onClick={() => poserValidation(confirmKey)}
                   disabled={busy}
                   className="flex-1 px-4 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-2"
                 >
@@ -571,48 +513,6 @@ export function TransfertDetailModal({
                     <CheckCircle2 className="h-4 w-4" />
                   )}
                   Confirmer
-                </button>
-              </div>
-            </div>
-          </div>
-        )}
-        {/* Confirmation du rejet */}
-        {confirmRejet && (
-          <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
-            <div className="cm-modal border bg-popover p-6 w-full max-w-md">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="p-2 bg-red-100 text-red-600 rounded-lg dark:bg-red-900/30">
-                  <XCircle className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="text-base text-card-foreground">
-                    Rejeter ce transfert ?
-                  </h3>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Le transfert {record.reference} sera marqué « Rejeté ». Le
-                    stock de la Direction d'origine n'est pas affecté.
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-3">
-                <button
-                  onClick={() => setConfirmRejet(false)}
-                  disabled={busy}
-                  className="flex-1 px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition-colors"
-                >
-                  Annuler
-                </button>
-                <button
-                  onClick={rejeter}
-                  disabled={busy}
-                  className="flex-1 px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 transition-colors inline-flex items-center justify-center gap-2"
-                >
-                  {busy ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <XCircle className="h-4 w-4" />
-                  )}
-                  Rejeter
                 </button>
               </div>
             </div>

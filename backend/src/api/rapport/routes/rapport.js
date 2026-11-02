@@ -4,7 +4,7 @@
  * rapport routes — REDDITION DE COMPTE (lecture seule).
  *
  * ⚠️ Les routes custom sont déclarées explicitement (createCoreRouter ignore
- * toute config non-core) — cf. affectation/routes/affectation.js.
+ * toute config non-core) — cf. transfert/routes/transfert.js.
  *
  * L'accès est contrôlé à deux niveaux :
  *   - auth: true exige une session Users & Permissions valide ;

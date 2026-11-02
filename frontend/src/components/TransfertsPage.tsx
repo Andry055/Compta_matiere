@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";import {
-  ArrowRightLeft,
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeftRight,
   Search,
   SlidersHorizontal,
   Plus,
@@ -7,24 +8,27 @@ import { useEffect, useMemo, useState } from "react";import {
   ChevronLeft,
   ChevronRight,
   CheckCircle2,
+  Clock,
   Package,
   CalendarDays,
   RotateCcw,
   BadgeCheck,
-  Truck,
 } from "lucide-react";
 import { User } from "../App";
 import { entreeRecords, EntreeRecord } from "../lib/movements";
+import { fetchEntrees, fetchTransferts } from "../lib/api";
 import { getEntreesTransfert } from "../lib/transfers";
 import {
   TransfertRecord,
+  calculerStock,
+  fusionnerTransferts,
   getStatistiquesTransferts,
   getStatutTransfertAffiche,
-  getSignatureSortieCount,
-  getSignatureReceptionCount,
+  directionDestinataireDe,
+  validationsAttendues,
+  getValidationCount,
   listerTransferts,
   statutTransfertBadge,
-  STATUTS_TRANSFERT,
 } from "../lib/transferts";
 import { NewTransfertPage } from "./NewTransfertPage";
 import { TransfertDetailModal } from "./TransfertDetailModal";
@@ -32,17 +36,18 @@ import { Message } from "./ui/message";
 
 const PAGE_SIZE = 6;
 
+const STATUTS_AFFICHAGE = ["En attente", "Validée"];
+
 interface TransfertsPageProps {
   user?: User;
 }
 
 /**
- * Page « Transferts entre Directions » — rubrique indépendante.
+ * Page « Transferts » — rubrique indépendante de la page Entrées.
  *
- * Un transfert déplace un matériel d'une Direction vers une AUTRE Direction :
- * SORTIE du stock d'origine (3 signatures) → EN TRANSFERT → ENTRÉE dans le
- * stock destinataire (3 signatures de réception). À la différence de
- * l'affectation interne (même Direction, pas de mouvement de stock).
+ * Un transfert déplace un matériel déjà enregistré vers une AUTRE Direction :
+ * pas de sortie, pas de nouvelle entrée, seulement la mise à jour du stock et
+ * une traçabilité complète (3 validations obligatoires).
  */
 export function TransfertsPage({ user }: TransfertsPageProps) {
   const [showNewForm, setShowNewForm] = useState(false);
@@ -50,8 +55,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
   const [searchOpen, setSearchOpen] = useState(true);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [statusFilter, setStatusFilter] = useState("Tous");
-  const [directionOrigineFilter, setDirectionOrigineFilter] = useState("Toutes");
-  const [directionDestFilter, setDirectionDestFilter] = useState("Toutes");
+  const [directionFilter, setDirectionFilter] = useState("Toutes");
   const [dateDebut, setDateDebut] = useState("");
   const [dateFin, setDateFin] = useState("");
   const [page, setPage] = useState(1);
@@ -59,7 +63,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
   const [modalOpen, setModalOpen] = useState(false);
   const [flash, setFlash] = useState("");
 
-  // Données : transferts (local) + entrées (pour les listes de matériels)
+  // Données : transferts (local) + entrées (pour le stock consolidé)
   const [records, setRecords] = useState<TransfertRecord[]>(() =>
     listerTransferts()
   );
@@ -68,77 +72,80 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
     ...entreeRecords,
   ]);
 
+  const canCreate = !!user;
+
+  // Liste = transferts EN BASE ∪ traces historiques locales (référence doublon
+  // résolu par la version serveur).
+  const chargerTransferts = () => {
+    fetchTransferts()
+      .then((serveur) => {
+        setRecords(fusionnerTransferts(listerTransferts(), serveur || []));
+      })
+      .catch(() => {
+        setRecords(listerTransferts());
+      });
+  };
+
   const recharger = () => {
-    setRecords(listerTransferts());
+    chargerTransferts();
+    fetchEntrees().then((data) => {
+      setEntrees([
+        ...getEntreesTransfert(),
+        ...(data && data.length > 0 ? data : entreeRecords),
+      ]);
+    });
   };
 
   useEffect(() => {
     let cancelled = false;
-    import("../lib/api").then(({ fetchEntrees }) => {
-      fetchEntrees().then((data) => {
-        if (cancelled) return;
-        setEntrees([
-          ...getEntreesTransfert(),
-          ...(data && data.length > 0 ? data : entreeRecords),
-        ]);
-      });
+    chargerTransferts();
+    fetchEntrees().then((data) => {
+      if (cancelled) return;
+      setEntrees([
+        ...getEntreesTransfert(),
+        ...(data && data.length > 0 ? data : entreeRecords),
+      ]);
     });
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Directions connues (pour les filtres)
+  const stock = useMemo(
+    () => calculerStock(entrees, records),
+    [entrees, records]
+  );
+
   const directions = useMemo(
-    () =>
-      Array.from(
-        new Set([
-          ...records.map((t) => t.directionOrigine),
-          ...records.map((t) => t.directionDestination),
-        ])
-      ),
+    () => ["Toutes", ...Array.from(new Set(records.map((a) => a.direction)))],
     [records]
   );
 
   const filtered = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
-    return records.filter((t) => {
+    return records.filter((a) => {
       const matchesSearch =
         !term ||
-        t.reference.toLowerCase().includes(term) ||
-        t.materiel.toLowerCase().includes(term) ||
-        t.serviceOrigine.toLowerCase().includes(term) ||
-        t.serviceDestination.toLowerCase().includes(term) ||
-        t.directionOrigine.toLowerCase().includes(term) ||
-        t.directionDestination.toLowerCase().includes(term);
-      const statutAffiche = getStatutTransfertAffiche(t);
-      const matchesStatus = statusFilter === "Tous" || statutAffiche === statusFilter;
-      const matchesOrigine =
-        directionOrigineFilter === "Toutes" ||
-        t.directionOrigine === directionOrigineFilter;
-      const matchesDest =
-        directionDestFilter === "Toutes" ||
-        t.directionDestination === directionDestFilter;
-      const matchesDebut = !dateDebut || t.date >= dateDebut;
-      const matchesFin = !dateFin || t.date <= dateFin;
+        a.reference.toLowerCase().includes(term) ||
+        a.materiel.toLowerCase().includes(term) ||
+        (a.direction || "").toLowerCase().includes(term) ||
+        a.serviceSource.toLowerCase().includes(term) ||
+        directionDestinataireDe(a).toLowerCase().includes(term) ||
+        (a.motif || "").toLowerCase().includes(term) ||
+        (a.materielReference || "").toLowerCase().includes(term);
+      const matchesStatus =
+        statusFilter === "Tous" ||
+        getStatutTransfertAffiche(a) === statusFilter;
+      const matchesDirection =
+        directionFilter === "Toutes" || a.direction === directionFilter;
+      const matchesDebut = !dateDebut || a.date >= dateDebut;
+      const matchesFin = !dateFin || a.date <= dateFin;
       return (
-        matchesSearch &&
-        matchesStatus &&
-        matchesOrigine &&
-        matchesDest &&
-        matchesDebut &&
-        matchesFin
+        matchesSearch && matchesStatus && matchesDirection && matchesDebut && matchesFin
       );
     });
-  }, [
-    records,
-    searchTerm,
-    statusFilter,
-    directionOrigineFilter,
-    directionDestFilter,
-    dateDebut,
-    dateFin,
-  ]);
+  }, [records, searchTerm, statusFilter, directionFilter, dateDebut, dateFin]);
 
   const stats = getStatistiquesTransferts(records);
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
@@ -156,7 +163,9 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
         onCreated={(ref) => {
           setShowNewForm(false);
           recharger();
-          setFlash(`✓ Transfert ${ref} créé — en attente de validation de la sortie (0/3).`);
+          setFlash(
+            `✓ Transfert ${ref} créé (0/3) — en attente des validations.`
+          );
           window.setTimeout(() => setFlash(""), 6000);
         }}
       />
@@ -166,8 +175,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
   const resetFilters = () => {
     setSearchTerm("");
     setStatusFilter("Tous");
-    setDirectionOrigineFilter("Toutes");
-    setDirectionDestFilter("Toutes");
+    setDirectionFilter("Toutes");
     setDateDebut("");
     setDateFin("");
     setPage(1);
@@ -189,15 +197,15 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
         "bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400",
     },
     {
-      label: "En cours / En transfert",
-      value: stats.enCours,
-      icon: Truck,
+      label: "Transferts en attente",
+      value: stats.enAttente,
+      icon: Clock,
       iconClass:
         "bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400",
     },
     {
-      label: "Transferts terminés",
-      value: stats.termines,
+      label: "Transferts validés",
+      value: stats.validees,
       icon: CheckCircle2,
       iconClass:
         "bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400",
@@ -210,14 +218,14 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
-            Transferts entre Directions
+            Transferts
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Gestion des mouvements de matériels entre Directions
+            Gestion des transferts de matériels entre services
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          {user && (
+          {canCreate && (
             <button
               onClick={() => setShowNewForm(true)}
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
@@ -249,10 +257,10 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
 
       {/* Rappel métier */}
       <Message variant="info" size="sm" icon={BadgeCheck}>
-        Transfert = déplacement RÉEL d'un matériel d'une Direction vers une AUTRE :
-        SORTIE du stock d'origine (3 signatures) → EN TRANSFERT → ENTRÉE dans le
-        stock destinataire (3 signatures). Même Direction = affectation interne
-        (rubrique Affectations).
+        Transfert = déplacement d'un matériel vers une AUTRE Direction : pas
+        de sortie, pas de nouvelle entrée, seulement la mise à jour du stock et
+        la traçabilité. Validation obligatoire en 3 étapes (0/3 → 3/3) ; un
+        transfert validé n'est plus modifiable.
       </Message>
 
       {/* Indicateurs */}
@@ -287,7 +295,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type="text"
-              placeholder="Rechercher par référence TRF, matériel, service, direction…"
+              placeholder="Rechercher par référence, matériel, service, direction, référence de matériels…"
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -302,7 +310,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
       {/* Filtres */}
       {filtersOpen && (
         <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div>
               <label className="block text-xs text-muted-foreground mb-1">
                 Statut
@@ -316,7 +324,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring"
               >
                 <option value="Tous">Tous les statuts</option>
-                {STATUTS_TRANSFERT.map((s) => (
+                {STATUTS_AFFICHAGE.map((s) => (
                   <option key={s} value={s}>
                     {s}
                   </option>
@@ -328,34 +336,13 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                 Direction d'origine
               </label>
               <select
-                value={directionOrigineFilter}
+                value={directionFilter}
                 onChange={(e) => {
-                  setDirectionOrigineFilter(e.target.value);
+                  setDirectionFilter(e.target.value);
                   setPage(1);
                 }}
                 className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring"
               >
-                <option value="Toutes">Toutes</option>
-                {directions.map((d) => (
-                  <option key={d} value={d}>
-                    {d}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs text-muted-foreground mb-1">
-                Direction destinataire
-              </label>
-              <select
-                value={directionDestFilter}
-                onChange={(e) => {
-                  setDirectionDestFilter(e.target.value);
-                  setPage(1);
-                }}
-                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring"
-              >
-                <option value="Toutes">Toutes</option>
                 {directions.map((d) => (
                   <option key={d} value={d}>
                     {d}
@@ -411,25 +398,24 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
             Tableau des transferts ({filtered.length})
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
-            Direction origine → SORTIE → TRANSFERT → Direction destinataire →
-            ENTRÉE → Traçabilité
+            Direction d'origine → Service origine → Transfert → Direction
+            destinataire → Stock → Traçabilité
           </p>
         </div>
         <div className="p-4 sm:p-6">
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[1020px]">
+            <table className="w-full min-w-[980px]">
               <thead>
                 <tr className="border-b border-border">
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Référence</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Dir. origine</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service origine</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Dir. destinataire</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service destinataire</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction d'origine</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service d'origine</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction destinataire</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Matériel</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Qté</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Quantité</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Date</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Statut</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Progression</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Validation</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Actions</th>
                 </tr>
               </thead>
@@ -437,7 +423,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                 {visibleRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={11}
+                      colSpan={10}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       {records.length === 0
@@ -446,42 +432,39 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                     </td>
                   </tr>
                 ) : (
-                  visibleRows.map((t) => {
-                    const nbSortie = getSignatureSortieCount(t);
-                    const nbReception = getSignatureReceptionCount(t);
-                    const statut = getStatutTransfertAffiche(t);
+                  visibleRows.map((a) => {
+                    const count = getValidationCount(a);
+                    const attendues = validationsAttendues(a);
+                    const statut = getStatutTransfertAffiche(a);
                     return (
                       <tr
-                        key={t.reference}
+                        key={a.reference}
                         className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
                       >
                         <td className="py-3 px-3 text-sm font-mono text-card-foreground">
-                          {t.reference}
-                        </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[130px] truncate">
-                          {t.directionOrigine}
-                        </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[140px] truncate">
-                          {t.serviceOrigine}
-                        </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[130px] truncate">
-                          {t.directionDestination}
-                        </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[140px] truncate">
-                          {t.serviceDestination}
-                        </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[180px] truncate">
-                          {t.materiel}
+                          {a.reference}
                         </td>
                         <td className="py-3 px-3 text-sm text-card-foreground">
-                          {t.quantite}
+                          {a.direction}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[150px] truncate">
+                          {a.serviceSource}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[150px] truncate">
+                          {(a.directionDestinataire || "").trim() || "—"}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[200px] truncate">
+                          {a.materiel}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground">
+                          {a.quantite}
                         </td>
                         <td className="py-3 px-3 text-sm text-card-foreground whitespace-nowrap">
-                          {new Date(`${t.date}T00:00:00`).toLocaleDateString("fr-FR")}
+                          {new Date(`${a.date}T00:00:00`).toLocaleDateString("fr-FR")}
                         </td>
                         <td className="py-3 px-3">
                           <span
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs whitespace-nowrap ${statutTransfertBadge(
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${statutTransfertBadge(
                               statut
                             )}`}
                           >
@@ -490,16 +473,16 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                         </td>
                         <td className="py-3 px-3">
                           <span
-                            title={`Sortie ${nbSortie}/3 — Réception ${nbReception}/3`}
-                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono whitespace-nowrap ${
-                              nbReception >= 3
+                            title={`${count}/${attendues} validations`}
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono ${
+                              count >= attendues
                                 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                                : nbSortie >= 3 || nbReception >= 1
-                                ? "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400"
+                                : count >= 1
+                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
                                 : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400"
                             }`}
                           >
-                            {nbSortie}/3 · {nbReception}/3
+                            {count}/{attendues}
                           </span>
                         </td>
                         <td className="py-3 px-3">
@@ -507,7 +490,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                             <button
                               title="Voir"
                               onClick={() => {
-                                setSelected(t);
+                                setSelected(a);
                                 setModalOpen(true);
                               }}
                               className="p-1.5 rounded text-primary hover:bg-primary/10 transition-colors"
@@ -563,12 +546,13 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
       <TransfertDetailModal
         open={modalOpen}
         transfert={selected}
+        stock={stock}
         user={user}
         onChanged={() => {
           recharger();
           setSelected((prev) =>
             prev
-              ? listerTransferts().find((t) => t.reference === prev.reference) ||
+              ? listerTransferts().find((a) => a.reference === prev.reference) ||
                 prev
               : prev
           );

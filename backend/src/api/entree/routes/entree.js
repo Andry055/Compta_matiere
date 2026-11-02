@@ -12,7 +12,7 @@
 const UID = 'api::entree.entree';
 
 // ⚠️ Les endpoints custom (create-complete / sign / reject) sont déclarés ICI
-// explicitement, sur le modèle de affectation.js : `createCoreRouter` ne
+// explicitement, sur le modèle de transfert.js : `createCoreRouter` ne
 // génère que les 5 routes CRUD core (find/findOne/create/update/delete) et
 // ignore toute clé de config dont le nom ne correspond pas à une route core —
 // ce qui rend les routes custom déclarées dans sa config silencieusement

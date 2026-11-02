@@ -1,9 +1,9 @@
 // ---------------------------------------------------------------------------
-// Document « TRANSFERT DE MATÉRIEL ENTRE DIRECTIONS » — PDF, Excel, QR Code
+// Document « TRANSFERT DE MATÉRIEL » — génération PDF et Excel
 //
-//  - PDF réel (jsPDF) : origine, destination, matériel, quantité, motif,
-//    responsables + signatures (sortie 3/3, réception 3/3), statut, QR Code
-//    et historique complet (le matériel est suivi de son départ à son arrivée).
+//  - PDF réel (jsPDF) : en-tête, Direction, service source, service
+//    destinataire, matériel, référence, quantité, motif, date, les 4
+//    responsables + validations, statut, QR Code et historique.
 //  - Excel .xlsx (exceljs) : A4 paysage, cellules fusionnées, bordures,
 //    zone de signatures, QR Code — imprimable.
 // ---------------------------------------------------------------------------
@@ -14,11 +14,10 @@ import ExcelJS from "exceljs";
 import QRCode from "qrcode";
 import {
   TransfertRecord,
+  directionDestinataireDe,
   getStatutTransfertAffiche,
-  getValidationsSortie,
-  getValidationsReception,
-  getSignatureSortieCount,
-  getSignatureReceptionCount,
+  getValidationsTransfert,
+  validationsAttendues,
 } from "./transferts";
 
 // ---------------------------------------------------------------------------
@@ -56,8 +55,8 @@ function dateHeureFr(iso?: string): string {
   }
 }
 
-export function valeurQrTransfert(t: TransfertRecord): string {
-  return `comptamatiere:transfert:${t.qrToken || t.reference}`;
+export function valeurQrTransfert(a: TransfertRecord): string {
+  return `comptamatiere:transfert:${a.qrToken || a.reference}`;
 }
 
 async function genererQrDataUrl(valeur: string): Promise<string> {
@@ -79,16 +78,14 @@ const LARGEUR = 210 - MARGE * 2;
 type ActionPdf = "download" | "preview";
 
 export async function genererPdfTransfert(
-  t: TransfertRecord,
+  a: TransfertRecord,
   action: ActionPdf = "download"
 ): Promise<void> {
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
-  const qrDataUrl = await genererQrDataUrl(valeurQrTransfert(t));
-  const validationsSortie = getValidationsSortie(t);
-  const validationsReception = getValidationsReception(t);
-  const statut = getStatutTransfertAffiche(t);
-  const nbSortie = getSignatureSortieCount(t);
-  const nbReception = getSignatureReceptionCount(t);
+  const qrDataUrl = await genererQrDataUrl(valeurQrTransfert(a));
+  const validations = getValidationsTransfert(a);
+  const statut = getStatutTransfertAffiche(a);
+  const nb = validations.filter((v) => v.signed).length;
 
   let cur = 16;
 
@@ -99,11 +96,11 @@ export async function genererPdfTransfert(
   doc.text("COMPTABILITÉ MATIÈRE — GESTION DU PATRIMOINE MATÉRIEL", MARGE, cur);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
-  doc.text(`Référence : ${textePdf(t.reference)}`, 210 - MARGE, cur, {
+  doc.text(`Référence : ${textePdf(a.reference)}`, 210 - MARGE, cur, {
     align: "right",
   });
   cur += 5;
-  doc.text(`Date : ${dateFr(t.date)}`, 210 - MARGE, cur, { align: "right" });
+  doc.text(`Date : ${dateFr(a.date)}`, 210 - MARGE, cur, { align: "right" });
   doc.setDrawColor(15, 23, 42);
   doc.setLineWidth(0.6);
   doc.line(MARGE, cur + 2, 210 - MARGE, cur + 2);
@@ -111,7 +108,7 @@ export async function genererPdfTransfert(
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(15);
-  const titre = "TRANSFERT DE MATÉRIEL ENTRE DIRECTIONS";
+  const titre = "TRANSFERT DE MATÉRIEL";
   doc.text(titre, 105, cur, { align: "center" });
   const wTitre = doc.getTextWidth(titre);
   doc.line(105 - wTitre / 2, cur + 1.6, 105 + wTitre / 2, cur + 1.6);
@@ -120,7 +117,7 @@ export async function genererPdfTransfert(
   doc.setFont("helvetica", "italic");
   doc.setFontSize(9);
   const intro = doc.splitTextToSize(
-    "Déplacement réel d'un matériel d'une Direction vers une autre : SORTIE du stock de la Direction d'origine, TRANSFERT, puis ENTRÉE dans le stock de la Direction destinataire après validation de la réception.",
+    "Transfert d'un matériel déjà enregistré vers une autre Direction : sans sortie, sans nouvelle entrée — seul le stock de la destination est crédité.",
     170
   );
   doc.text(intro, 105, cur, { align: "center" });
@@ -129,33 +126,12 @@ export async function genererPdfTransfert(
   // ------------------------------------------------------------------ grille
   const hLigne = 6.5;
   const largeurs = [44, 47, 44, 47];
-  const grille: Array<
-    [{ label: string; value: string }, { label: string; value: string }]
-  > = [
-    [
-      { label: "Direction d'origine", value: t.directionOrigine },
-      { label: "Direction destinataire", value: t.directionDestination },
-    ],
-    [
-      { label: "Service d'origine", value: t.serviceOrigine },
-      { label: "Service destinataire", value: t.serviceDestination },
-    ],
-    [
-      { label: "Matériel", value: t.materiel },
-      { label: "Référence", value: t.materielReference || "—" },
-    ],
-    [
-      { label: "Quantité", value: String(t.quantite) },
-      { label: "Motif", value: t.motif || "—" },
-    ],
-    [
-      { label: "Date sortie", value: t.dateSortie ? dateHeureFr(t.dateSortie) : "—" },
-      { label: "Date réception", value: t.dateReception ? dateHeureFr(t.dateReception) : "—" },
-    ],
-    [
-      { label: "Observation", value: t.observation || "—" },
-      { label: "Créateur", value: `${t.createur}` },
-    ],
+  const grille: Array<[{ label: string; value: string }, { label: string; value: string }]> = [
+    [{ label: "Direction", value: a.direction }, { label: "Date", value: dateFr(a.date) }],
+    [{ label: "Service d'origine", value: a.serviceSource }, { label: "Direction destinataire", value: directionDestinataireDe(a) }],
+    [{ label: "Matériel", value: a.materiel }, { label: "Référence", value: a.materielReference || "—" }],
+    [{ label: "Quantité", value: String(a.quantite) }, { label: "Motif", value: a.motif || "—" }],
+    [{ label: "Observation", value: a.observation || "—" }, { label: "Créateur", value: `${a.createur}` }],
   ];
   grille.forEach((pair, index) => {
     const yy = cur + index * hLigne;
@@ -184,18 +160,28 @@ export async function genererPdfTransfert(
   });
   cur += grille.length * hLigne + 8;
 
-  // ------------------------------------------------- signatures de SORTIE
+  // -------------------------------------------------------------- validations
   doc.setFont("helvetica", "bold");
   doc.setFontSize(10);
   doc.setTextColor(15, 23, 42);
-  doc.text(`VALIDATION DE LA SORTIE — Direction d'origine (${nbSortie}/3)`, MARGE, cur);
+  doc.text(`VALIDATION — ${nb}/${validationsAttendues(a)}`, MARGE, cur);
   cur += 5;
 
   autoTable(doc, {
     head: [["Validation", "Responsable désigné", "Statut", "Signataire", "Date"]],
-    body: validationsSortie.map((v) => [
+    body: validations.map((v) => [
       v.label,
-      t.responsablesOrigine[v.key] || "—",
+      a.responsables[
+        v.key === "responsableTransfert"
+          ? "responsableTransfert"
+          : v.key === "depositaire"
+          ? "depositaire"
+          : v.key === "logistique"
+          ? "logistique"
+          : v.key === "chefService1"
+          ? "chefService1"
+          : "chefService2"
+      ] || "—",
       v.signed ? "Signé" : "En attente",
       v.signataire || "—",
       v.signed ? dateHeureFr(v.date) : "—",
@@ -204,7 +190,7 @@ export async function genererPdfTransfert(
     theme: "grid",
     styles: { font: "helvetica", fontSize: 7.5, cellPadding: 1.6, lineColor: [100, 116, 139], lineWidth: 0.2 },
     headStyles: { fillColor: [30, 58, 138], textColor: [255, 255, 255], fontStyle: "bold" },
-    columnStyles: { 0: { cellWidth: 44 }, 1: { cellWidth: 48 }, 2: { cellWidth: 22 }, 3: { cellWidth: 32 }, 4: { cellWidth: 36 } },
+    columnStyles: { 0: { cellWidth: 40 }, 1: { cellWidth: 52 }, 2: { cellWidth: 24 }, 3: { cellWidth: 34 }, 4: { cellWidth: 32 } },
     margin: { left: MARGE, right: MARGE },
   });
   cur =
@@ -212,42 +198,36 @@ export async function genererPdfTransfert(
       ?.finalY ?? cur + 30;
   cur += 8;
 
-  // ------------------------------------------------ signatures de RÉCEPTION
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(10);
-  doc.setTextColor(15, 23, 42);
-  doc.text(
-    `VALIDATION DE LA RÉCEPTION — Direction destinataire (${nbReception}/3)`,
-    MARGE,
-    cur
-  );
-  cur += 5;
-
-  autoTable(doc, {
-    head: [["Validation", "Responsable désigné", "Statut", "Signataire", "Date"]],
-    body: validationsReception.map((v) => [
-      v.label,
-      t.responsablesDestination[v.key] || "—",
-      v.signed ? "Signé" : "En attente",
-      v.signataire || "—",
-      v.signed ? dateHeureFr(v.date) : "—",
-    ]),
-    startY: cur,
-    theme: "grid",
-    styles: { font: "helvetica", fontSize: 7.5, cellPadding: 1.6, lineColor: [100, 116, 139], lineWidth: 0.2 },
-    headStyles: { fillColor: [21, 128, 61], textColor: [255, 255, 255], fontStyle: "bold" },
-    columnStyles: { 0: { cellWidth: 44 }, 1: { cellWidth: 48 }, 2: { cellWidth: 22 }, 3: { cellWidth: 32 }, 4: { cellWidth: 36 } },
-    margin: { left: MARGE, right: MARGE },
+  // Zone de signature (4 boîtes)
+  const boiteW = (LARGEUR - 12) / 4;
+  const boiteH = 30;
+  validations.forEach((v, i) => {
+    const x = MARGE + i * (boiteW + 4);
+    doc.setDrawColor(15, 23, 42);
+    doc.setLineWidth(0.3);
+    doc.rect(x, cur, boiteW, boiteH);
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(6.5);
+    doc.setTextColor(15, 23, 42);
+    doc.text(textePdf(v.label.toUpperCase()), x + 1.5, cur + 4.5, {
+      maxWidth: boiteW - 3,
+    });
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(6.5);
+    doc.setTextColor(51, 65, 85);
+    doc.text(
+      v.signed ? `Signé le ${dateFr(v.date)}` : "En attente",
+      x + 1.5,
+      cur + 9.5,
+      { maxWidth: boiteW - 3 }
+    );
+    doc.setDrawColor(100, 116, 139);
+    doc.setLineWidth(0.2);
+    doc.line(x + 3, cur + 24, x + boiteW - 3, cur + 24);
+    doc.setFontSize(6);
+    doc.text("Signature", x + boiteW / 2, cur + 27.5, { align: "center" });
   });
-  cur =
-    (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable
-      ?.finalY ?? cur + 30;
-  cur += 8;
-
-  if (cur > 220) {
-    doc.addPage();
-    cur = 20;
-  }
+  cur += boiteH + 8;
 
   // ------------------------------------------------------ statut + QR + date
   doc.setFillColor(241, 245, 249);
@@ -262,11 +242,11 @@ export async function genererPdfTransfert(
   doc.setFont("helvetica", "normal");
   doc.setFontSize(8);
   doc.text(
-    `Statut : ${textePdf(statut)} — sortie ${nbSortie}/3, réception ${nbReception}/3`,
+    `Statut : ${textePdf(statut)} (${nb}/${validationsAttendues(a)} validations)`,
     MARGE + 36,
     cur + 13
   );
-  doc.text(`Référence : ${textePdf(t.reference)}`, MARGE + 36, cur + 18);
+  doc.text(`Référence : ${textePdf(a.reference)}`, MARGE + 36, cur + 18);
   doc.text(
     `Édité le : ${dateFr(new Date().toISOString())} — AssetTrack`,
     MARGE + 36,
@@ -286,21 +266,21 @@ export async function genererPdfTransfert(
   doc.setFont("helvetica", "bold");
   doc.setFontSize(9.5);
   doc.setTextColor(15, 23, 42);
-  doc.text("HISTORIQUE — du départ à l'arrivée", MARGE, cur);
+  doc.text("HISTORIQUE", MARGE, cur);
   cur += 5;
   doc.setFontSize(7.5);
-  for (const ev of t.historique) {
+  for (const ev of a.historique) {
     if (cur > 278) {
       doc.addPage();
       cur = 20;
     }
     doc.setFont("helvetica", "bold");
     doc.setTextColor(51, 65, 85);
-    doc.text(dateHeureFr(ev.date), MARGE, cur);
+    doc.text(dateFr(ev.date), MARGE, cur);
     doc.setFont("helvetica", "normal");
     doc.setTextColor(15, 23, 42);
-    doc.text(textePdf(ev.libelle), MARGE + 34, cur, {
-      maxWidth: LARGEUR - 34,
+    doc.text(textePdf(ev.libelle), MARGE + 22, cur, {
+      maxWidth: LARGEUR - 22,
     });
     cur += 4.2;
   }
@@ -313,7 +293,7 @@ export async function genererPdfTransfert(
     doc.setFontSize(7);
     doc.setTextColor(100, 116, 139);
     doc.text(
-      `${t.reference} — TRANSFERT ENTRE DIRECTIONS — page ${p}/${totalPages}`,
+      `${a.reference} — TRANSFERT DE MATÉRIEL — page ${p}/${totalPages}`,
       105,
       292,
       { align: "center" }
@@ -323,7 +303,7 @@ export async function genererPdfTransfert(
   if (action === "preview") {
     window.open(doc.output("bloburl"), "_blank");
   } else {
-    doc.save(`Transfert_${t.reference.replace(/[^\w-]/g, "")}.pdf`);
+    doc.save(`Transfert_${a.reference.replace(/[^\w-]/g, "")}.pdf`);
   }
 }
 
@@ -333,7 +313,6 @@ export async function genererPdfTransfert(
 
 const ARGENT_TITRE = "FF1E3A8A";
 const ARGENT_HEADER = "FF1F4E79";
-const ARGENT_HEADER_RECEPTION = "FF15803D";
 const ARGENT_CLAIR = "FFEFF3F8";
 const BORDURE: Partial<ExcelJS.Borders> = {
   top: { style: "thin", color: { argb: "FF64748B" } },
@@ -342,8 +321,8 @@ const BORDURE: Partial<ExcelJS.Borders> = {
   right: { style: "thin", color: { argb: "FF64748B" } },
 };
 
-export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
-  const qrBase64 = (await genererQrDataUrl(valeurQrTransfert(t))).replace(
+export async function genererExcelTransfert(a: TransfertRecord): Promise<void> {
+  const qrBase64 = (await genererQrDataUrl(valeurQrTransfert(a))).replace(
     /^data:image\/png;base64,/,
     ""
   );
@@ -417,17 +396,17 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
   ws.getRow(ligne).height = 24;
   ligne += 1;
 
-  fusionner(`A${ligne}:E${ligne}`, `Référence : ${t.reference}`, {
+  fusionner(`A${ligne}:E${ligne}`, `Référence : ${a.reference}`, {
     font: { bold: true, size: 10 },
   });
-  fusionner(`F${ligne}:J${ligne}`, `Date : ${dateFr(t.date)}`, {
+  fusionner(`F${ligne}:J${ligne}`, `Date : ${dateFr(a.date)}`, {
     font: { bold: true, size: 10 },
     alignment: { horizontal: "right" },
   });
   ws.getRow(ligne).height = 18;
   ligne += 1;
 
-  fusionner(`A${ligne}:J${ligne}`, "TRANSFERT DE MATÉRIEL ENTRE DIRECTIONS", {
+  fusionner(`A${ligne}:J${ligne}`, "TRANSFERT DE MATÉRIEL", {
     font: { bold: true, size: 18, color: { argb: ARGENT_TITRE } },
     alignment: { horizontal: "center" },
   });
@@ -436,7 +415,7 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
 
   fusionner(
     `A${ligne}:J${ligne}`,
-    "SORTIE du stock de la Direction d'origine → TRANSFERT → ENTRÉE dans le stock de la Direction destinataire après réception validée.",
+    "Transfert vers une autre Direction : pas de sortie, pas de nouvelle entrée — le total des Directions concernées est inchangé.",
     { font: { italic: true, size: 10 }, alignment: { horizontal: "center" } }
   );
   ws.getRow(ligne).height = 22;
@@ -464,24 +443,17 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
     ligne += 1;
   };
 
-  infoLigne("Direction d'origine", t.directionOrigine, "Direction destinataire", t.directionDestination);
-  infoLigne("Service d'origine", t.serviceOrigine, "Service destinataire", t.serviceDestination);
-  infoLigne("Matériel", t.materiel, "Référence", t.materielReference || "—");
-  infoLigne("Quantité", t.quantite, "Motif", t.motif || "—");
-  infoLigne(
-    "Date sortie",
-    t.dateSortie ? dateHeureFr(t.dateSortie) : "—",
-    "Date réception",
-    t.dateReception ? dateHeureFr(t.dateReception) : "—"
-  );
-  infoLigne("Observation", t.observation || "—", "Créateur", t.createur);
+  infoLigne("Direction", a.direction, "Date", dateFr(a.date));
+  infoLigne("Service d'origine", a.serviceSource, "Direction destinataire", directionDestinataireDe(a));
+  infoLigne("Matériel", a.materiel, "Référence", a.materielReference || "—");
+  infoLigne("Quantité", a.quantite, "Motif", a.motif || "—");
+  infoLigne("Observation", a.observation || "—", "Créateur", a.createur);
   ligne += 1;
 
-  // ------------------------------------------------- signatures de sortie
-  const nbSortie = getSignatureSortieCount(t);
+  // ------------------------------------------------------- validations
   fusionner(
     `A${ligne}:J${ligne}`,
-    `VALIDATION DE LA SORTIE — DIRECTION D'ORIGINE — ${nbSortie}/3 — ${getStatutTransfertAffiche(t).toUpperCase()}`,
+    `VALIDATION — ${getValidationsTransfert(a).filter((v) => v.signed).length}/${validationsAttendues(a)} — ${getStatutTransfertAffiche(a).toUpperCase()}`,
     {
       font: { bold: true, size: 11, color: { argb: "FFFFFFFF" } },
       alignment: { horizontal: "center" },
@@ -492,6 +464,7 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
   ligne += 1;
 
   const entetes = ["Validation", "Responsable désigné", "Statut", "Signataire", "Date"];
+  const rEntete = ws.getRow(ligne);
   const plagesEntete = [
     ["A", "B"],
     ["C", "D"],
@@ -499,67 +472,32 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
     ["F", "H"],
     ["I", "J"],
   ];
-  entetes.forEach((txt, i) => {
+  entetes.forEach((t, i) => {
     const [debut, fin] = plagesEntete[i];
-    fusionner(`${debut}${ligne}:${fin}${ligne}`, txt, {
+    fusionner(`${debut}${ligne}:${fin}${ligne}`, t, {
       font: { bold: true, size: 9, color: { argb: "FFFFFFFF" } },
       alignment: { horizontal: "center" },
       fill: { type: "pattern", pattern: "solid", fgColor: { argb: ARGENT_HEADER } },
     });
   });
+  void rEntete;
   ws.getRow(ligne).height = 18;
   ligne += 1;
 
-  for (const v of getValidationsSortie(t)) {
+  for (const v of getValidationsTransfert(a)) {
+    const responsable = a.responsables[
+      v.key === "responsableTransfert"
+        ? "responsableTransfert"
+        : v.key === "depositaire"
+        ? "depositaire"
+        : v.key === "logistique"
+        ? "logistique"
+        : v.key === "chefService1"
+        ? "chefService1"
+        : "chefService2"
+    ] || "—";
     fusionner(`A${ligne}:B${ligne}`, v.label, { font: { size: 9, bold: true } });
-    fusionner(`C${ligne}:D${ligne}`, t.responsablesOrigine[v.key] || "—", { font: { size: 9 } });
-    fusionner(`E${ligne}:E${ligne}`, v.signed ? "✓ Signé" : "En attente", {
-      font: {
-        size: 9,
-        bold: v.signed,
-        color: { argb: v.signed ? "FF15803D" : "FFB45309" },
-      },
-      alignment: { horizontal: "center" },
-    });
-    fusionner(`F${ligne}:H${ligne}`, v.signataire || "—", { font: { size: 9 } });
-    fusionner(
-      `I${ligne}:J${ligne}`,
-      v.signed ? dateHeureFr(v.date) : "—",
-      { font: { size: 9 } }
-    );
-    ws.getRow(ligne).height = 17;
-    ligne += 1;
-  }
-  ligne += 1;
-
-  // --------------------------------------------- signatures de réception
-  const nbReception = getSignatureReceptionCount(t);
-  fusionner(
-    `A${ligne}:J${ligne}`,
-    `VALIDATION DE LA RÉCEPTION — DIRECTION DESTINATAIRE — ${nbReception}/3`,
-    {
-      font: { bold: true, size: 11, color: { argb: "FFFFFFFF" } },
-      alignment: { horizontal: "center" },
-      fill: { type: "pattern", pattern: "solid", fgColor: { argb: ARGENT_HEADER_RECEPTION } },
-    }
-  );
-  ws.getRow(ligne).height = 20;
-  ligne += 1;
-
-  entetes.forEach((txt, i) => {
-    const [debut, fin] = plagesEntete[i];
-    fusionner(`${debut}${ligne}:${fin}${ligne}`, txt, {
-      font: { bold: true, size: 9, color: { argb: "FFFFFFFF" } },
-      alignment: { horizontal: "center" },
-      fill: { type: "pattern", pattern: "solid", fgColor: { argb: ARGENT_HEADER_RECEPTION } },
-    });
-  });
-  ws.getRow(ligne).height = 18;
-  ligne += 1;
-
-  for (const v of getValidationsReception(t)) {
-    fusionner(`A${ligne}:B${ligne}`, v.label, { font: { size: 9, bold: true } });
-    fusionner(`C${ligne}:D${ligne}`, t.responsablesDestination[v.key] || "—", { font: { size: 9 } });
+    fusionner(`C${ligne}:D${ligne}`, responsable, { font: { size: 9 } });
     fusionner(`E${ligne}:E${ligne}`, v.signed ? "✓ Signé" : "En attente", {
       font: {
         size: 9,
@@ -580,9 +518,11 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
   ligne += 1;
 
   // ---------------------------------------------------------- QR + statut
+  const validations = getValidationsTransfert(a);
+  const nb = validations.filter((v) => v.signed).length;
   fusionner(
     `A${ligne}:J${ligne}`,
-    `QR CODE — ${t.reference} — Statut : ${getStatutTransfertAffiche(t)} (sortie ${nbSortie}/3, réception ${nbReception}/3)`,
+    `QR CODE — ${a.reference} — Statut : ${getStatutTransfertAffiche(a)} (${nb}/${validationsAttendues(a)} validations)`,
     {
       font: { bold: true, size: 10, color: { argb: "FFFFFFFF" } },
       alignment: { horizontal: "center" },
@@ -599,7 +539,7 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
   });
   fusionner(
     `B${ligne}:J${ligne}`,
-    `Le scan du QR Code identifie le transfert ${t.reference} (${t.directionOrigine} / ${t.serviceOrigine} → ${t.directionDestination} / ${t.serviceDestination} — ${t.quantite} unité(s)).\n\nÉdité le ${dateFr(
+    `Le scan du QR Code identifie le transfert ${a.reference} (Direction ${a.direction} — ${a.serviceSource} → ${directionDestinataireDe(a)} — ${a.quantite} unité(s)).\n\nÉdité le ${dateFr(
       new Date().toISOString()
     )} — AssetTrack`,
     { font: { size: 9 } }
@@ -608,19 +548,19 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
   ligne += 7;
 
   // --------------------------------------------------------- historique
-  fusionner(`A${ligne}:J${ligne}`, "HISTORIQUE — DU DÉPART À L'ARRIVÉE", {
+  fusionner(`A${ligne}:J${ligne}`, "HISTORIQUE", {
     font: { bold: true, size: 11, color: { argb: "FFFFFFFF" } },
     alignment: { horizontal: "center" },
     fill: { type: "pattern", pattern: "solid", fgColor: { argb: ARGENT_HEADER } },
   });
   ws.getRow(ligne).height = 20;
   ligne += 1;
-  for (const ev of t.historique) {
+  for (const ev of a.historique) {
     const row = ws.getRow(ligne);
     for (let c = 1; c <= 10; c += 1) row.getCell(c).border = BORDURE;
     ws.mergeCells(`A${ligne}:B${ligne}`);
     const cellDate = row.getCell(1);
-    cellDate.value = dateHeureFr(ev.date);
+    cellDate.value = dateFr(ev.date);
     cellDate.font = { size: 9, bold: true };
     cellDate.alignment = { vertical: "middle" };
     ws.mergeCells(`C${ligne}:J${ligne}`);
@@ -633,7 +573,7 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
   }
 
   ws.headerFooter = {
-    oddFooter: `&C&"Helvetica"&8 ${t.reference} — Transfert entre Directions — Page &P / &N`,
+    oddFooter: `&C&"Helvetica"&8 ${a.reference} — Transfert de matériel — Page &P / &N`,
   };
   ws.pageSetup.printArea = `A1:J${ligne}`;
 
@@ -643,7 +583,7 @@ export async function genererExcelTransfert(t: TransfertRecord): Promise<void> {
   });
   const link = document.createElement("a");
   link.href = URL.createObjectURL(blob);
-  link.download = `Transfert_${t.reference.replace(/[^\w-]/g, "")}.xlsx`;
+  link.download = `Transfert_${a.reference.replace(/[^\w-]/g, "")}.xlsx`;
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);

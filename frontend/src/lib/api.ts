@@ -9,6 +9,11 @@ import {
   ENTREE_ADMIN_VIDE,
   DocumentRef,
 } from "./movements";
+import {
+  TransfertCleValidation,
+  TransfertRecord,
+  NouveauTransfert,
+} from "./transferts";
 
 // URL du backend Strapi (définie dans .env : VITE_API_URL)
 export const API_URL =
@@ -1063,6 +1068,215 @@ export async function creerMateriel(payload: {
 export async function rejeterEntree(documentId: string): Promise<EntreeRecord> {
   const { data } = await api.post(`/api/entrees/${documentId}/reject`);
   return mapEntree(data.data);
+}
+
+// ---------------------------------------------------------------------------
+// TRANSFERTS — content-type `transfert` côté serveur
+//
+// Le serveur est la source de vérité : référence TRF-AAAA-NNN et QR/trf token
+// générés côté serveur, lecture de la liste, signatures (3 validations :
+// Responsable du transfert, Dépositaire, Logistique — 4 pour les anciens
+// enregistrements). Les transferts historiques restés dans le localStorage
+// sont fusionnés à la lecture par les écrans (fusionnerTransferts).
+// ---------------------------------------------------------------------------
+
+/** Clé métier → champ de signature porté par le schéma serveur. */
+const CLE_VERS_SIGNATURE: Record<TransfertCleValidation, string> = {
+  responsableTransfert: "responsable_transfert",
+  depositaire: "depositaire",
+  logistique: "logistique",
+  chefService1: "chef_service_1",
+  chefService2: "chef_service_2",
+};
+
+/** Ligne renvoyée par /api/transferts (champs snake_case du schéma). */
+interface RowTransfert {
+  documentId?: string;
+  id?: number;
+  reference?: string;
+  date?: string;
+  qr_token?: string;
+  direction?: string | null;
+  direction_destinataire?: string | null;
+  service_source?: string | null;
+  service_destinataire?: string | null;
+  materiel?: string | null;
+  materiel_reference?: string | null;
+  quantite?: number | null;
+  motif?: string | null;
+  observation?: string | null;
+  createur?: string | null;
+  createur_email?: string | null;
+  responsable_transfert?: string | null;
+  depositaire?: string | null;
+  logistique?: string | null;
+  chef_service_1?: string | null;
+  chef_service_2?: string | null;
+  responsable_transfert_signed?: boolean;
+  depositaire_signed?: boolean;
+  logistique_signed?: boolean;
+  chef_service_1_signed?: boolean;
+  chef_service_2_signed?: boolean;
+  date_signature_responsable_transfert?: string | null;
+  date_signature_depositaire?: string | null;
+  date_signature_logistique?: string | null;
+  date_signature_chef_service_1?: string | null;
+  date_signature_chef_service_2?: string | null;
+  signataire_responsable_transfert?: string | null;
+  signataire_depositaire?: string | null;
+  signataire_logistique?: string | null;
+  signataire_chef_service_1?: string | null;
+  signataire_chef_service_2?: string | null;
+  statut?: string | null;
+  historique?: Array<{ date?: string; libelle?: string }> | null;
+}
+
+/** Un enregistrement venu du serveur porte un documentId (≠ sa référence :
+ *  les traces locales utilisent la référence comme identifiant). */
+export function estTransfertServeur(a: TransfertRecord): boolean {
+  return !!a.id && a.id !== a.reference;
+}
+
+/** Ligne serveur → TransfertRecord (format attendu par tous les écrans). */
+export function mapTransfert(row: RowTransfert): TransfertRecord {
+  const validations: TransfertRecord["validations"] = {};
+  const lireValidation = (
+    cle: TransfertCleValidation,
+    champSignature: string,
+    champDate: string,
+    champSignataire: string
+  ) => {
+    if (row[champSignature] !== true) return; // jamais de validation fantôme
+    const date =
+      row[champDate] ||
+      `${row.date || new Date().toISOString().slice(0, 10)}T00:00:00.000Z`;
+    validations[cle] = { date, signataire: row[champSignataire] || "—" };
+  };
+  lireValidation(
+    "responsableTransfert",
+    "responsable_transfert_signed",
+    "date_signature_responsable_transfert",
+    "signataire_responsable_transfert"
+  );
+  lireValidation(
+    "depositaire",
+    "depositaire_signed",
+    "date_signature_depositaire",
+    "signataire_depositaire"
+  );
+  lireValidation(
+    "logistique",
+    "logistique_signed",
+    "date_signature_logistique",
+    "signataire_logistique"
+  );
+  lireValidation(
+    "chefService1",
+    "chef_service_1_signed",
+    "date_signature_chef_service_1",
+    "signataire_chef_service_1"
+  );
+  lireValidation(
+    "chefService2",
+    "chef_service_2_signed",
+    "date_signature_chef_service_2",
+    "signataire_chef_service_2"
+  );
+
+  return {
+    // `id` ≠ `reference` : marqueur utilisé par estTransfertServeur().
+    id: row.documentId || String(row.id || row.reference || ""),
+    reference: row.reference || "—",
+    qrToken: row.qr_token || row.reference || "",
+    date: row.date || new Date().toISOString().slice(0, 10),
+    direction: row.direction || "",
+    directionDestinataire: row.direction_destinataire || "",
+    serviceSource: row.service_source || "",
+    serviceDestinataire: row.service_destinataire || "",
+    materiel: row.materiel || "—",
+    materielReference: row.materiel_reference || "—",
+    quantite: Number(row.quantite) || 1,
+    motif: row.motif || "",
+    observation: row.observation || "",
+    createur: row.createur || "—",
+    createurEmail: row.createur_email || "",
+    responsables: {
+      responsableTransfert: row.responsable_transfert || "",
+      depositaire: row.depositaire || "",
+      ...(row.logistique ? { logistique: row.logistique } : {}),
+      // Présence d'un chef de service = ancien circuit à 4 validations
+      // (cf. clesAttendues) : on ne les déclare que s'ils existent vraiment.
+      ...(row.chef_service_1 ? { chefService1: row.chef_service_1 } : {}),
+      ...(row.chef_service_2 ? { chefService2: row.chef_service_2 } : {}),
+    },
+    validations,
+    statut: row.statut === "validee" ? "Validée" : "En attente",
+    historique: (row.historique || []).map((h) => ({
+      date: h.date || row.date || "",
+      libelle: h.libelle || "",
+    })),
+  };
+}
+
+/**
+ * Liste des transferts en base (GET /api/transferts, lecture publique).
+ * Retourne un tableau vide si le serveur est injoignable : l'appelant fusionne
+ * alors avec les traces locales, sans casser l'écran.
+ */
+export async function fetchTransferts(): Promise<TransfertRecord[]> {
+  try {
+    const { data } = await api.get("/api/transferts", {
+      timeout: 6000,
+      params: { sort: "date:desc", "pagination[pageSize]": 200 },
+    });
+    const rows: RowTransfert[] = data?.data ?? [];
+    return rows.map(mapTransfert);
+  } catch {
+    return [];
+  }
+}
+
+/** Création d'un transfert (POST /api/transferts/create-complete).
+ *  La référence TRF-AAAA-NNN et le QR token sont générés par le serveur. */
+export async function creerTransfertServeur(
+  input: NouveauTransfert
+): Promise<TransfertRecord> {
+  const { data } = await api.post("/api/transferts/create-complete", {
+    data: {
+      direction: input.direction,
+      direction_destinataire: input.directionDestinataire || "",
+      service_source: input.serviceSource,
+      ...(input.serviceDestinataire
+        ? { service_destinataire: input.serviceDestinataire }
+        : {}),
+      materiel: input.materiel,
+      materiel_reference: input.materielReference || "",
+      quantite: input.quantite,
+      motif: input.motif,
+      observation: input.observation || "",
+      responsable_transfert: input.responsables.responsableTransfert,
+      depositaire: input.responsables.depositaire,
+      logistique: input.responsables.logistique || "",
+      createur: input.createur,
+      createur_email: input.createurEmail,
+    },
+  });
+  return mapTransfert(data?.data ?? {});
+}
+
+/**
+ * Pose une validation sur un transfert stocké en base
+ * (POST /api/transferts/:documentId/sign).
+ * Le serveur contrôle le rôle, l'ordre du circuit et l'immuabilité.
+ */
+export async function signerTransfertServeur(
+  documentId: string,
+  cle: TransfertCleValidation
+): Promise<TransfertRecord> {
+  const { data } = await api.post(`/api/transferts/${documentId}/sign`, {
+    data: { role: CLE_VERS_SIGNATURE[cle] },
+  });
+  return mapTransfert(data?.data ?? {});
 }
 
 export interface RefOption {

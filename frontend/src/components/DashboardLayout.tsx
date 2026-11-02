@@ -9,7 +9,7 @@ import { Movements } from "./Movements"
 import { Departments } from "./Departments"
 import { Requests } from "./Requests"
 import { EntriesPage } from "./EntriesPage"
-import { AffectationsPage } from "./AffectationsPage"
+import { TransfertsPage } from "./TransfertsPage"
 import { ExitsPage } from "./ExitsPage"
 import { EcranReception } from "./reception/EcranReception"
 import { Reports } from "./Reports"
@@ -99,8 +99,8 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
         )
       case "entries":
         return <EntriesPage user={user} />
-      case "affectations":
-        return <AffectationsPage user={user} />
+      case "transferts":
+        return <TransfertsPage user={user} />
       case "exits":
         return (
           <ExitsPage

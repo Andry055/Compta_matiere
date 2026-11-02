@@ -1,56 +1,65 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
-  ChevronRight,
-  Check,
+  ArrowLeft,
+  ArrowLeftRight,
+  Boxes,
   CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  FileText,
+  Info,
   Loader2,
   MapPin,
-  Package,
-  ArrowRightLeft,
-  ArrowLeft,
-  Info,
-  ClipboardCheck,
-  Send,
 } from "lucide-react";
 import { User } from "../App";
 import { Message } from "./ui/message";
-import {
-  MOTIFS_TRANSFERT,
-  creerTransfert,
-  verifierTransfertValide,
-  TransfertRecord,
-} from "../lib/transferts";
 import { EntreeRecord } from "../lib/movements";
 import {
   fetchDirections,
   fetchMaterials,
   fetchServices,
+  fetchTransferts,
+  creerTransfertServeur,
   MaterialOption,
   RefOption,
 } from "../lib/api";
 import {
   DIRECTIONS_REPLI,
   SERVICES_REPLI,
-  filtrerServicesParDirection,
   responsablesDuService,
 } from "../lib/organigramme";
-// NOUVEAU TRANSFERT ENTRE DIRECTIONS — assistant en 4 étapes
-//   1. Origine (Direction / Service / matériel / quantité)
-//   2. Destination (Direction ≠ origine, responsables automatiques)
-//   3. Motif et observation
-//   4. Vérification et création (référence TRF-AAAA-NNN)
+import { ROLES_CONFIG } from "../types/roles";
+import {
+  TRANSFERT_VALIDATIONS,
+  TransfertRecord,
+  StockLigne,
+  calculerStock,
+  fusionnerTransferts,
+  listerTransferts,
+  stockDuService,
+} from "../lib/transferts";
+
+// ---------------------------------------------------------------------------
+// NOUVEAU TRANSFERT — assistant en 3 étapes
+//   1 DIRECTION DESTINATAIRE → 2 MATÉRIEL → 3 MOTIF ET CRÉATION
+// L'origine (Direction + service) n'est PAS à saisir : elle est déduite du
+// compte connecté et affichée en lecture seule. Le matériel quitte donc la
+// Direction du compte pour rejoindre la Direction destinataire choisie.
+// ---------------------------------------------------------------------------
+
 const ETAPES = [
-  { numero: 1, label: "Direction et service d'origine", icon: MapPin },
-  { numero: 2, label: "Direction et service destinataires", icon: ArrowRightLeft },
-  { numero: 3, label: "Motif du transfert", icon: ClipboardCheck },
-  { numero: 4, label: "Vérification et création", icon: Check },
+  { numero: 1, label: "Direction destinataire", icon: MapPin },
+  { numero: 2, label: "Matériel", icon: Boxes },
+  { numero: 3, label: "Motif et création", icon: FileText },
 ];
+
 interface NewTransfertPageProps {
   user?: User;
   entrees: EntreeRecord[];
   onClose: () => void;
   onCreated: (reference: string) => void;
 }
+
 export function NewTransfertPage({
   user,
   entrees,
@@ -60,203 +69,332 @@ export function NewTransfertPage({
   const [etape, setEtape] = useState(1);
   const [erreur, setErreur] = useState("");
   const [saving, setSaving] = useState(false);
-  const [loadingReferences, setLoadingReferences] = useState(true);
-  // Données de référence
+
+  // Origine — Direction du compte (les enregistrements stockent le NOM de la
+  // Direction) : pré-remplie automatiquement, cf. l'effet « Direction d'origine ».
+  const [direction, setDirection] = useState("");
+
+  // Étape 1 — Direction destinataire. Le service d'origine n'est plus choisi :
+  // il est DÉDUIT DU COMPTE (cf. `serviceSource`, dérivé plus bas).
+  const [directionDestinataire, setDirectionDestinataire] = useState("");
+
+  // Étape 2 — Matériel
+  const [materielCle, setMaterielCle] = useState("");
+  const [quantite, setQuantite] = useState(1);
+
+  // Étape 3 — Motif (donnée SAISIE, plus une liste déroulante)
+  const [motif, setMotif] = useState("");
+  const [observation, setObservation] = useState("");
+
+  // Responsables (récupérés automatiquement, restent modifiables)
+  const [responsableTransfert, setResponsableTransfert] = useState("");
+  const [depositaire, setDepotParService] = useState("");
+  // 3ᵉ signataire du circuit : le Chef logistique (rôle `logistique`).
+  const [logistique, setLogistique] = useState(
+    ROLES_CONFIG.logistique.defaultEmployeeName
+  );
+
+  // Référentiels
   const [directions, setDirections] = useState<RefOption[]>([]);
   const [services, setServices] = useState<RefOption[]>([]);
-  const [materials, setMaterials] = useState<MaterialOption[]>([]);
+  const [transferts, setTransferts] = useState<TransfertRecord[]>([]);
+  // Fiches Équipements en base (GET /api/materials) — source de la liste
+  // déroulante « Matériel », cf. l'effet « Fiches Équipements ».
+  const [materielsBase, setMaterielsBase] = useState<MaterialOption[]>([]);
+
   useEffect(() => {
     let cancelled = false;
-    const charger = async () => {
-      setLoadingReferences(true);
-      try {
-        const [dirs, svcs, mats] = await Promise.all([
-          fetchDirections(),
-          fetchServices(),
-          fetchMaterials(),
-        ]);
+    Promise.all([fetchDirections(), fetchServices()]).then(([dirs, svcs]) => {
+      if (cancelled) return;
+      setDirections(dirs && dirs.length ? dirs : DIRECTIONS_REPLI);
+      setServices(svcs && svcs.length ? svcs : SERVICES_REPLI);
+    });
+    setTransferts(listerTransferts());
+    // Transferts en base : fusionnés avec les traces locales pour calculer le
+    // stock disponible. Serveur injoignable ⇒ on garde le local seul.
+    fetchTransferts()
+      .then((serveur) => {
         if (cancelled) return;
-        setDirections(dirs && dirs.length ? dirs : DIRECTIONS_REPLI);
-        setServices(svcs && svcs.length ? svcs : SERVICES_REPLI);
-        setMaterials(mats ?? []);
-      } catch {
-        if (!cancelled) {
-          setDirections(DIRECTIONS_REPLI);
-          setServices(SERVICES_REPLI);
-        }
-      } finally {
-        if (!cancelled) setLoadingReferences(false);
-      }
-    };
-    charger();
+        setTransferts(
+          fusionnerTransferts(listerTransferts(), serveur || [])
+        );
+      })
+      .catch(() => {
+        /* mode hors ligne : le stock local reste affiché */
+      });
     return () => {
       cancelled = true;
     };
   }, []);
-  // Étape 1 — origine
-  const [directionOrigineId, setDirectionOrigineId] = useState("");
-  const [serviceOrigineId, setServiceOrigineId] = useState("");
-  const [materielChoisi, setMaterielChoisi] = useState("");
-  const [quantite, setQuantite] = useState(1);
-  // Étape 2 — destination
-  const [directionDestId, setDirectionDestId] = useState("");
-  const [serviceDestId, setServiceDestId] = useState("");
-  // Étape 3 — motif
-  const [motif, setMotif] = useState(MOTIFS_TRANSFERT[0]);
-  const [observation, setObservation] = useState("");
-  const servicesOrigineVisibles = filtrerServicesParDirection(
-    services,
-    directionOrigineId
+
+  // Fiches Équipements en base : la liste du matériel de l'étape 2 est
+  // LUE DANS LA BASE (GET /api/materials), comme sur l'écran Équipements.
+  // Échec réseau ou base vide ⇒ on garde le seul stock calculé localement.
+  useEffect(() => {
+    let annule = false;
+    fetchMaterials()
+      .then((lignes) => {
+        if (!annule) setMaterielsBase(lignes || []);
+      })
+      .catch(() => {
+        /* hors ligne : le stock calculé du service reste affiché */
+      });
+    return () => {
+      annule = true;
+    };
+  }, []);
+
+  // ---------------------------------------------------------------------
+  // Stock consolidé (entrées validées + transferts validées)
+  // ---------------------------------------------------------------------
+  const stock = useMemo(
+    () => calculerStock(entrees, transferts),
+    [entrees, transferts]
   );
-  const servicesDestVisibles = filtrerServicesParDirection(
-    services,
-    directionDestId
-  );
-  const directionOrigine = directions.find(
-    (d) => d.documentId === directionOrigineId
-  );
-  const serviceOrigine = services.find((s) => s.documentId === serviceOrigineId);
-  const directionDest = directions.find((d) => d.documentId === directionDestId);
-  const serviceDest = services.find((s) => s.documentId === serviceDestId);
-  const nomDirectionOrigine = directionOrigine?.nom || "—";
-  const nomServiceOrigine = serviceOrigine?.nom || "—";
-  const nomDirectionDest = directionDest?.nom || "—";
-  const nomServiceDest = serviceDest?.nom || "—";
-  // Responsables automatiques de chaque côté (jamais de « Dépositaire général »)
-  const responsablesOrigine = useMemo(
-    () => responsablesDuService(serviceOrigine, directionOrigine),
-    [serviceOrigine, directionOrigine]
-  );
-  const responsablesDestination = useMemo(
-    () => responsablesDuService(serviceDest, directionDest),
-    [serviceDest, directionDest]
-  );
-  // Matériels disponibles dans le stock du service d'origine (entrées validées)
-  const materielsDisponibles = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const e of entrees) {
-      if (e.direction !== nomDirectionOrigine || e.service !== nomServiceOrigine) {
-        continue;
+
+  const nomDirectionDeService = (s: RefOption): string =>
+    directions.find((d) => d.documentId === s.directionId)?.nom || "";
+
+  /** Directions proposées : référentiel ∪ Directions ayant un stock */
+  const directionsOptions = useMemo(() => {
+    const noms = new Map<string, string>();
+    directions.forEach((d) => noms.set(d.nom.toLowerCase(), d.nom));
+    stock.forEach((l) => {
+      if (!noms.has(l.direction.toLowerCase())) {
+        noms.set(l.direction.toLowerCase(), l.direction);
       }
-      if (e.lignes && e.lignes.length > 0) {
-        for (const l of e.lignes) {
-          if (!l.designation) continue;
-          map.set(
-            l.designation,
-            (map.get(l.designation) || 0) + (Number(l.quantite) || 0)
-          );
-        }
-      } else if (e.materiel && e.materiel !== "—") {
-        map.set(e.materiel, (map.get(e.materiel) || 0) + (Number(e.quantite) || 0));
+    });
+    return Array.from(noms.values());
+  }, [directions, stock]);
+
+  // ---------------------------------------------------------------------
+  // Direction d'origine : DÉDUITE DU COMPTE CONNECTÉ
+  // ---------------------------------------------------------------------
+  // Le département du profil porte « Direction - Service » (ex. "DAF -
+  // Service Comptabilité Matière") ou le seul nom d'une Direction. On
+  // rapproche la 1ère composante de l'abréviation / du nom du référentiel —
+  // même correspondance que celle utilisée par l'écran Réception physique.
+  // Aucune correspondance ⇒ le champ reste à choisir manuellement ; le choix
+  // déjà fait par l'utilisateur n'est jamais écrasé (remplissage unique).
+  const directionInitialisee = useRef(false);
+  useEffect(() => {
+    if (directionInitialisee.current) return;
+    if (!directions.length) return; // référentiel pas encore chargé
+    directionInitialisee.current = true;
+
+    const departement = (user?.department || "").trim();
+    if (!departement) return;
+    const cle = departement.split(" - ")[0].trim().toLowerCase();  // Aucune correspondance ⇒ on garde la Direction brute du département :
+  // le sélecteur d'origine n'existe plus, le champ doit toujours avoir une
+  // valeur pour que la suite de l'assistant reste utilisable.
+  const trouve = directions.find(
+    (d) =>
+      (d.abbreviation && d.abbreviation.trim().toLowerCase() === cle) ||
+      (d.nom && d.nom.trim().toLowerCase() === cle) ||
+      (d.nom && d.nom.trim().toLowerCase() === departement.toLowerCase())
+  );
+  setDirection(trouve?.nom || departement.split(" - ")[0].trim());
+  }, [directions, user?.department]);
+
+  /** Services de la Direction sélectionnée (∪ services détenant un stock) */
+  const servicesOptions = useMemo(() => {
+    if (!direction) return [];
+    const noms = new Map<string, string>();
+    services.forEach((s) => {
+      const dirDeService = s.directionId
+        ? nomDirectionDeService(s)
+        : ""; // API non peuplée : on garde le service sans filtre (see API)
+      if (!dirDeService || dirDeService.toLowerCase() === direction.toLowerCase()) {
+        noms.set(s.nom.toLowerCase(), s.nom);
       }
+    });
+    stock.forEach((l) => {
+      if (l.direction.toLowerCase() === direction.toLowerCase()) {
+        noms.set(l.service.toLowerCase(), l.service);
+      }
+    });
+    return Array.from(noms.values());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [direction, services, stock, directions]);
+
+  // ---------------------------------------------------------------------
+  // Service d'origine : DÉDUIT DU COMPTE, jamais choisi
+  // ---------------------------------------------------------------------
+  // Département « Direction - Service » du profil → nom du service, rapproché
+  // du référentiel (casse/« Service » indifférents) puis du stock réel de la
+  // Direction. Replis successifs : service du compte → premier service doté
+  // d'un stock → 1er service du référentiel. Il est affiché en lecture seule.
+  const serviceSource = useMemo(() => {
+    if (!direction) return "";
+    const departement = (user?.department || "").trim();
+    const serviceCompte = departement.includes(" - ")
+      ? departement.split(" - ").slice(1).join(" - ").trim()
+      : "";
+    const norm = (v: string) => v.trim().toLowerCase().replace(/^service\s+/, "");
+    const cible = norm(serviceCompte);
+    const correspondance = cible
+      ? servicesOptions.find((c) => norm(c) === cible) ||
+        servicesOptions.find((c) => norm(c).includes(cible) || cible.includes(norm(c)))
+      : undefined;
+    if (correspondance) return correspondance;
+
+    const avecStock = stock
+      .filter(
+        (l) =>
+          l.direction.trim().toLowerCase() === direction.trim().toLowerCase() &&
+          l.quantite > 0
+      )
+      .map((l) => l.service);
+    if (serviceCompte && avecStock.includes(serviceCompte)) return serviceCompte;
+    return avecStock[0] || serviceCompte || servicesOptions[0] || "";
+  }, [direction, servicesOptions, stock, user?.department]);
+
+  // ---------------------------------------------------------------------
+  // Étape 2 — Matériel : base (fiches Équipements) ∪ stock calculé du service
+  // ---------------------------------------------------------------------
+  // Toute fiche équipement en base est PROPOSABLE (la liste vient de la
+  // base, pas du seul stock reconstitué localement). Le stock calculé du
+  // service reste prioritaire pour la QUANTITÉ disponible, car il tient
+  // compte des entrées validées et des transferts de la Direction.
+  const materielsSource = useMemo(() => {
+    const parDesignation = new Map<string, StockLigne>();
+
+    // 1) Stock calculé du service (Direction / Service réels du compte)
+    for (const ligne of stockDuService(stock, direction, serviceSource)) {
+      parDesignation.set(ligne.materiel.trim().toLowerCase(), ligne);
     }
-    return map;
-  }, [entrees, nomDirectionOrigine, nomServiceOrigine]);
-  const stockDisponible = materielsDisponibles.get(materielChoisi) || 0;
-  const changerDirectionOrigine = (id: string) => {
-    setDirectionOrigineId(id);
-    setServiceOrigineId("");
-    setMaterielChoisi("");
+
+    // 2) Fiches Équipements en base — complètent la liste
+    for (const fiche of materielsBase) {
+      const designation = (fiche.designation || "").trim();
+      const cle = designation.toLowerCase();
+      if (!cle || parDesignation.has(cle)) continue;
+      parDesignation.set(cle, {
+        direction,
+        service: serviceSource,
+        materiel: designation,
+        reference: fiche.numeroSerie || fiche.nomenclature || undefined,
+        quantite: Number(fiche.quantiteStock) || 0,
+      });
+    }
+
+    return Array.from(parDesignation.values())
+      .filter((l) => l.quantite > 0)
+      .sort((a, b) => a.materiel.localeCompare(b.materiel, "fr"));
+  }, [stock, direction, serviceSource, materielsBase]);
+
+  const materielSelectionne = materielsSource.find(
+    (l) => l.materiel === materielCle
+  );
+
+  // Responsables automatiques du service source
+  useEffect(() => {
+    if (!serviceSource) return;
+    const svc = services.find(
+      (s) =>
+        s.nom === serviceSource &&
+        (!s.directionId ||
+          nomDirectionDeService(s).toLowerCase() === direction.toLowerCase())
+    );
+    const dir = directions.find((d) => d.nom === direction);
+    const r = responsablesDuService(svc, dir);
+    setResponsableTransfert(svc?.responsable || r.depositaire || "");
+    setDepotParService(r.depositaire);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serviceSource, direction, services, directions]);
+
+  // Le matériel et la quantité sont réinitialisés quand le source change
+  useEffect(() => {
+    setMaterielCle("");
     setQuantite(1);
-  };
-  const validerEtape = (n: number): string => {
-    if (n === 1) {
-      if (!directionOrigineId) return "Veuillez sélectionner la Direction d'origine.";
-      if (!serviceOrigineId) return "Veuillez sélectionner le Service d'origine.";
-      if (!materielChoisi) return "Veuillez sélectionner le matériel à transférer.";
-      if (!(Number(quantite) > 0)) return "La quantité doit être supérieure à 0.";
-      if (stockDisponible > 0 && Number(quantite) > stockDisponible) {
-        return `Stock insuffisant : ${stockDisponible} unité(s) disponible(s) dans ${nomServiceOrigine}.`;
-      }
-      if (!responsablesOrigine.depositaire.trim()) {
-        return "Le Dépositaire du service d'origine est requis (fiche du service à compléter).";
-      }
-    }
-    if (n === 2) {
-      const err = verifierTransfertValide(
-        nomDirectionOrigine,
-        nomDirectionDest
-      );
-      if (err) return err;
-      if (!serviceDestId) return "Veuillez sélectionner le Service destinataire.";
+  }, [serviceSource]);
+
+  // ---------------------------------------------------------------------
+  // Validation par étape
+  // ---------------------------------------------------------------------
+  const validerEtape = (numeroEtape = etape): string => {
+    if (numeroEtape === 1) {
+      if (!directionDestinataire)
+        return "Veuillez sélectionner la Direction destinataire.";
       if (
-        nomDirectionOrigine === nomDirectionDest &&
-        nomServiceOrigine === nomServiceDest
-      ) {
-        return "Le service destinataire doit être différent du service d'origine.";
-      }
-      if (!responsablesDestination.depositaire.trim()) {
-        return "Le Dépositaire du service destinataire est requis (fiche du service à compléter).";
-      }
+        directionDestinataire.trim().toLowerCase() ===
+        direction.trim().toLowerCase()
+      )
+        return "La Direction destinataire doit être différente de la Direction d'origine.";
     }
-    if (n === 3) {
-      if (!motif) return "Veuillez choisir le motif du transfert.";
+    if (numeroEtape === 2) {
+      if (!serviceSource)
+        return "Aucun service d'origine n'est rattaché à votre compte.";
+      if (materielsSource.length === 0)
+        return `Aucun matériel disponible dans « ${serviceSource} » : le stock de votre service est vide.`;
+      if (!materielSelectionne)
+        return "Veuillez sélectionner le matériel à transférer.";
+      const q = Number(quantite);
+      if (!Number.isFinite(q) || q < 1 || q > materielSelectionne.quantite)
+        return `Quantité invalide : disponible = ${materielSelectionne.quantite}.`;
+    }
+    if (numeroEtape === 3) {
+      if (!motif.trim()) return "Veuillez saisir le motif du transfert.";
+      if (!responsableTransfert.trim())
+        return "Responsable du transfert requis (fiche du service à compléter).";
+      if (!depositaire.trim()) return "Le Dépositaire du service est requis.";
     }
     return "";
   };
+
   const suivant = () => {
-    const err = validerEtape(etape);
+    const err = validerEtape();
     setErreur(err);
-    if (!err) setEtape((e) => Math.min(4, e + 1));
+    if (!err) setEtape((e) => Math.min(ETAPES.length, e + 1));
   };
-  const creer = () => {
-    for (let n = 1; n <= 3; n += 1) {
-      const err = validerEtape(n);
+
+  const creer = async () => {
+    for (let e = 1; e <= ETAPES.length; e += 1) {
+      const err = validerEtape(e);
       if (err) {
         setErreur(err);
-        setEtape(n);
+        setEtape(e);
         return;
       }
     }
     setErreur("");
     setSaving(true);
     try {
-      const record: TransfertRecord = creerTransfert({
-        directionOrigine: nomDirectionOrigine,
-        serviceOrigine: nomServiceOrigine,
-        directionDestination: nomDirectionDest,
-        serviceDestination: nomServiceDest,
-        materiel: materielChoisi,
+      // Enregistrement EN BASE (référence TRF-AAAA-NNN générée côté serveur).
+      const record = await creerTransfertServeur({
+        direction,
+        directionDestinataire,
+        serviceSource,
+        materiel: materielSelectionne!.materiel,
+        materielReference: materielSelectionne!.reference,
         quantite: Number(quantite),
         motif,
         observation,
+        responsables: {
+          responsableTransfert,
+          depositaire,
+          logistique,
+        },
         createur: user?.name || "—",
         createurEmail: user?.email || "",
-        responsablesOrigine: {
-          depositaire: responsablesOrigine.depositaire,
-          chefService1: responsablesOrigine.chefService1,
-          chefService2: responsablesOrigine.chefService2,
-        },
-        responsablesDestination: {
-          depositaire: responsablesDestination.depositaire,
-          chefService1: responsablesDestination.chefService1,
-          chefService2: responsablesDestination.chefService2,
-        },
       });
       onCreated(record.reference);
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : "Création impossible.");
+      setErreur(
+        (e as { response?: { data?: { error?: { message?: string } } } })
+          ?.response?.data?.error?.message ||
+          (e instanceof Error ? e.message : "") ||
+          "Création impossible : vérifiez que le serveur est démarré."
+      );
     } finally {
       setSaving(false);
     }
   };
+
   const inputClass =
     "w-full px-3 py-2.5 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring focus:border-transparent";
   const labelClass = "block text-xs sm:text-sm text-muted-foreground mb-1.5";
-  if (loadingReferences) {
-    return (
-      <div className="p-3 sm:p-6 space-y-4">
-        <div className="rounded-2xl border border-border cm-panel cm-panel-solid p-5">
-          <div className="mb-4 h-3 w-32 animate-pulse rounded bg-muted" />
-          <div className="mb-3 h-6 w-2/3 animate-pulse rounded bg-muted" />
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className="h-24 animate-pulse rounded-xl bg-muted/80" />
-            <div className="h-24 animate-pulse rounded-xl bg-muted/80" />
-          </div>
-        </div>
-      </div>
-    );
-  }
+
   return (
     <div className="p-3 sm:p-6 space-y-4 sm:space-y-6 pb-24 sm:pb-6">
       {/* Fil d'Ariane */}
@@ -271,29 +409,58 @@ export function NewTransfertPage({
         <span>/</span>
         <span className="text-foreground font-medium">Nouveau transfert</span>
       </div>
+
       {/* Header */}
       <div className="flex items-start gap-3">
         <div className="p-2.5 bg-primary/10 rounded-lg flex-shrink-0">
-          <ArrowRightLeft className="h-6 w-6 text-primary" />
+          <ArrowLeftRight className="h-6 w-6 text-primary" />
         </div>
         <div>
           <h1 className="text-2xl sm:text-3xl tracking-tight text-foreground">
-            NOUVEAU TRANSFERT ENTRE DIRECTIONS
+            NOUVEAU TRANSFERT
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base mt-1">
-            Déplacement réel d'un matériel : SORTIE du stock de la Direction
-            d'origine → TRANSFERT → ENTRÉE dans le stock de la Direction
-            destinataire.
+            Transfert d'un matériel vers une autre Direction : l'origine
+            (Direction et service) vient de votre compte — sans création de
+            sortie ni d'entrée.
           </p>
         </div>
       </div>
+
       <div className="grid gap-4 sm:gap-6 lg:grid-cols-3">
+        {/* Colonne formulaire */}
         <div className="lg:col-span-2 space-y-4 sm:space-y-6">
+          {/* Origine — issue du COMPTE : aucun sélecteur, lecture seule */}
+          <div className="cm-panel cm-panel-solid rounded-lg p-4">
+            <div className="text-xs font-medium text-muted-foreground mb-3">
+              ORIGINE — ISSUE DE VOTRE COMPTE
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">
+                  Direction d'origine
+                </div>
+                <div className="text-sm text-card-foreground">
+                  {direction || "—"}
+                </div>
+              </div>
+              <div className="rounded-lg border border-border bg-muted/20 p-3">
+                <div className="text-xs text-muted-foreground">
+                  Service d'origine
+                </div>
+                <div className="text-sm text-card-foreground">
+                  {serviceSource || "—"}
+                </div>
+              </div>
+            </div>
+          </div>
+
           {erreur && (
             <Message variant="danger">
               {erreur}
             </Message>
           )}
+
           {ETAPES.map((etapeDef) => {
             const Icon = etapeDef.icon;
             const active = etape === etapeDef.numero;
@@ -302,7 +469,9 @@ export function NewTransfertPage({
               <div
                 key={etapeDef.numero}
                 className={`bg-card border rounded-lg shadow-sm overflow-hidden ${
-                  active ? "border-primary/50 ring-1 ring-primary/20" : "border-border"
+                  active
+                    ? "border-primary/50 ring-1 ring-primary/20"
+                    : "border-border"
                 }`}
               >
                 <button
@@ -320,7 +489,7 @@ export function NewTransfertPage({
                         : "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {terminee ? <Check className="h-4 w-4" /> : etapeDef.numero}
+                    {terminee ? <CheckCircle2 className="h-4 w-4" /> : etapeDef.numero}
                   </span>
                   <Icon
                     className={`h-4 w-4 flex-shrink-0 ${
@@ -329,321 +498,212 @@ export function NewTransfertPage({
                   />
                   <span
                     className={`flex-1 text-sm sm:text-base ${
-                      active ? "text-card-foreground font-medium" : "text-muted-foreground"
+                      active
+                        ? "text-card-foreground font-medium"
+                        : "text-muted-foreground"
                     }`}
                   >
                     {etapeDef.label}
                   </span>
                   <ChevronRight
-                    className={`h-4 w-4 text-muted-foreground transition-transform lg:hidden ${
+                    className={`h-4 w-4 text-muted-foreground transition-transform ${
                       active ? "rotate-90" : ""
                     }`}
                   />
                 </button>
-                <div className={`${active ? "block" : "hidden"} p-4 sm:p-6 pt-0`}>
-                  {/* ------------- ÉTAPE 1 — ORIGINE ------------- */}
+
+                <div
+                  className={`${active ? "block" : "hidden"} p-4 sm:p-6 pt-0`}
+                >
+                  {/* ÉTAPE 1 — DIRECTION DESTINATAIRE */}
                   {etapeDef.numero === 1 && (
+                    <div>
+                      <label className={labelClass}>
+                        Direction destinataire <span className="text-red-500">*</span>
+                      </label>
+                      <select
+                        className={inputClass}
+                        value={directionDestinataire}
+                        onChange={(e) => setDirectionDestinataire(e.target.value)}
+                      >
+                        <option value="">Sélectionner une Direction</option>
+                        {directionsOptions
+                          .filter(
+                            (nom) =>
+                              nom.trim().toLowerCase() !==
+                              direction.trim().toLowerCase()
+                          )
+                          .map((nom) => (
+                            <option key={nom} value={nom}>
+                              {nom}
+                            </option>
+                          ))}
+                      </select>
+                      <Message variant="success" size="sm" className="mt-3">
+                        Le matériel quitte votre Direction « {direction || "—"} »
+                        (origine issue de votre compte, non modifiable) pour
+                        rejoindre la Direction choisie ci-dessus.
+                      </Message>
+                      {directionDestinataire && (
+                        <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 text-sm text-card-foreground">
+                          {direction} / {serviceSource || "—"} →{" "}
+                          {directionDestinataire}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ÉTAPE 4 — MATÉRIEL */}
+                  {etapeDef.numero === 2 && (
+                    <div className="space-y-3">
+                      <div>
+                        <label className={labelClass}>
+                          Matériel <span className="text-red-500">*</span>
+                        </label>
+                        <select
+                          className={inputClass}
+                          value={materielCle}
+                          onChange={(e) => {
+                            setMaterielCle(e.target.value);
+                            const ligne = materielsSource.find(
+                              (l) => l.materiel === e.target.value
+                            );
+                            setQuantite(ligne ? Math.min(1, ligne.quantite) : 1);
+                          }}
+                          disabled={materielsSource.length === 0}
+                        >
+                          <option value="">Sélectionner un matériel</option>
+                          {materielsSource.map((l) => (
+                            <option key={l.materiel} value={l.materiel}>
+                              {l.materiel}
+                              {l.reference ? ` (${l.reference})` : ""} —
+                              disponible : {l.quantite}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      {materielSelectionne && (
+                        <div className="rounded-lg border border-border bg-muted/20 p-3 grid gap-2 sm:grid-cols-3 text-sm">
+                          <div>
+                            <div className="text-xs text-muted-foreground">
+                              Matériel
+                            </div>
+                            <div className="text-card-foreground">
+                              {materielSelectionne.materiel}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-muted-foreground">
+                              Référence
+                            </div>
+                            <div className="text-card-foreground font-mono">
+                              {materielSelectionne.reference || "—"}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-xs text-muted-foreground">
+                              Quantité disponible
+                            </div>
+                            <div className="text-card-foreground font-mono">
+                              {materielSelectionne.quantite}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="max-w-xs">
+                        <label className={labelClass}>
+                          Quantité à transférer <span className="text-red-500">*</span>
+                        </label>
+                        <input
+                          type="number"
+                          min={1}
+                          max={materielSelectionne?.quantite || 1}
+                          className={inputClass}
+                          value={quantite}
+                          onChange={(e) => setQuantite(Number(e.target.value))}
+                          disabled={!materielSelectionne}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ÉTAPE 5 — MOTIF */}
+                  {etapeDef.numero === 3 && (
                     <div className="space-y-4">
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <label className={labelClass}>
-                            Direction d'origine <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            className={inputClass}
-                            value={directionOrigineId}
-                            onChange={(e) => changerDirectionOrigine(e.target.value)}
-                          >
-                            <option value="">Sélectionner la Direction d'origine</option>
-                            {directions.map((d) => (
-                              <option key={d.documentId} value={d.documentId}>
-                                {d.nom}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                        <div>
-                          <label className={labelClass}>
-                            Service d'origine <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            className={inputClass}
-                            value={serviceOrigineId}
-                            onChange={(e) => {
-                              setServiceOrigineId(e.target.value);
-                              setMaterielChoisi("");
-                            }}
-                            disabled={!directionOrigineId}
-                          >
-                            <option value="">
-                              {directionOrigineId
-                                ? "Sélectionner le Service d'origine"
-                                : "Choisissez d'abord une Direction"}
-                            </option>
-                            {servicesOrigineVisibles.map((s) => (
-                              <option key={s.documentId} value={s.documentId}>
-                                {s.nom}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className={labelClass}>
-                            Matériel à transférer <span className="text-red-500">*</span>
-                          </label>
-                          {materielsDisponibles.size > 0 ? (
-                            <select
-                              className={inputClass}
-                              value={materielChoisi}
-                              onChange={(e) => setMaterielChoisi(e.target.value)}
-                              disabled={!serviceOrigineId}
-                            >
-                              <option value="">
-                                {serviceOrigineId
-                                  ? "Sélectionner le matériel"
-                                  : "Choisissez d'abord un Service"}
-                              </option>
-                              {Array.from(materielsDisponibles.keys()).map((m) => (
-                                <option key={m} value={m}>
-                                  {m} (stock : {materielsDisponibles.get(m)})
-                                </option>
-                              ))}
-                            </select>
-                          ) : (
-                            <input
-                              className={inputClass}
-                              placeholder="Désignation du matériel"
-                              value={materielChoisi}
-                              onChange={(e) => setMaterielChoisi(e.target.value)}
-                              disabled={!serviceOrigineId}
-                            />
-                          )}
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            {materielsDisponibles.size > 0
-                              ? "Le stock affiché provient des entrées validées du service."
-                              : "Aucun stock enregistré pour ce service : saisie libre."}
-                          </p>
-                        </div>
-                        <div>
-                          <label className={labelClass}>
-                            Quantité <span className="text-red-500">*</span>
+                            Motif <span className="text-red-500">*</span>
                           </label>
                           <input
-                            type="number"
-                            min={1}
                             className={inputClass}
-                            value={quantite}
-                            onChange={(e) => setQuantite(Number(e.target.value))}
+                            placeholder="Motif du transfert…"
+                            value={motif}
+                            onChange={(e) => setMotif(e.target.value)}
                           />
-                          {materielChoisi && stockDisponible > 0 && (
-                            <p className="mt-1 text-xs text-muted-foreground">
-                              Disponible : {stockDisponible} unité(s)
-                            </p>
-                          )}
+                        </div>
+                        <div>
+                          <label className={labelClass}>Observation</label>
+                          <input
+                            className={inputClass}
+                            placeholder="Précisions complémentaires…"
+                            value={observation}
+                            onChange={(e) => setObservation(e.target.value)}
+                          />
                         </div>
                       </div>
-                      {/* Responsables du service d'origine — automatiques */}
+
+                      {/* Responsables automatiques */}
                       <div className="msg msg--info msg--lg">
                         <div className="msg-body">
                           <div className="flex items-center gap-2 mb-3">
                             <Info className="msg-icon h-4 w-4" />
                             <span className="msg-title text-sm">
-                              Responsables de la Direction d'origine (automatiques)
+                              Responsables du transfert (automatiques)
                             </span>
                           </div>
-                        <div className="grid gap-4 sm:grid-cols-3">
+                        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                           <div>
-                            <label className={labelClass}>Dépositaire du service</label>
-                            <input className={inputClass} value={responsablesOrigine.depositaire} readOnly />
-                          </div>
-                          <div>
-                            <label className={labelClass}>Chef de service 1</label>
-                            <input className={inputClass} value={responsablesOrigine.chefService1} readOnly />
-                          </div>
-                          <div>
-                            <label className={labelClass}>Chef de service 2</label>
-                            <input className={inputClass} value={responsablesOrigine.chefService2} readOnly />
-                          </div>
-                        </div>
-                        <p className="mt-3 text-xs">
-                          Ils valideront la SORTIE (3 signatures) avant l'envoi du
-                          matériel. Aucun « Dépositaire général » : les
-                          responsables sont ceux du service concerné.
-                        </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {/* ------------- ÉTAPE 2 — DESTINATION ------------- */}
-                  {etapeDef.numero === 2 && (
-                    <div className="space-y-4">
-                      <div className="grid gap-4 sm:grid-cols-2">
-                        <div>
-                          <label className={labelClass}>
-                            Direction destinataire <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            className={inputClass}
-                            value={directionDestId}
-                            onChange={(e) => {
-                              setDirectionDestId(e.target.value);
-                              setServiceDestId("");
-                            }}
-                          >
-                            <option value="">Sélectionner la Direction destinataire</option>
-                            {directions
-                              .filter((d) => d.documentId !== directionOrigineId)
-                              .map((d) => (
-                                <option key={d.documentId} value={d.documentId}>
-                                  {d.nom}
-                                </option>
-                              ))}
-                          </select>
-                          <p className="mt-1 text-xs text-muted-foreground">
-                            La Direction d'origine ({nomDirectionOrigine}) est
-                            exclue : même Direction = affectation interne.
-                          </p>
-                        </div>
-                        <div>
-                          <label className={labelClass}>
-                            Service destinataire <span className="text-red-500">*</span>
-                          </label>
-                          <select
-                            className={inputClass}
-                            value={serviceDestId}
-                            onChange={(e) => setServiceDestId(e.target.value)}
-                            disabled={!directionDestId}
-                          >
-                            <option value="">
-                              {directionDestId
-                                ? "Sélectionner le Service destinataire"
-                                : "Choisissez d'abord une Direction"}
-                            </option>
-                            {servicesDestVisibles.map((s) => (
-                              <option key={s.documentId} value={s.documentId}>
-                                {s.nom}
-                              </option>
-                            ))}
-                          </select>
-                        </div>
-                      </div>
-                      {/* Responsables du service destinataire — automatiques */}
-                      <div className="msg msg--success msg--lg">
-                        <div className="msg-body">
-                          <div className="flex items-center gap-2 mb-3">
-                            <Info className="msg-icon h-4 w-4" />
-                            <span className="msg-title text-sm">
-                              Responsables de la Direction destinataire (automatiques)
-                            </span>
-                          </div>
-                        <div className="grid gap-4 sm:grid-cols-3">
-                          <div>
-                            <label className={labelClass}>Dépositaire du service</label>
-                            <input className={inputClass} value={responsablesDestination.depositaire} readOnly />
-                          </div>
-                          <div>
-                            <label className={labelClass}>Chef de service 1</label>
-                            <input className={inputClass} value={responsablesDestination.chefService1} readOnly />
-                          </div>
-                          <div>
-                            <label className={labelClass}>Chef de service 2</label>
-                            <input className={inputClass} value={responsablesDestination.chefService2} readOnly />
-                          </div>
-                        </div>
-                        <p className="mt-3 text-xs">
-                          Ils valideront la RÉCEPTION (0/3 → 3/3) à l'arrivée du
-                          matériel : entrée en stock validée à 3/3.
-                        </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                  {/* ------------- ÉTAPE 3 — MOTIF ------------- */}
-                  {etapeDef.numero === 3 && (
-                    <div className="space-y-4">
-                      <div>
-                        <label className={labelClass}>
-                          Motif du transfert <span className="text-red-500">*</span>
-                        </label>
-                        <div className="grid gap-2 sm:grid-cols-2">
-                          {MOTIFS_TRANSFERT.map((m) => (
-                            <label
-                              key={m}
-                              className={`flex items-center gap-2 px-3 py-2.5 border rounded-lg cursor-pointer text-sm transition-colors ${
-                                motif === m
-                                  ? "border-primary bg-primary/5 text-card-foreground"
-                                  : "border-border hover:bg-muted/30"
-                              }`}
-                            >
-                              <input
-                                type="radio"
-                                name="motifTransfert"
-                                checked={motif === m}
-                                onChange={() => setMotif(m)}
-                                className="accent-primary"
-                              />
-                              {m}
+                            <label className={labelClass}>
+                              Responsable du transfert
                             </label>
-                          ))}
-                        </div>
-                      </div>
-                      <div>
-                        <label className={labelClass}>Observation</label>
-                        <textarea
-                          className={inputClass}
-                          rows={3}
-                          placeholder="Précisions éventuelles sur le transfert…"
-                          value={observation}
-                          onChange={(e) => setObservation(e.target.value)}
-                        />
-                      </div>
-                    </div>
-                  )}
-                  {/* ------------- ÉTAPE 4 — VÉRIFICATION ------------- */}
-                  {etapeDef.numero === 4 && (
-                    <div className="space-y-4">
-                      <div className="rounded-lg border border-border bg-muted/20 p-4">
-                        <h4 className="text-sm font-medium text-card-foreground mb-3">
-                          RÉSUMÉ DU TRANSFERT
-                        </h4>
-                        <div className="grid gap-3 text-sm sm:grid-cols-2">
-                          <div>
-                            <span className="text-xs text-muted-foreground">Direction d'origine</span>
-                            <div className="text-card-foreground">{nomDirectionOrigine}</div>
+                            <input
+                              className={inputClass}
+                              value={responsableTransfert}
+                              onChange={(e) =>
+                                setResponsableTransfert(e.target.value)
+                              }
+                            />
                           </div>
                           <div>
-                            <span className="text-xs text-muted-foreground">Direction destinataire</span>
-                            <div className="text-card-foreground">{nomDirectionDest}</div>
+                            <label className={labelClass}>Dépositaire</label>
+                            <input
+                              className={inputClass}
+                              value={depositaire}
+                              onChange={(e) => setDepotParService(e.target.value)}
+                            />
                           </div>
                           <div>
-                            <span className="text-xs text-muted-foreground">Service d'origine</span>
-                            <div className="text-card-foreground">{nomServiceOrigine}</div>
-                          </div>
-                          <div>
-                            <span className="text-xs text-muted-foreground">Service destinataire</span>
-                            <div className="text-card-foreground">{nomServiceDest}</div>
-                          </div>
-                          <div>
-                            <span className="text-xs text-muted-foreground">Matériel</span>
-                            <div className="text-card-foreground">{materielChoisi}</div>
-                          </div>
-                          <div>
-                            <span className="text-xs text-muted-foreground">Quantité</span>
-                            <div className="text-card-foreground">{quantite} unité(s)</div>
-                          </div>
-                          <div className="sm:col-span-2">
-                            <span className="text-xs text-muted-foreground">Motif</span>
-                            <div className="text-card-foreground">{motif}</div>
+                            <label className={labelClass}>Chef logistique</label>
+                            <input
+                              className={inputClass}
+                              value={logistique}
+                              placeholder="Chef logistique…"
+                              onChange={(e) => setLogistique(e.target.value)}
+                            />
                           </div>
                         </div>
+                        </div>
                       </div>
+
                       <Message variant="info" size="sm" icon={Info}>
-                        Processus : SORTIE VALIDÉE (3 signatures origine) → EN
-                        TRANSFERT → RÉCEPTION EN COURS (3 signatures destination)
-                        → ENTRÉE EN STOCK VALIDÉE. Un numéro de transfert
-                        TRF-AAAA-NNN et un QR Code seront générés.
+                        Le transfert démarre « En attente » (0/3) : Responsable du
+                        transfert (créateur) → Dépositaire → Logistique. À 3/3,
+                        le stock est mis
+                        à jour (−source / +Direction destinataire) et le transfert
+                        est verrouillé.
                       </Message>
                     </div>
                   )}
@@ -652,80 +712,105 @@ export function NewTransfertPage({
             );
           })}
         </div>
-        {/* ---------------- Colonne latérale — processus ---------------- */}
-        <div className="space-y-4 sm:space-y-6">
-          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
-            <h3 className="text-sm font-medium text-card-foreground mb-3 flex items-center gap-2">
-              <Package className="h-4 w-4 text-primary" />
-              Processus du transfert
-            </h3>
-            <ol className="space-y-3 text-sm">
-              {[
-                "Direction d'origine : validation de la sortie par le Dépositaire, le Chef de service 1 et le Chef de service 2",
-                "SORTIE du stock : le matériel quitte la Direction d'origine (statut « En transfert »)",
-                "Direction destinataire : réception, vérification puis validation par ses 3 responsables",
-                "ENTRÉE EN STOCK VALIDÉE : le matériel rejoint le stock de la Direction destinataire",
-                "Traçabilité complète : référence TRF, QR Code, historique, PDF / Excel",
-              ].map((texte, i) => (
-                <li key={i} className="flex items-start gap-2 text-muted-foreground">
-                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-primary/10 text-[11px] font-semibold text-primary shrink-0 mt-0.5">
-                    {i + 1}
-                  </span>
-                  {texte}
-                </li>
-              ))}
-            </ol>
-          </div>
-          <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
-            <h3 className="text-sm font-medium text-card-foreground mb-2">
-              Affectation ou transfert ?
-            </h3>
-            <p className="text-xs text-muted-foreground">
-              <strong className="text-card-foreground">Affectation interne</strong>{" "}
-              : même Direction, pas de sortie, pas d'entrée (rubrique
-              Affectations).{" "}
-              <strong className="text-card-foreground">Transfert</strong> :
-              Directions différentes, vraie sortie + vraie entrée (cette
-              rubrique).
-            </p>
+
+        {/* Colonne droite — Résumé */}
+        <div className="lg:col-span-1">
+          <div className="lg:sticky lg:top-6 space-y-4">
+            <div className="cm-panel cm-panel-solid rounded-lg p-4">
+              <h3 className="text-sm font-medium text-card-foreground mb-3">
+                RÉSUMÉ DU TRANSFERT
+              </h3>
+              <div className="space-y-2 text-sm">
+                {[
+                  ["Direction", direction],
+                  ["Service d'origine", serviceSource],
+                  ["Direction destinataire", directionDestinataire],
+                  ["Matériel", materielSelectionne?.materiel || ""],
+                  [
+                    "Référence",
+                    materielSelectionne?.reference || "",
+                  ],
+                  ["Quantité", quantite ? String(quantite) : ""],
+                  ["Motif", motif],
+                  ["Créateur", user?.name || "—"],
+                ].map(([label, valeur]) => (
+                  <div key={label} className="flex justify-between gap-2">
+                    <span className="text-muted-foreground">{label}</span>
+                    <span className="text-card-foreground text-right truncate">
+                      {valeur || "—"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="cm-panel cm-panel-solid rounded-lg p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="text-sm font-medium text-card-foreground">
+                  VALIDATION
+                </h3>
+                <span className="text-xs font-mono px-2 py-0.5 rounded-full bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400">
+                  {`0 / ${TRANSFERT_VALIDATIONS.length}`}
+                </span>
+              </div>
+              <ul className="space-y-2 text-sm">
+                {TRANSFERT_VALIDATIONS.map((v, i) => (
+                  <li key={v.key} className="text-card-foreground">
+                    {i + 1}. {v.label}
+                  </li>
+                ))}
+              </ul>
+              <div className="flex items-start gap-2 mt-3 px-3 py-2 bg-muted/30 rounded-lg text-xs text-muted-foreground">
+                <Info className="h-3.5 w-3.5 shrink-0 mt-0.5" />
+                Aucune sortie, aucune nouvelle entrée : seul le stock change de
+                Direction, avec traçabilité complète.
+              </div>
+            </div>
           </div>
         </div>
       </div>
+
       {/* Barre d'actions */}
-      <div className="fixed bottom-0 left-0 right-0 lg:left-72 border-t border-border bg-background/95 backdrop-blur p-3 sm:p-4 flex items-center justify-between gap-3 z-40">
-        <button
-          type="button"
-          onClick={() => setEtape((e) => Math.max(1, e - 1))}
-          disabled={etape === 1 || saving}
-          className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg text-sm hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Précédent
-        </button>
-        {etape < 4 ? (
+      <div className="fixed bottom-0 left-0 right-0 z-40 sm:relative sm:z-auto border-t border-border bg-card/95 backdrop-blur p-3 sm:p-0 sm:bg-transparent sm:border-0 sm:backdrop-blur-none">
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-end gap-2 sm:gap-3">
           <button
-            type="button"
-            onClick={suivant}
-            className="inline-flex items-center gap-2 px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            onClick={onClose}
+            className="px-4 py-2.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors text-card-foreground"
           >
-            Suivant
-            <ChevronRight className="h-4 w-4" />
+            Annuler
           </button>
-        ) : (
-          <button
-            type="button"
-            onClick={creer}
-            disabled={saving}
-            className="inline-flex items-center gap-2 px-6 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 transition-colors text-sm"
-          >
-            {saving ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-            Créer le transfert
-          </button>
-        )}
+          {etape > 1 && (
+            <button
+              onClick={() => setEtape((e) => Math.max(1, e - 1))}
+              className="px-4 py-2.5 text-sm border border-border rounded-lg hover:bg-muted transition-colors text-card-foreground inline-flex items-center justify-center gap-2"
+            >
+              <ChevronLeft className="h-4 w-4" />
+              Précédent
+            </button>
+          )}
+          {etape < ETAPES.length ? (
+            <button
+              onClick={suivant}
+              className="px-4 py-2.5 text-sm bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors inline-flex items-center justify-center gap-2"
+            >
+              Suivant
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          ) : (
+            <button
+              onClick={creer}
+              disabled={saving}
+              className="px-4 py-2.5 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors disabled:opacity-50 inline-flex items-center justify-center gap-2"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <CheckCircle2 className="h-4 w-4" />
+              )}
+              Créer le transfert
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

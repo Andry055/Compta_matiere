@@ -63,7 +63,7 @@ const navItems = [
   {
     title: "Transferts",
     icon: ArrowLeftRight,
-    key: "affectations",
+    key: "transferts",
     description: "Transferts entre services"
   },
   {

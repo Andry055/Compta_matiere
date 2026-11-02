@@ -23,7 +23,7 @@ export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
     label: 'Dépositaire par service',
     defaultEmployeeName: 'Rakotomalala Hery',
     description: "Dépositaire du service : réceptionne et enregistre les arrivées, tient le grand livre, traite et approuve les demandes, signe les sorties, déclare les pertes et clôture l'inventaire annuel.",
-    pages: ['dashboard', 'arrivee', 'journal', 'equipment', 'requests', 'distribution', 'movements', 'pertes', 'inventaire', 'departments', 'reports', 'users', 'settings'],
+    pages: ['dashboard', 'arrivee', 'journal', 'equipment', 'requests', 'distribution', 'movements', 'pertes', 'transferts', 'inventaire', 'departments', 'reports', 'users', 'settings'],
     signRole: 'depositaire',
     canApprove: true,
     levelLock: null,
@@ -43,7 +43,7 @@ export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
     label: 'Chef logistique',
     defaultEmployeeName: 'Razafindrakoto Tojo',
     description: "Supervise la chaîne d'approvisionnement, appose la 2ème signature obligatoire à la réception du matériel et la 3ème signature obligatoire de sortie, et suit l'historique des mouvements.",
-    pages: ['dashboard', 'arrivee', 'distribution', 'movements'],
+    pages: ['dashboard', 'arrivee', 'distribution', 'movements', 'transferts'],
     signRole: 'logistique',
     canApprove: false,
     levelLock: null,
@@ -63,9 +63,9 @@ export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
     label: 'Demandeur',
     defaultEmployeeName: 'Randriamampionona Tolotra',
     description: "Exprime les besoins en matériel pour son service ou sa direction et assure le suivi direct de ses demandes.",
-    // « affectations » : rubrique propre à l'espace Demandeur (spécification)
+    // « transferts » : rubrique propre à l'espace Demandeur (spécification)
     // Le transfert inter-Directions se fait depuis Entrées → Nouvelle entrée.
-    pages: ['dashboard', 'equipment', 'entries', 'affectations', 'exits', 'requests', 'reception', 'reports', 'journalDirection'],
+    pages: ['dashboard', 'equipment', 'entries', 'transferts', 'exits', 'requests', 'reception', 'reports', 'journalDirection'],
     signRole: null,
     canApprove: false,
     levelLock: 'dynamic',

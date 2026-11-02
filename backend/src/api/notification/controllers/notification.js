@@ -46,6 +46,14 @@ module.exports = {
     ctx.set('Connection', 'keep-alive');
     ctx.set('X-Accel-Buffering', 'no'); // désactive le buffering côté nginx
 
+    // On reprend la main sur la réponse : sans cela, Koa termine la
+    // connexion dès que le handler se résout sans `ctx.body` (il écrit le
+    // message de statut « OK » puis appelle res.end()). Le flux SSE était
+    // alors fermé immédiatement après le message de bienvenue, ce qui
+    // déclenchait une reconnexion du client toutes les 3 secondes et
+    // empêchait toute notification push.
+    ctx.respond = false;
+
     // Message de bienvenue pour valider l'ouverture du canal.
     ctx.res.write('event: connected\ndata: {"status":"ok","userId":' + JSON.stringify(userId) + '}\n\n');
 

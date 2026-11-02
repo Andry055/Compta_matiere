@@ -275,13 +275,16 @@ const ENTREE_SIGN_ACTIONS = [
 ];
 
 // ---------------------------------------------------------------------------
-// Affectations : permissions des endpoints de la validation à 4 signatures.
-// La signature proprement dite est contrôlée par rôle dans le contrôleur
-// (1/4 réservée au créateur, 2/4 dépositaire, 3/4 magasinier, 4/4 logistique).
+// Transferts : permissions des endpoints de validation.
+// Le circuit compte 3 signatures (Responsable du transfert, Dépositaire,
+// Logistique) — 4 pour les anciens enregistrements qui portent encore des
+// chefs de service. La signature est contrôlée par rôle DANS LE CONTRÔLEUR :
+//   1/3 réservée au créateur (y compris un Demandeur), 2/3 dépositaire,
+//   3/3 logistique.
 // ---------------------------------------------------------------------------
-const AFFECTATION_ACTIONS = [
-  'api::affectation.affectation.createComplete',
-  'api::affectation.affectation.sign',
+const TRANSFERT_ACTIONS = [
+  'api::transfert.transfert.createComplete',
+  'api::transfert.transfert.sign',
 ];
 
 // Rôles habilités à créer / signer / rejeter une entrée (jamais le Demandeur).
@@ -757,18 +760,20 @@ async function ensureAuthSetup(strapi) {
       accordees.add(cle);
     }
   }
-  // 2quater) Permissions « Affectations » : routes custom de la validation à
-  // 4 signatures, accordées aux rôles signataires. Le Demandeur peut créer
-  // une affectation (dont il sera le Responsable du transfert 1/4) mais ne
-  // reçoit JAMAIS `sign` : les validations responsables sont contrôlées dans
-  // le contrôleur (un Demandeur ne signe que la 1/4 sur SA création).
-  const DEMANDEUR_AFFECTATION_ACTIONS = [
-    'api::affectation.affectation.createComplete',
+  // 2quater) Permissions « Transferts » : routes custom de création et de
+  // validation, accordées aux rôles signataires. Le Demandeur peut créer un
+  // transfert (dont il est le Responsable du transfert 1/3) et signe la 1/3
+  // sur SA SEULE création : la permission `sign` lui est donc accordée, le
+  // contrôleur refusant toute autre signature (2/3 dépositaire, 3/3
+  // logistique).
+  const DEMANDEUR_TRANSFERT_ACTIONS = [
+    'api::transfert.transfert.createComplete',
+    'api::transfert.transfert.sign',
   ];
   for (const type of ROLES_SIGNATAIRES) {
     const role = roles[type];
     if (!role) continue;
-    for (const action of AFFECTATION_ACTIONS) {
+    for (const action of TRANSFERT_ACTIONS) {
       const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
@@ -776,7 +781,7 @@ async function ensureAuthSetup(strapi) {
     }
   }
   if (roleDemandeur) {
-    for (const action of DEMANDEUR_AFFECTATION_ACTIONS) {
+    for (const action of DEMANDEUR_TRANSFERT_ACTIONS) {
       const cle = `${roleDemandeur.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: roleDemandeur.id } });
@@ -858,7 +863,7 @@ async function ensureAuthSetup(strapi) {
   // L'admin (rôle authenticated créé par Strapi) garde un accès complet via
   // l'interface d'administration ; on lui accorde aussi les routes custom.
   for (const role of rolesAdministrateur) {
-    for (const action of [...ENTREE_SIGN_ACTIONS, ...AFFECTATION_ACTIONS]) {
+    for (const action of [...ENTREE_SIGN_ACTIONS, ...TRANSFERT_ACTIONS]) {
       const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });

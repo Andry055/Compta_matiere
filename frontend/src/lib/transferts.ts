@@ -1,161 +1,141 @@
 // ---------------------------------------------------------------------------
-// TRANSFERTS ENTRE DIRECTIONS (Direction A → Direction B)
+// TRANSFERTS ENTRE SERVICES (même Direction uniquement)
 //
-// Règle métier (spécification) :
-//   Direction origine ≠ Direction destination
-//     → SORTIE du stock de la Direction origine
-//     → TRANSFERT (statut « En transfert », référence TRF-AAAA-NNN)
-//     → ENTRÉE dans le stock de la Direction destination
-//   (Différent de l'AFFECTATION INTERNE : même Direction, pas de sortie.)
+// Règle métier :
+//   DIRECTION → SERVICE SOURCE → TRANSFERT → SERVICE DESTINATAIRE
+//   → Mise à jour du stock → Traçabilité
+//   PAS DE SORTIE, PAS DE NOUVELLE ENTRÉE.
 //
-// Persistance locale (localStorage), dans l'esprit du module Affectations.
-// Une entrée « suite à transfert » est créée automatiquement dans la Direction
-// destination et démarre « En attente » (0/3) : elle n'est VALIDÉE qu'après
-// les 3 validations des responsables du service destinataire.
+// Une transfert concerne un matériel DÉJÀ enregistré dans le stock d'une
+// Direction et change uniquement le service de destination.
+// (Direction A ≠ Direction B → il s'agit d'un TRANSFERT : SORTIE → ENTRÉE,
+//  opération distincte, gérée hors de cette rubrique.)
+//
+// Validation à TROIS signatures obligatoires, dans l'ordre :
+//   0/3 En attente → 1/3 Responsable du transfert → 2/3 Dépositaire
+//   → 3/3 Logistique → ✓ TRANSFERT VALIDÉ
+// (les anciens transferts, créés avant la suppression des deux chefs de
+//  service, restent réglés sur 4 validations — cf. validationsAttendues).
+// Un transfert validé n'est plus modifiable.
 // ---------------------------------------------------------------------------
 
-import { EntreeRecord } from "./movements";
-import {
-  DIRECTIONS_REPLI,
-  SERVICES_REPLI,
-  responsablesDuService,
-} from "./organigramme";
+import { EntreeRecord, getStatutEntreeAffiche } from "./movements";
 
-// ---------------------------------------------------------------------------
-// Types et statuts
-// ---------------------------------------------------------------------------
+export type TransfertStatut = "En attente" | "Validée";
 
-/**
- * Statuts du cycle de vie d'un transfert (spécification §14).
- * La progression SORTIE → ENTRÉE est dérivée des signatures enregistrées.
- */
-export type TransfertStatut =
-  | "Brouillon"
-  | "Sortie en attente"
-  | "Sortie validée"
-  | "En transfert"
-  | "Réception en attente"
-  | "Réception partiellement validée"
-  | "Réception validée"
-  | "Entrée en stock"
-  | "Terminé"
-  | "Rejeté";
+export interface TransfertValidationInfo {
+  date: string; // ISO
+  signataire: string;
+}
 
-export const STATUTS_TRANSFERT: TransfertStatut[] = [
-  "Brouillon",
-  "Sortie en attente",
-  "Sortie validée",
-  "En transfert",
-  "Réception en attente",
-  "Réception partiellement validée",
-  "Réception validée",
-  "Entrée en stock",
-  "Terminé",
-  "Rejeté",
-];
+export type TransfertCleValidation =
+  | "responsableTransfert"
+  | "depositaire"
+  | "logistique"
+  // Conservées pour lire les anciens enregistrements (circuit à 4 signatures) :
+  // elles ne figurent plus dans TRANSFERT_VALIDATIONS, donc jamais proposées.
+  | "chefService1"
+  | "chefService2";
 
 export interface TransfertHistorique {
-  date: string; // ISO (date + heure)
+  date: string;
   libelle: string;
-  utilisateur?: string;
 }
 
 export interface TransfertRecord {
   id: string;
-  /** TRF-AAAA-NNN — numéro de transfert unique */
+  /** TRF-AAAA-NNN */
   reference: string;
   /** Identifiant porté par le QR Code (aucune donnée sensible) */
   qrToken: string;
-  date: string; // ISO yyyy-mm-dd (création du transfert)
-  directionOrigine: string;
-  serviceOrigine: string;
-  directionDestination: string;
-  serviceDestination: string;
+  /** Date de création (ISO yyyy-mm-dd) */
+  date: string;
+  direction: string;
+  /** Direction choisie comme destination : le matériel QUITTE la Direction du
+   *  compte (service d'origine automatique) pour rejoindre cette Direction. */
+  directionDestinataire: string;
+  serviceSource: string;
+  /** Ancien format (transfert interne au sein d'une même Direction) : conservé
+   *  pour les enregistrements existants. Les nouveaux transferts ne renseignent
+   *  plus de service destinataire — la destination est une Direction. */
+  serviceDestinataire: string;
   materiel: string;
-  materielReference?: string;
+  materielReference: string;
   quantite: number;
   motif: string;
-  observation?: string;
+  observation: string;
+  /** Créateur (nom + email) : signe la validation 1/3 « Responsable du transfert » */
   createur: string;
-  createurEmail?: string;
-  /** Référence de l'entrée d'origine du matériel dans la Direction origine */
-  entreeSourceRef?: string;
-  /** Responsables de la Direction ORIGINE (validation de la sortie) */
-  responsablesOrigine: {
+  createurEmail: string;
+  responsables: {
+    responsableTransfert: string;
     depositaire: string;
-    chefService1: string;
-    chefService2: string;
+    /** Chef logistique : 3ᵉ signataire du circuit actuel. */
+    logistique?: string;
+    /** Anciennes signatures : plus saisies depuis la suppression des deux
+     *  chefs de service (présentes uniquement sur les anciens transferts). */
+    chefService1?: string;
+    chefService2?: string;
   };
-  /** Responsables de la Direction DESTINATION (validation de la réception) */
-  responsablesDestination: {
-    depositaire: string;
-    chefService1: string;
-    chefService2: string;
-  };
-  /** Validation de la SORTIE (Direction origine, 3 signatures ordonnées) */
-  signaturesSortie: Partial<{
-    depositaire: string; // ISO de signature
-    chefService1: string;
-    chefService2: string;
-  }>;
-  signatairesSortie?: Partial<{
-    depositaire: string;
-    chefService1: string;
-    chefService2: string;
-  }>;
-  /** Validation de la RÉCEPTION (Direction destination, 3 signatures ordonnées) */
-  signaturesReception: Partial<{
-    depositaire: string;
-    chefService1: string;
-    chefService2: string;
-  }>;
-  signatairesReception?: Partial<{
-    depositaire: string;
-    chefService1: string;
-    chefService2: string;
-  }>;
-  /** Date effective de la sortie (sortie validée) */
-  dateSortie?: string;
-  /** Date effective de la réception (réception validée) */
-  dateReception?: string;
+  validations: Partial<Record<TransfertCleValidation, TransfertValidationInfo>>;
   statut: TransfertStatut;
   historique: TransfertHistorique[];
 }
 
-export const SORTIE_VALIDATIONS: Array<{
-  key: "depositaire" | "chefService1" | "chefService2";
+/** Les 3 validations obligatoires (dans l'ordre du workflow) */
+export const TRANSFERT_VALIDATIONS: Array<{
+  key: TransfertCleValidation;
   label: string;
 }> = [
-  { key: "depositaire", label: "Dépositaire (origine)" },
-  { key: "chefService1", label: "Chef de service 1 (origine)" },
-  { key: "chefService2", label: "Chef de service 2 (origine)" },
+  { key: "responsableTransfert", label: "Responsable du transfert" },
+  { key: "depositaire", label: "Dépositaire" },
+  { key: "logistique", label: "Logistique" },
 ];
 
-export const RECEPTION_VALIDATIONS: Array<{
-  key: "depositaire" | "chefService1" | "chefService2";
-  label: string;
-}> = [
-  { key: "depositaire", label: "Dépositaire (destination)" },
-  { key: "chefService1", label: "Chef de service 1 (destination)" },
-  { key: "chefService2", label: "Chef de service 2 (destination)" },
+/** Clés du circuit historique (4 signatures), dans l'ordre. */
+const ANCIEN_CIRCUIT: TransfertCleValidation[] = [
+  "responsableTransfert",
+  "depositaire",
+  "chefService1",
+  "chefService2",
 ];
 
-export const MOTIFS_TRANSFERT = [
-  "Transfert vers une autre Direction",
-  "Réorganisation administrative",
-  "Besoin du service destinataire",
-  "Mutualisation des équipements",
-];
+/** Nombre de validations attendues par un transfert donné :
+ *  4 pour un enregistrement antérieur à la suppression des chefs de service
+ *  (il porte encore leurs responsables), 3 sinon. */
+export function validationsAttendues(a: TransfertRecord): number {
+  return clesAttendues(a).length;
+}
 
-// ---------------------------------------------------------------------------
-// Persistance locale
-// ---------------------------------------------------------------------------
+/** Clés de validation attendues pour CE transfert : les 3 actuelles, ou les
+ *  4 de l'ancien circuit pour un enregistrement qui les porte encore. */
+export function clesAttendues(a: TransfertRecord): TransfertCleValidation[] {
+  const ancienCircuit =
+    a.responsables.chefService1 !== undefined ||
+    a.responsables.chefService2 !== undefined ||
+    a.validations.chefService1 !== undefined ||
+    a.validations.chefService2 !== undefined;
+  return ancienCircuit ? ANCIEN_CIRCUIT : TRANSFERT_VALIDATIONS.map((v) => v.key);
+}
 
-const CLE_TRANSFERTS = "comptamatiere_transferts_v1";
+// Le motif est une donnée SAISIE par l'utilisateur (champ libre) : il n'y a
+// plus de liste de motifs imposée.
 
-function lire(): TransfertRecord[] {
+const CLE = "comptamatiere_transferts_v2";
+/** Ancienne clé (module renommé « affectations ») : relue une fois pour ne
+ *  pas perdre les traces historiques déjà enregistrées dans le navigateur. */
+const CLE_ANCIENNE = "comptamatiere_affectations_v2";
+
+export function listerTransferts(): TransfertRecord[] {
   try {
-    const raw = localStorage.getItem(CLE_TRANSFERTS);
+    let raw = localStorage.getItem(CLE);
+    if (!raw) {
+      const ancien = localStorage.getItem(CLE_ANCIENNE);
+      if (ancien) {
+        localStorage.setItem(CLE, ancien);
+        raw = ancien;
+      }
+    }
     const parsed = raw ? JSON.parse(raw) : [];
     return Array.isArray(parsed) ? (parsed as TransfertRecord[]) : [];
   } catch {
@@ -165,220 +145,120 @@ function lire(): TransfertRecord[] {
 
 function persister(records: TransfertRecord[]) {
   try {
-    localStorage.setItem(CLE_TRANSFERTS, JSON.stringify(records));
+    localStorage.setItem(CLE, JSON.stringify(records));
   } catch {
     /* mode privé : on ignore */
   }
 }
 
-export function listerTransferts(): TransfertRecord[] {
-  return lire();
-}
-
-function sauverRecord(maj: TransfertRecord) {
-  persister(lire().map((t) => (t.reference === maj.reference ? maj : t)));
-}
-
-function trouver(reference: string): TransfertRecord | undefined {
-  return lire().find((t) => t.reference === reference);
+/**
+ * Fusionne les transferts en base (serveur) avec les traces historiques restées
+ * dans le localStorage. Doublons résolus PAR RÉFÉRENCE : la version serveur
+ * l'emporte, les créations locales non remontées sont conservées.
+ */
+export function fusionnerTransferts(
+  locales: TransfertRecord[],
+  serveur: TransfertRecord[]
+): TransfertRecord[] {
+  const referencesServeur = new Set(serveur.map((a) => a.reference));
+  return [
+    ...serveur,
+    ...locales.filter((a) => !referencesServeur.has(a.reference)),
+  ];
 }
 
 // ---------------------------------------------------------------------------
-// Statuts dérivés et affichage
+// État des validations
 // ---------------------------------------------------------------------------
-
-export function getSignatureSortieCount(t: TransfertRecord): number {
-  return SORTIE_VALIDATIONS.filter((v) => t.signaturesSortie?.[v.key]).length;
-}
-
-export function getSignatureReceptionCount(t: TransfertRecord): number {
-  return RECEPTION_VALIDATIONS.filter((v) => t.signaturesReception?.[v.key]).length;
-}
 
 export interface TransfertValidationEtat {
-  key: "depositaire" | "chefService1" | "chefService2";
+  key: TransfertCleValidation;
   label: string;
   signed: boolean;
   date?: string;
   signataire?: string;
 }
 
-export function getValidationsSortie(t: TransfertRecord): TransfertValidationEtat[] {
-  return SORTIE_VALIDATIONS.map(({ key, label }) => ({
+export function getValidationsTransfert(
+  a: TransfertRecord
+): TransfertValidationEtat[] {
+  return TRANSFERT_VALIDATIONS.map(({ key, label }) => ({
     key,
     label,
-    signed: !!t.signaturesSortie?.[key],
-    date: t.signaturesSortie?.[key],
-    signataire: t.signatairesSortie?.[key],
+    signed: !!a.validations?.[key],
+    date: a.validations?.[key]?.date,
+    signataire: a.validations?.[key]?.signataire,
   }));
 }
 
-export function getValidationsReception(t: TransfertRecord): TransfertValidationEtat[] {
-  return RECEPTION_VALIDATIONS.map(({ key, label }) => ({
-    key,
-    label,
-    signed: !!t.signaturesReception?.[key],
-    date: t.signaturesReception?.[key],
-    signataire: t.signatairesReception?.[key],
-  }));
+export function getValidationCount(a: TransfertRecord): number {
+  return clesAttendues(a).filter((cle) => a.validations[cle]).length;
 }
 
-/**
- * Statut affiché dérivé de l'état réel des signatures (source de vérité) :
- *   SORTIE VALIDÉE → EN TRANSFERT → RÉCEPTION EN COURS → RÉCEPTION VALIDÉE →
- *   ENTRÉE EN STOCK → TERMINÉ
- */
-export function getStatutTransfertAffiche(t: TransfertRecord): string {
-  if (t.statut === "Rejeté") return "Rejeté";
-  if (t.statut === "Terminé") return "Terminé";
-  const sortie = getSignatureSortieCount(t);
-  const reception = getSignatureReceptionCount(t);
-  if (sortie < 3) return sortie === 0 ? "Sortie en attente" : "Sortie en attente";
-  if (reception === 0) return "En transfert";
-  if (reception < 3) return "Réception partiellement validée";
-  return "Entrée en stock";
+/** n/n → « Validée », sinon « En attente » (progression affichée x/3) */
+export function getStatutTransfertAffiche(a: TransfertRecord): string {
+  return getValidationCount(a) >= validationsAttendues(a)
+    ? "Validée"
+    : "En attente";
 }
 
 export function statutTransfertBadge(statut: string): string {
-  switch (statut) {
-    case "Terminé":
-    case "Entrée en stock":
-    case "Réception validée":
-    case "Sortie validée":
-      return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-    case "En transfert":
-      return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
-    case "Réception partiellement validée":
-    case "Sortie en attente":
-    case "Réception en attente":
-      return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
-    case "Brouillon":
-      return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
-    case "Rejeté":
-      return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-    default:
-      return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
-  }
+  return statut === "Validée"
+    ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+    : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
 }
 
 // ---------------------------------------------------------------------------
-// Droits de signature
-// ---------------------------------------------------------------------------
-
-export interface UtilisateurTransfert {
-  name?: string;
-  email?: string;
-  role?: string | null;
-}
-
-function estAdmin(user: UtilisateurTransfert | undefined): boolean {
-  return user?.role === "admin";
-}
-
-/** Responsable du transfert : le créateur (ou l'admin) pour la sortie. */
-export function peutSignerSortie(
-  user: UtilisateurTransfert | undefined,
-  t: TransfertRecord,
-  key: "depositaire" | "chefService1" | "chefService2"
-): boolean {
-  if (!user || t.statut === "Rejeté") return false;
-  if (getSignatureSortieCount(t) >= 3) return false;
-  if (t.signaturesSortie?.[key]) return false;
-  if (estAdmin(user)) return true;
-  if (user.role === "demandeur") return false; // jamais pour un responsable
-  if (key === "depositaire") return user.role === "depositaire";
-  if (key === "chefService1") return user.role === "magasinier";
-  if (key === "chefService2") return user.role === "logistique";
-  return false;
-}
-
-export function peutSignerReception(
-  user: UtilisateurTransfert | undefined,
-  t: TransfertRecord,
-  key: "depositaire" | "chefService1" | "chefService2"
-): boolean {
-  if (!user || t.statut === "Rejeté") return false;
-  if (getSignatureSortieCount(t) < 3) return false; // la sortie doit être validée d'abord
-  if (getSignatureReceptionCount(t) >= 3) return false;
-  if (t.signaturesReception?.[key]) return false;
-  if (estAdmin(user)) return true;
-  if (user.role === "demandeur") return false;
-  if (key === "depositaire") return user.role === "depositaire";
-  if (key === "chefService1") return user.role === "magasinier";
-  if (key === "chefService2") return user.role === "logistique";
-  return false;
-}
-
-// ---------------------------------------------------------------------------
-// Création (TRF-AAAA-NNN)
+// Création
 // ---------------------------------------------------------------------------
 
 export interface NouveauTransfert {
-  directionOrigine: string;
-  serviceOrigine: string;
-  directionDestination: string;
-  serviceDestination: string;
+  direction: string;
+  directionDestinataire: string;
+  serviceSource: string;
+  /** Optionnel : seul l'ancien format interne le renseignait. */
+  serviceDestinataire?: string;
   materiel: string;
   materielReference?: string;
   quantite: number;
   motif: string;
   observation?: string;
+  responsables: TransfertRecord["responsables"];
   createur: string;
-  createurEmail?: string;
-  entreeSourceRef?: string;
-  responsablesOrigine: TransfertRecord["responsablesOrigine"];
-  responsablesDestination: TransfertRecord["responsablesDestination"];
+  createurEmail: string;
 }
 
 function prochaineReference(existantes: TransfertRecord[]): string {
   const annee = new Date().getFullYear();
   const numeros = existantes
-    .map((t) => Number((t.reference || "").split("-")[2]))
+    .map((a) => Number((a.reference || "").split("-")[2]))
     .filter((n) => Number.isFinite(n));
   const suivant = (numeros.length ? Math.max(...numeros) : 0) + 1;
   return `TRF-${annee}-${String(suivant).padStart(3, "0")}`;
 }
 
-/** Règle métier §17 : contrôle automatique origine ≠ destination. */
-export function verifierTransfertValide(
-  directionOrigine: string,
-  directionDestination: string
-): string | null {
-  if (!directionOrigine || !directionDestination) {
-    return "Veuillez sélectionner les deux Directions.";
-  }
-  if (directionOrigine.trim().toLowerCase() === directionDestination.trim().toLowerCase()) {
-    return "Direction d'origine et Direction destinataire identiques : il s'agit d'une AFFECTATION INTERNE (rubrique Affectations), pas d'un transfert.";
-  }
-  return null;
+/** Direction destinataire d'un transfert.
+ *  Anciens enregistrements (transfert interne) : la seule Direction du record. */
+export function directionDestinataireDe(a: TransfertRecord): string {
+  return (a.directionDestinataire || "").trim() || a.direction;
 }
 
-/**
- * Crée le transfert : référence TRF-AAAA-NNN, statut « Sortie en attente »,
- * QR token, historique initial. La sortie du stock n'interviendra qu'après
- * les 3 signatures de la Direction origine.
- */
-export function creerTransfert(input: NouveauTransfert): TransfertRecord {
-  const erreur = verifierTransfertValide(
-    input.directionOrigine,
-    input.directionDestination
-  );
-  if (erreur) throw new Error(erreur);
-
+export function creerTransfert(
+  input: NouveauTransfert
+): TransfertRecord {
   const existantes = listerTransferts();
   const reference = prochaineReference(existantes);
-  const maintenant = new Date().toISOString();
-  const date = maintenant.slice(0, 10);
+  const date = new Date().toISOString().slice(0, 10);
 
   const record: TransfertRecord = {
     id: reference,
     reference,
     qrToken: reference,
     date,
-    directionOrigine: input.directionOrigine,
-    serviceOrigine: input.serviceOrigine,
-    directionDestination: input.directionDestination,
-    serviceDestination: input.serviceDestination,
+    direction: input.direction,
+    directionDestinataire: input.directionDestinataire,
+    serviceSource: input.serviceSource,
+    serviceDestinataire: input.serviceDestinataire || "",
     materiel: input.materiel,
     materielReference: input.materielReference || "—",
     quantite: Math.max(1, Number(input.quantite) || 1),
@@ -386,201 +266,123 @@ export function creerTransfert(input: NouveauTransfert): TransfertRecord {
     observation: input.observation || "",
     createur: input.createur || "—",
     createurEmail: input.createurEmail || "",
-    entreeSourceRef: input.entreeSourceRef,
-    responsablesOrigine: input.responsablesOrigine,
-    responsablesDestination: input.responsablesDestination,
-    signaturesSortie: {},
-    signaturesReception: {},
-    statut: "Sortie en attente",
-    historique: [
-      {
-        date: maintenant,
-        libelle: `Création du transfert par ${input.createur || "—"}`,
-        utilisateur: input.createur,
-      },
-    ],
+    responsables: input.responsables,
+    validations: {},
+    statut: "En attente",
+    historique: [{ date, libelle: `Création du transfert par ${input.createur || "—"}` }],
   };
 
   persister([record, ...existantes]);
   return record;
 }
 
-/** Rejet d'un transfert (sortie non encore validée) par un responsable. */
-export function rejeterTransfert(reference: string, user: UtilisateurTransfert): TransfertRecord {
-  const record = trouver(reference);
-  if (!record) throw new Error("Transfert introuvable.");
-  if (getSignatureSortieCount(record) >= 3) {
-    throw new Error("Sortie déjà validée : le transfert ne peut plus être rejeté.");
-  }
-  if (!estAdmin(user) && user.role === "demandeur") {
-    throw new Error("Votre rôle (Demandeur) ne permet pas de rejeter un transfert.");
-  }
-  const maj: TransfertRecord = {
-    ...record,
-    statut: "Rejeté",
-    historique: [
-      ...record.historique,
-      {
-        date: new Date().toISOString(),
-        libelle: "Transfert rejeté",
-        utilisateur: user.name || "—",
-      },
-    ],
-  };
-  sauverRecord(maj);
-  return maj;
-}
-
 // ---------------------------------------------------------------------------
-// Signatures (workflow ordonné, immuable après 3/3)
+// Validation (workflow ordonné, immuable après n/n)
 // ---------------------------------------------------------------------------
 
-/**
- * Pose une signature de SORTIE (Direction origine). L'ordre est imposé :
- * Dépositaire → Chef de service 1 → Chef de service 2.
- * À 3/3 : « Sortie validée » → « En transfert » — le stock de la Direction
- * origine est diminué (consommé au calcul du stock consolidé).
- */
-export function signerSortie(
-  reference: string,
-  key: "depositaire" | "chefService1" | "chefService2",
-  user: UtilisateurTransfert
-): TransfertRecord {
-  const records = listerTransferts();
-  const record = records.find((t) => t.reference === reference);
-  if (!record) throw new Error("Transfert introuvable.");
-  if (record.statut === "Rejeté") {
-    throw new Error("Transfert rejeté : signature impossible.");
-  }
-  if (record.signaturesSortie?.[key]) {
-    throw new Error("Cette signature a déjà été enregistrée (jamais modifiable).");
-  }
-  if (getSignatureSortieCount(record) >= 3) {
-    throw new Error("Sortie déjà validée (3/3).");
-  }
-
-  const indexCle = SORTIE_VALIDATIONS.findIndex((v) => v.key === key);
-  for (let i = 0; i < indexCle; i += 1) {
-    const precedent = SORTIE_VALIDATIONS[i].key;
-    if (!record.signaturesSortie?.[precedent]) {
-      throw new Error(
-        `Workflow respecté : la signature « ${SORTIE_VALIDATIONS[i].label} » doit être apposée avant celle-ci.`
-      );
-    }
-  }
-
-  if (!peutSignerSortie(user, record, key)) {
-    throw new Error("Votre rôle ne permet pas d'apposer cette signature de sortie.");
-  }
-
-  const maintenant = new Date().toISOString();
-  const signataire = user.name || user.email || "—";
-
-  const maj: TransfertRecord = {
-    ...record,
-    signaturesSortie: { ...record.signaturesSortie, [key]: maintenant },
-    signatairesSortie: { ...record.signatairesSortie, [key]: signataire },
-    historique: [
-      ...record.historique,
-      {
-        date: maintenant,
-        libelle: `Sortie validée — ${SORTIE_VALIDATIONS[indexCle].label} (${getSignatureSortieCount(record) + 1}/3) — ${signataire}`,
-        utilisateur: signataire,
-      },
-    ],
-  };
-
-  if (getSignatureSortieCount(maj) >= 3) {
-    maj.dateSortie = maintenant;
-    maj.statut = "En transfert";
-    maj.historique = [
-      ...maj.historique,
-      {
-        date: maintenant,
-        libelle: `Matériel envoyé — SORTIE VALIDÉE : le stock de ${record.directionOrigine} / ${record.serviceOrigine} est diminué de ${record.quantite} unité(s)`,
-        utilisateur: signataire,
-      },
-    ];
-  }
-
-  sauverRecord(maj);
-  return maj;
+export interface UtilisateurValidation {
+  name?: string;
+  email?: string;
+  role?: string | null;
 }
 
 /**
- * Pose une signature de RÉCEPTION (Direction destination). Uniquement après
- * une sortie validée (3/3). À 3/3 : « TRANSFERT RÉCEPTIONNÉ » et
- * « ENTRÉE EN STOCK VALIDÉE » — le matériel rejoint le stock de destination.
+ * Qui a le droit de poser la validation `key` ?
+ *  - Responsable du transfert : le CRÉATEUR du transfert (ou l'admin),
+ *  - Dépositaire              : rôle depositaire (ou admin),
+ *  - Logistique               : rôle logistique (ou admin).
+ * Un Demandeur ne signe JAMAIS à la place d'un responsable (sauf 1/3 sur sa
+ * propre création, en tant que créateur/responsable du transfert).
  */
-export function signerReception(
+export function peutValiderTransfert(
+  user: UtilisateurValidation | undefined,
+  a: TransfertRecord,
+  key: TransfertCleValidation
+): boolean {
+  if (!user || a.statut === "Validée") return false;
+  if (a.validations[key]) return false;
+
+  const estCreateur =
+    (!!user.name && user.name === a.createur) ||
+    (!!user.email && user.email === a.createurEmail);
+  const estAdmin = user.role === "admin";
+
+  if (key === "responsableTransfert") return estCreateur || estAdmin;
+  if (estAdmin) return true;
+  if (user.role === "demandeur") return false; // jamais pour un responsable
+  if (key === "depositaire") return user.role === "depositaire";
+  if (key === "logistique") return user.role === "logistique";
+  // « chefService1 » / « chefService2 » : circuit supprimé, jamais posables.
+  return false;
+}
+
+/**
+ * Pose une validation. L'ordre est imposé (les validations précédentes
+ * doivent exister) et un transfert validé (n/n) n'est plus modifiable.
+ * À 3/3 : statut « Validée » + le stock est mis à jour (source −quantité /
+ * Direction destinataire +quantité).
+ */
+export function validerTransfert(
   reference: string,
-  key: "depositaire" | "chefService1" | "chefService2",
-  user: UtilisateurTransfert
+  key: TransfertCleValidation,
+  user: UtilisateurValidation
 ): TransfertRecord {
   const records = listerTransferts();
-  const record = records.find((t) => t.reference === reference);
+  const record = records.find((a) => a.reference === reference);
   if (!record) throw new Error("Transfert introuvable.");
-  if (record.statut === "Rejeté") {
-    throw new Error("Transfert rejeté : réception impossible.");
-  }
-  if (getSignatureSortieCount(record) < 3) {
+  if (record.statut === "Validée")
     throw new Error(
-      "La sortie doit d'abord être validée par les 3 responsables de la Direction d'origine."
+      `Transfert déjà validé (${validationsAttendues(record)}/${validationsAttendues(record)}) : il n'est plus modifiable.`
     );
-  }
-  if (record.signaturesReception?.[key]) {
-    throw new Error("Cette signature a déjà été enregistrée (jamais modifiable).");
-  }
-  if (getSignatureReceptionCount(record) >= 3) {
-    throw new Error("Réception déjà validée (3/3).");
-  }
+  if (record.validations[key])
+    throw new Error("Cette validation a déjà été enregistrée (jamais modifiable).");
 
-  const indexCle = RECEPTION_VALIDATIONS.findIndex((v) => v.key === key);
+  const indexCle = TRANSFERT_VALIDATIONS.findIndex((v) => v.key === key);
+  if (indexCle < 0)
+    throw new Error("Cette validation n'existe plus dans le circuit d'approbation.");
   for (let i = 0; i < indexCle; i += 1) {
-    const precedent = RECEPTION_VALIDATIONS[i].key;
-    if (!record.signaturesReception?.[precedent]) {
+    const precedent = TRANSFERT_VALIDATIONS[i].key;
+    if (!record.validations[precedent]) {
       throw new Error(
-        `Workflow respecté : la signature « ${RECEPTION_VALIDATIONS[i].label} » doit être apposée avant celle-ci.`
+        `Workflow respecté : validation « ${TRANSFERT_VALIDATIONS[i].label} » attendue avant celle-ci.`
       );
     }
   }
 
-  if (!peutSignerReception(user, record, key)) {
-    throw new Error("Votre rôle ne permet pas d'apposer cette signature de réception.");
-  }
+  if (!peutValiderTransfert(user, record, key))
+    throw new Error("Votre rôle ne vous permet pas de poser cette validation.");
 
   const maintenant = new Date().toISOString();
   const signataire = user.name || user.email || "—";
-
-  const maj: TransfertRecord = {
-    ...record,
-    signaturesReception: { ...record.signaturesReception, [key]: maintenant },
-    signatairesReception: { ...record.signatairesReception, [key]: signataire },
-    historique: [
-      ...record.historique,
-      {
-        date: maintenant,
-        libelle: `${RECEPTION_VALIDATIONS[indexCle].label} validé (${getSignatureReceptionCount(record) + 1}/3) — ${signataire}`,
-        utilisateur: signataire,
-      },
-    ],
+  record.validations = {
+    ...record.validations,
+    [key]: { date: maintenant, signataire },
   };
 
-  if (getSignatureReceptionCount(maj) >= 3) {
-    maj.dateReception = maintenant;
-    maj.statut = "Terminé";
-    maj.historique = [
-      ...maj.historique,
+  const label = TRANSFERT_VALIDATIONS[indexCle].label;
+  record.historique = [
+    ...record.historique,
+    { date: maintenant.slice(0, 10), libelle: `Validation ${label} (${indexCle + 1}/${TRANSFERT_VALIDATIONS.length}) — ${signataire}` },
+  ];
+
+  const attendues = validationsAttendues(record);
+  const total = clesAttendues(record).filter((cle) => record.validations[cle])
+    .length;
+  if (total >= attendues) {
+    record.statut = "Validée";
+    record.historique = [
+      ...record.historique,
       {
-        date: maintenant,
-        libelle: `✓ TRANSFERT RÉCEPTIONNÉ — ENTRÉE EN STOCK VALIDÉE : +${record.quantite} unité(s) dans ${record.directionDestination} / ${record.serviceDestination}`,
-        utilisateur: signataire,
+        date: maintenant.slice(0, 10),
+        libelle: `✓ Transfert validé (${attendues}/${attendues}) — stock mis à jour : −${record.quantite} (${record.serviceSource}) / +${record.quantite} (${directionDestinataireDe(record)})`,
       },
     ];
   }
 
-  sauverRecord(maj);
-  return maj;
+  persister(
+    records.map((a) => (a.reference === reference ? record : a))
+  );
+  return record;
 }
 
 // ---------------------------------------------------------------------------
@@ -598,112 +400,114 @@ function formatMois(isoDate: string): string {
 
 export function getStatistiquesTransferts(records?: TransfertRecord[]) {
   const liste = records ?? listerTransferts();
-  const dates = liste.map((t) => t.date).filter(Boolean).sort();
+  const dates = liste.map((a) => a.date).filter(Boolean).sort();
   const reference = dates[dates.length - 1] || new Date().toISOString().slice(0, 10);
-  const duMois = liste.filter((t) => t.date.slice(0, 7) === reference.slice(0, 7)).length;
-  const enCours = liste.filter((t) => {
-    const s = getStatutTransfertAffiche(t);
-    return s !== "Terminé" && s !== "Rejeté";
-  }).length;
-  const enTransfert = liste.filter(
-    (t) => getStatutTransfertAffiche(t) === "En transfert"
-  ).length;
-  const termines = liste.filter((t) => getStatutTransfertAffiche(t) === "Terminé").length;
+  const duMois = liste.filter((a) => a.date.slice(0, 7) === reference.slice(0, 7)).length;
+  const validees = liste.filter((a) => getStatutTransfertAffiche(a) === "Validée").length;
   return {
     total: liste.length,
     duMois,
-    enCours,
-    enTransfert,
-    termines,
+    enAttente: liste.length - validees,
+    validees,
     moisLabel: formatMois(reference),
   };
 }
 
 // ---------------------------------------------------------------------------
-// STOCK CONSOLIDÉ (Direction / Service / Matériel)
+// STOCK PAR SERVICE
 //
-// Le stock est CALCULÉ :
+// Le stock d'un service est CALCULÉ :
 //   + entrées validées rattachées à (Direction / Service),
-//   + affectations internes validées (source −qté / destinataire +qté),
-//   − transferts SORTIE VALIDÉE (Direction origine −qté),
-//   + transferts RÉCEPTION VALIDÉE (Direction destination +qté).
+//   −/+ transferts validées (source → destinataire).
+// Le total de la Direction reste toujours identique (pas d'entrée/sortie).
 // ---------------------------------------------------------------------------
 
-import { calculerStock as calculerStockAffectations, StockLigne } from "./affectations";
+export interface StockLigne {
+  direction: string;
+  service: string;
+  materiel: string;
+  reference?: string;
+  quantite: number;
+}
 
-/**
- * Étend le calcul de stock existant (entrées + affectations) avec les
- * transferts entre Directions : sortie dès validation de la sortie (le
- * matériel quitte la Direction origine), entrée dès réception validée.
- */
-export function calculerStockAvecTransferts(
+function cleStock(direction: string, service: string, materiel: string): string {
+  return `${direction.trim().toLowerCase()}|${service.trim().toLowerCase()}|${materiel
+    .trim()
+    .toLowerCase()}`;
+}
+
+/** Stock consolidé (Direction / Service / Matériel) */
+export function calculerStock(
   entrees: EntreeRecord[],
-  affectations: import("./affectations").AffectationRecord[],
   transferts: TransfertRecord[]
 ): StockLigne[] {
-  const base = calculerStockAffectations(entrees, affectations);
   const map = new Map<string, StockLigne>();
-  for (const l of base) {
-    map.set(
-      `${l.direction.trim().toLowerCase()}|${l.service.trim().toLowerCase()}|${l.materiel.trim().toLowerCase()}`,
-      { ...l }
-    );
-  }
 
-  const ajuster = (
+  const ajouter = (
     direction: string,
     service: string,
     materiel: string,
-    delta: number
+    reference: string | undefined,
+    quantite: number
   ) => {
-    const cle = `${direction.trim().toLowerCase()}|${service.trim().toLowerCase()}|${materiel.trim().toLowerCase()}`;
+    // `service` peut être vide : la destination d'un transfert est une
+    // Direction, pas un service (la ligne de stock est alors rattachée à la
+    // seule Direction destinataire).
+    if (!direction || !materiel || !quantite) return;
+    const cle = cleStock(direction, service, materiel);
     const existant = map.get(cle);
     if (existant) {
-      existant.quantite += delta;
-    } else if (delta > 0) {
+      existant.quantite += quantite;
+      if (!existant.reference && reference) existant.reference = reference;
+    } else {
       map.set(cle, {
         direction,
         service,
         materiel,
-        reference: undefined,
-        quantite: delta,
+        reference,
+        quantite,
       });
     }
   };
 
-  for (const t of transferts) {
-    const sortieValidee = getSignatureSortieCount(t) >= 3 && t.statut !== "Rejeté";
-    const receptionValidee = getSignatureReceptionCount(t) >= 3;
-    if (sortieValidee) {
-      ajuster(t.directionOrigine, t.serviceOrigine, t.materiel, -t.quantite);
+  // 1) Entrées VALIDÉES → dans le stock de leur service
+  for (const e of entrees) {
+    if (getStatutEntreeAffiche(e) !== "Validée") continue;
+    if (e.lignes && e.lignes.length > 0) {
+      for (const l of e.lignes) {
+        ajouter(e.direction, e.service, l.designation, l.reference, Number(l.quantite) || 0);
+      }
+    } else {
+      ajouter(e.direction, e.service, e.materiel, undefined, Number(e.quantite) || 0);
     }
-    if (receptionValidee) {
-      ajuster(t.directionDestination, t.serviceDestination, t.materiel, +t.quantite);
-    }
+  }
+
+  // 2) Transferts VALIDÉES → source −qté, destinataire +qté
+  for (const a of transferts) {
+    if (getStatutTransfertAffiche(a) !== "Validée") continue;
+    ajouter(a.direction, a.serviceSource, a.materiel, a.materielReference, -a.quantite);
+    ajouter(
+      directionDestinataireDe(a),
+      a.serviceDestinataire,
+      a.materiel,
+      a.materielReference,
+      a.quantite
+    );
   }
 
   return Array.from(map.values()).filter((l) => l.quantite > 0);
 }
 
-// ---------------------------------------------------------------------------
-// Responsables automatiques (repli hors ligne)
-// ---------------------------------------------------------------------------
-
-/** Résout les responsables d'un couple Direction / Service en mode repli. */
-export function responsablesRepli(
-  directionNom: string,
-  serviceNom: string
-): TransfertRecord["responsablesOrigine"] {
-  const direction = DIRECTIONS_REPLI.find(
-    (d) => d.nom.toLowerCase() === directionNom.toLowerCase()
+/** Matériaux disponibles dans un service donné */
+export function stockDuService(
+  stock: StockLigne[],
+  direction: string,
+  service: string
+): StockLigne[] {
+  return stock.filter(
+    (l) =>
+      l.direction.trim().toLowerCase() === direction.trim().toLowerCase() &&
+      l.service.trim().toLowerCase() === service.trim().toLowerCase() &&
+      l.quantite > 0
   );
-  const service = SERVICES_REPLI.find(
-    (s) => s.nom.toLowerCase() === serviceNom.toLowerCase()
-  );
-  const r = responsablesDuService(service, direction);
-  return {
-    depositaire: r.depositaire || "—",
-    chefService1: r.chefService1 || "—",
-    chefService2: r.chefService2 || "—",
-  };
 }

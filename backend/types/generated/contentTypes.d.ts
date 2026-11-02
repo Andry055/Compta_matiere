@@ -443,72 +443,6 @@ export interface AdminUser extends Struct.CollectionTypeSchema {
   };
 }
 
-export interface ApiAffectationAffectation extends Struct.CollectionTypeSchema {
-  collectionName: 'affectations';
-  info: {
-    description: "Affectation d'un mat\u00E9riel entre deux services d'une m\u00EAme Direction (workflow 4 validations)";
-    displayName: 'Affectation';
-    pluralName: 'affectations';
-    singularName: 'affectation';
-  };
-  options: {
-    draftAndPublish: false;
-  };
-  attributes: {
-    chef_service_1: Schema.Attribute.String;
-    chef_service_1_signed: Schema.Attribute.Boolean &
-      Schema.Attribute.DefaultTo<false>;
-    chef_service_2: Schema.Attribute.String;
-    chef_service_2_signed: Schema.Attribute.Boolean &
-      Schema.Attribute.DefaultTo<false>;
-    createdAt: Schema.Attribute.DateTime;
-    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-    createur: Schema.Attribute.String;
-    createur_email: Schema.Attribute.String;
-    date: Schema.Attribute.Date & Schema.Attribute.Required;
-    date_signature_chef_service_1: Schema.Attribute.String;
-    date_signature_chef_service_2: Schema.Attribute.String;
-    date_signature_depositaire: Schema.Attribute.String;
-    date_signature_responsable_transfert: Schema.Attribute.String;
-    depositaire: Schema.Attribute.String;
-    depositaire_signed: Schema.Attribute.Boolean &
-      Schema.Attribute.DefaultTo<false>;
-    direction: Schema.Attribute.String;
-    historique: Schema.Attribute.JSON;
-    locale: Schema.Attribute.String & Schema.Attribute.Private;
-    localizations: Schema.Attribute.Relation<
-      'oneToMany',
-      'api::affectation.affectation'
-    > &
-      Schema.Attribute.Private;
-    materiel: Schema.Attribute.String;
-    materiel_reference: Schema.Attribute.String;
-    motif: Schema.Attribute.String;
-    observation: Schema.Attribute.Text;
-    publishedAt: Schema.Attribute.DateTime;
-    qr_token: Schema.Attribute.String & Schema.Attribute.Unique;
-    quantite: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
-    reference: Schema.Attribute.String &
-      Schema.Attribute.Required &
-      Schema.Attribute.Unique;
-    responsable_transfert: Schema.Attribute.String;
-    responsable_transfert_signed: Schema.Attribute.Boolean &
-      Schema.Attribute.DefaultTo<false>;
-    service_destinataire: Schema.Attribute.String;
-    service_source: Schema.Attribute.String;
-    signataire_chef_service_1: Schema.Attribute.String;
-    signataire_chef_service_2: Schema.Attribute.String;
-    signataire_depositaire: Schema.Attribute.String;
-    signataire_responsable_transfert: Schema.Attribute.String;
-    statut: Schema.Attribute.Enumeration<['en_attente', 'validee']> &
-      Schema.Attribute.DefaultTo<'en_attente'>;
-    updatedAt: Schema.Attribute.DateTime;
-    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
-      Schema.Attribute.Private;
-  };
-}
-
 export interface ApiAnomalieAnomalie extends Struct.CollectionTypeSchema {
   collectionName: 'anomalies';
   info: {
@@ -1509,6 +1443,78 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiTransfertTransfert extends Struct.CollectionTypeSchema {
+  collectionName: 'transferts';
+  info: {
+    description: "Transfert d'un mat\u00E9riel vers une autre Direction (workflow 3 validations)";
+    displayName: 'Transfert';
+    pluralName: 'transferts';
+    singularName: 'transfert';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    chef_service_1: Schema.Attribute.String;
+    chef_service_1_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    chef_service_2: Schema.Attribute.String;
+    chef_service_2_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    createur: Schema.Attribute.String;
+    createur_email: Schema.Attribute.String;
+    date: Schema.Attribute.Date & Schema.Attribute.Required;
+    date_signature_chef_service_1: Schema.Attribute.String;
+    date_signature_chef_service_2: Schema.Attribute.String;
+    date_signature_depositaire: Schema.Attribute.String;
+    date_signature_logistique: Schema.Attribute.String;
+    date_signature_responsable_transfert: Schema.Attribute.String;
+    depositaire: Schema.Attribute.String;
+    depositaire_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    direction: Schema.Attribute.String;
+    direction_destinataire: Schema.Attribute.String;
+    historique: Schema.Attribute.JSON;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::transfert.transfert'
+    > &
+      Schema.Attribute.Private;
+    logistique: Schema.Attribute.String;
+    logistique_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    materiel: Schema.Attribute.String;
+    materiel_reference: Schema.Attribute.String;
+    motif: Schema.Attribute.String;
+    observation: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    qr_token: Schema.Attribute.String & Schema.Attribute.Unique;
+    quantite: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
+    reference: Schema.Attribute.String &
+      Schema.Attribute.Required &
+      Schema.Attribute.Unique;
+    responsable_transfert: Schema.Attribute.String;
+    responsable_transfert_signed: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    service_destinataire: Schema.Attribute.String;
+    service_source: Schema.Attribute.String;
+    signataire_chef_service_1: Schema.Attribute.String;
+    signataire_chef_service_2: Schema.Attribute.String;
+    signataire_depositaire: Schema.Attribute.String;
+    signataire_logistique: Schema.Attribute.String;
+    signataire_responsable_transfert: Schema.Attribute.String;
+    statut: Schema.Attribute.Enumeration<['en_attente', 'validee']> &
+      Schema.Attribute.DefaultTo<'en_attente'>;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface PluginContentReleasesRelease
   extends Struct.CollectionTypeSchema {
   collectionName: 'strapi_releases';
@@ -2027,7 +2033,6 @@ declare module '@strapi/strapi' {
       'admin::transfer-token': AdminTransferToken;
       'admin::transfer-token-permission': AdminTransferTokenPermission;
       'admin::user': AdminUser;
-      'api::affectation.affectation': ApiAffectationAffectation;
       'api::anomalie.anomalie': ApiAnomalieAnomalie;
       'api::category.category': ApiCategoryCategory;
       'api::demande.demande': ApiDemandeDemande;
@@ -2050,6 +2055,7 @@ declare module '@strapi/strapi' {
       'api::session-role.session-role': ApiSessionRoleSessionRole;
       'api::sortie-ligne.sortie-ligne': ApiSortieLigneSortieLigne;
       'api::sortie.sortie': ApiSortieSortie;
+      'api::transfert.transfert': ApiTransfertTransfert;
       'plugin::content-releases.release': PluginContentReleasesRelease;
       'plugin::content-releases.release-action': PluginContentReleasesReleaseAction;
       'plugin::i18n.locale': PluginI18NLocale;

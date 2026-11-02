@@ -1,7 +1,7 @@
 'use strict';
 
 /**
- * affectation router
+ * transfert router
  *
  * ⚠️ Les endpoints custom (create-complete / sign) sont déclarés ICI
  * explicitement : `createCoreRouter` ne génère que les 5 routes CRUD core
@@ -15,35 +15,35 @@
  * rôle du signataire) est appliqué dans le contrôleur.
  */
 
-const UID = 'api::affectation.affectation';
+const UID = 'api::transfert.transfert';
 
 module.exports = {
   routes: [
     {
       method: 'GET',
-      path: '/affectations',
-      handler: 'affectation.find',
+      path: '/transferts',
+      handler: 'transfert.find',
       config: {
         auth: false,
       },
     },
     {
       method: 'GET',
-      path: '/affectations/:documentId',
-      handler: 'affectation.findOne',
+      path: '/transferts/:documentId',
+      handler: 'transfert.findOne',
       config: {
         auth: false,
       },
     },
     {
       method: 'POST',
-      path: '/affectations/create-complete',
-      handler: 'affectation.createComplete',
+      path: '/transferts/create-complete',
+      handler: 'transfert.createComplete',
     },
     {
       method: 'POST',
-      path: '/affectations/:documentId/sign',
-      handler: 'affectation.sign',
+      path: '/transferts/:documentId/sign',
+      handler: 'transfert.sign',
     },
   ],
 };

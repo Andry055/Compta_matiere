@@ -72,7 +72,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
     ...entreeRecords,
   ]);
 
-  const canCreate = !!user;
+  const canCreate = user?.role !== "depositaire" && user?.role !== "logistique" && !!user;
 
   // Liste = transferts EN BASE ∪ traces historiques locales (référence doublon
   // résolu par la version serveur).
@@ -160,9 +160,13 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
         user={user}
         entrees={entrees}
         onClose={() => setShowNewForm(false)}
-        onCreated={(ref) => {
+        onCreated={(ref, record) => {
           setShowNewForm(false);
           recharger();
+          // Ouverture immédiate de la fiche : le créateur (responsable du
+          // transfert) pose tout de suite sa validation 1/3.
+          setSelected(record);
+          setModalOpen(true);
           setFlash(
             `✓ Transfert ${ref} créé (0/3) — en attente des validations.`
           );

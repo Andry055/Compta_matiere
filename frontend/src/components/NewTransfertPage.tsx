@@ -57,7 +57,7 @@ interface NewTransfertPageProps {
   user?: User;
   entrees: EntreeRecord[];
   onClose: () => void;
-  onCreated: (reference: string) => void;
+  onCreated: (reference: string, record: TransfertRecord) => void;
 }
 
 export function NewTransfertPage({
@@ -378,7 +378,7 @@ export function NewTransfertPage({
         createur: user?.name || "—",
         createurEmail: user?.email || "",
       });
-      onCreated(record.reference);
+      onCreated(record.reference, record);
     } catch (e) {
       setErreur(
         (e as { response?: { data?: { error?: { message?: string } } } })

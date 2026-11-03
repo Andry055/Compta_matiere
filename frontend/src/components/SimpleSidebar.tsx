@@ -22,6 +22,14 @@ import logoAsset from "../../assets/logo.png"
 import { User } from "../App"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
 import { sortiesActionsStore } from "@/lib/sortiesActionsStore"
+import {
+  peutValiderTransfert,
+  listerTransferts,
+  fusionnerTransferts,
+  clesAttendues,
+  TransfertRecord,
+} from "../lib/transferts"
+import { fetchTransferts } from "../lib/api"
 
 const navItems = [
   {
@@ -159,6 +167,9 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
   // déclenchée uniquement quand ce rôle est monté.
   const [countAAutoriser, setCountAAutoriser] = useState<number | null>(null)
   const estLogistique = userRole === "logistique"
+  // Badge « Transferts » : nombre de transferts en attente de MA validation
+  // (dépositaire / logistique) — recalculé à chaque navigation de section.
+  const [transfertsEnAttente, setTransfertsEnAttente] = useState(0)
 
   useEffect(() => {
     if (!user) {
@@ -178,6 +189,43 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
       libererSon()
     }
   }, [user, estLogistique])
+
+  useEffect(() => {
+    const role = user?.role
+    if (!user || (role !== "depositaire" && role !== "logistique")) {
+      setTransfertsEnAttente(0)
+      return
+    }
+    const cle = role === "depositaire" ? "depositaire" : "logistique"
+    // On ne compte que les transferts réellement actionnables par ce rôle :
+    // les validations précédentes du circuit doivent déjà être signées.
+    const calculer = (serveur: TransfertRecord[]) => {
+      const transferts = fusionnerTransferts(listerTransferts(), serveur)
+      setTransfertsEnAttente(
+        transferts.filter((a) => {
+          if (!peutValiderTransfert(user, a, cle)) return false
+          const ordre = clesAttendues(a)
+          const rang = ordre.indexOf(cle)
+          return (
+            rang <= 0 || ordre.slice(0, rang).every((k) => a.validations[k])
+          )
+        }).length
+      )
+    }
+    const recharger = () => {
+      calculer([])
+      fetchTransferts()
+        .then((serveur) => calculer(serveur || []))
+        .catch(() => calculer([]))
+    }
+    recharger()
+    // Une signature posée dans un autre onglet rafraîchit le compteur.
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === "appNotifications") recharger()
+    }
+    window.addEventListener("storage", onStorage)
+    return () => window.removeEventListener("storage", onStorage)
+  }, [user, activeSection])
 
   return (
     <div className="cm-sidebar w-full flex flex-col h-full">
@@ -242,7 +290,15 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
               >
                 <IconComponent className="cm-nav-icon h-4 w-4" />
                 <div className="flex-1 min-w-0 text-left">
-                  <div className="truncate font-medium">{titreAffiche}</div>
+                  <div className="flex items-center gap-2">
+                    <div className="truncate font-medium">{titreAffiche}</div>
+                    {/* Badge « Transferts » : nombre en attente de MA validation */}
+                    {item.key === "transferts" && transfertsEnAttente > 0 && (
+                      <span className="flex-shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs text-white">
+                        {transfertsEnAttente}
+                      </span>
+                    )}
+                  </div>
                   {item.description && (
                     <div className="text-xs text-sidebar-foreground/50 mt-0.5 truncate hidden sm:block">
                       {item.key === "requests" && user?.role === "demandeur"

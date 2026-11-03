@@ -9,6 +9,7 @@ import {
   Lock,
   Package,
   ArrowUpFromLine,
+  ArrowLeftRight,
   CheckCircle2,
   Loader2,
   Truck,
@@ -39,6 +40,8 @@ function notifIcon(type: AppNotification["type"]) {
       return ArrowUpFromLine;
     case "entree":
       return Inbox;
+    case "transfert":
+      return ArrowLeftRight;
     default:
       return Package;
   }
@@ -258,8 +261,23 @@ export function NotificationBell({
   // pièce déjà traitée par un autre poste depuis la dernière visite.
   useEffect(() => {
     if (!open) return;
+    // Relit aussi le flux localStorage : une notification de transfert peut
+    // avoir été déposée par un autre poste depuis le dernier rendu.
+    refresh();
     void chargerEtapes();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, chargerEtapes]);
+
+  // Notification écrite depuis un autre onglet : on la fait apparaître sans
+  // attendre la prochaine ouverture de la cloche.
+  useEffect(() => {
+    const onStorage = (event: StorageEvent) => {
+      if (!event.key || event.key === "appNotifications") refresh();
+    };
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.role]);
 
   const handleToggle = () => {
     setOpen((v) => !v);

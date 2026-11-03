@@ -16,6 +16,8 @@ import {
 import { QRCodeSVG } from "qrcode.react";
 import { Message } from "./ui/message";
 import { User } from "../App";
+import { toast } from "sonner";
+import { pushRealtimeNotification } from "../lib/notifications";
 import {
   TransfertCleValidation,
   TransfertRecord,
@@ -95,6 +97,37 @@ export function TransfertDetailModal({
           });
       setLocale(maj);
       setConfirmKey(null);
+      // Notification du PROCHAIN validateur du circuit : la cloche du rôle
+      // concerné (dépositaire puis logistique) affiche l'action en attente.
+      const restantes = clesAttendues(maj).filter((k) => !maj.validations[k]);
+      const suivante = restantes[0];
+      const prochainRole =
+        suivante === "depositaire" || suivante === "logistique"
+          ? suivante
+          : null;
+      const total = validationsAttendues(maj);
+      const posees = getValidationCount(maj);
+      if (prochainRole) {
+        pushRealtimeNotification(
+          "transfert",
+          `Transfert ${maj.reference} — ${maj.materiel} (${maj.quantite} unité(s)) attend votre validation (${posees}/${total}).`,
+          new Date().toISOString(),
+          `transfert-${maj.reference}-${prochainRole}-${posees}`,
+          prochainRole
+        );
+      } else {
+        // Transfert validé (3/3) : le créateur (demandeur) est informé.
+        pushRealtimeNotification(
+          "transfert",
+          `Transfert ${maj.reference} validé (${total}/${total}) — ${user?.name || "—"} a signé.`,
+          new Date().toISOString(),
+          `validated-${maj.reference}`,
+          "demandeur"
+        );
+        toast.info("Transfert validé", {
+          description: `Le transfert ${maj.reference} est validé (${total}/${total}).`,
+        });
+      }
       onChanged?.();
     } catch (e) {
       setErreur(
@@ -475,6 +508,7 @@ export function TransfertDetailModal({
             </div>
           </div>
         </div>
+      </div>
         {/* Confirmation de validation */}
         {confirmKey && (
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-[60]">
@@ -545,7 +579,6 @@ export function TransfertDetailModal({
             </div>
           </div>
         )}
-      </div>
     </div>
   );
 }

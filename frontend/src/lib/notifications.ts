@@ -29,6 +29,7 @@ export type NotificationType =
   | "demande"
   | "sortie"
   | "entree"
+  | "transfert"
   | "stock";
 
 export interface AppNotification {
@@ -191,7 +192,11 @@ export function getNotifications(user?: User): AppNotification[] {
   if (user?.role === "demandeur") {
     return getNotificationsDemandeur(user);
   }
-  if (user?.role === "magasinier" || user?.role === "depositaire") {
+  if (
+    user?.role === "magasinier" ||
+    user?.role === "depositaire" ||
+    user?.role === "logistique"
+  ) {
     return [
       ...getNotificationsGeneriques(),
       ...readAll().filter((n) => n.targetRole === user.role),

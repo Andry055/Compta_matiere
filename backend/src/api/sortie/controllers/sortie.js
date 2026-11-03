@@ -657,6 +657,45 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       null,
       nomUtilisateur(user)
     );
+
+    // --- Notification aux magasiniers de la direction (création d'ordre) ---
+    // Le dépositaire crée l'ordre → les magasiniers de la même direction sont
+    // notifiés immédiatement via outbox + SSE pour qu'ils puissent signer
+    // l'étape 1 (préparation). Même pattern que signerLogistique (ÉTAPE 4).
+    try {
+      const directionId = sortieComplete.direction?.documentId;
+      const reference = sortieComplete.reference || sortieComplete.documentId;
+      const dateSortie = sortieComplete.date_sortie
+        ? new Date(sortieComplete.date_sortie).toISOString().slice(0, 10)
+        : null;
+
+      const magasiniers = await findUtilisateursParRoleEtDirection(
+        app,
+        'magasinier',
+        directionId
+      );
+
+      if (magasiniers.length > 0) {
+        const payloadMag = {
+          sortieId: sortieComplete.documentId,
+          reference,
+          date_sortie: dateSortie,
+          direction: directionId,
+          message: `Un nouvel ordre de sortie (${reference}) a été créé et attend votre signature de préparation.`,
+        };
+
+        await creerEntrees(app, sortieComplete.documentId, magasiniers, 'magasinier', payloadMag);
+        await distribuerNotifications(app);
+      } else {
+        app.log.debug(
+          `[sortie] Création ${reference} : aucun magasinier trouvé pour la direction ${directionId}, notification non envoyée.`
+        );
+      }
+    } catch (e) {
+      // Ne fait pas échouer la création si la notification ne peut pas être envoyée/persistée.
+      app.log.warn(`[sortie] Échec de la notification 'ordre_sortie_autorise' à la création : ${e.message}`);
+    }
+
     ctx.status = 201;
     return { data: sortieComplete };
   },
@@ -853,6 +892,57 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       (c) => apres[c.flag] === true
     ).length;
 
+    // --- Notification au dépositaire quand le magasinier termine la préparation (signature 1) ---
+    if (roleKey === 'magasinier') {
+      try {
+        const directionId = apres.direction?.documentId;
+        const reference = apres.reference || documentId;
+        const maintenant = new Date();
+        const dateHeure = maintenant.toISOString(); // Format ISO complet avec date ET heure
+
+        const depositaires = await findUtilisateursParRoleEtDirection(
+          app,
+          'depositaire',
+          directionId
+        );
+
+        if (depositaires.length > 0) {
+          const payloadPrepTerminee = {
+            sortieId: documentId,
+            reference,
+            date_heure: dateHeure, // ISO complet : "2026-10-27T14:30:45.123Z"
+            direction: directionId,
+            message: `La préparation de l'ordre de sortie (${reference}) est terminée et prête pour la signature du dépositaire.`,
+            signataire_magasinier: signataire,
+          };
+
+          await app.db.transaction(async () => {
+            await creerEntrees(
+              app,
+              documentId,
+              depositaires,
+              'depositaire_preparation_terminee',
+              payloadPrepTerminee
+            );
+          });
+          await distribuerNotifications(app);
+          app.log.info(
+            `[sortie] Notification 'preparation_terminee' créée et distribuée pour la sortie ${reference} (direction=${directionId}, ${depositaires.length} dépositaire(s)).`
+          );
+        } else if (!directionId) {
+          app.log.warn(
+            `[sortie] Préparation terminée ${reference} : aucune direction sur la sortie, notification 'preparation_terminee' non envoyée.`
+          );
+        } else {
+          app.log.warn(
+            `[sortie] Préparation terminée ${reference} : aucun dépositaire trouvé pour la direction ${directionId}, notification non envoyée.`
+          );
+        }
+      } catch (e) {
+        app.log.warn(`[sortie] Échec de la notification 'preparation_terminee' : ${e.message}`);
+      }
+    }
+
     await tracerMouvementSortie(
       app,
       apres,
@@ -934,6 +1024,57 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       documentId,
       data: { statut: 'annulee', motif_rejet: motif },
     });
+
+    // --- Notification au dépositaire pour le rejet de la préparation ---
+    // On notifie le dépositaire concerné (celui de la direction de la sortie)
+    // avec le motif fourni par le magasinier.
+    try {
+      const finale = await loadSortie(app, documentId);
+      const directionId = finale.direction?.documentId;
+      const reference = finale.reference || documentId;
+      const maintenant = new Date();
+      const dateHeure = maintenant.toISOString(); // Format ISO complet avec date ET heure
+      const signataire = nomUtilisateur(user);
+
+      const depositaires = await findUtilisateursParRoleEtDirection(
+        app,
+        'depositaire',
+        directionId
+      );
+
+      if (depositaires.length > 0) {
+        const payloadPrepRejetee = {
+          sortieId: documentId,
+          reference,
+          date_heure: dateHeure, // ISO complet : "2026-10-27T14:30:45.123Z"
+          direction: directionId,
+          message: `La préparation de l'ordre de sortie (${reference}) a été rejetée par le magasinier.`,
+          motif_rejet: motif,
+          signataire_rejet: signataire,
+        };
+
+        await app.db.transaction(async () => {
+          await creerEntrees(
+            app,
+            documentId,
+            depositaires,
+            'depositaire_preparation_rejetee',
+            payloadPrepRejetee
+          );
+        });
+        await distribuerNotifications(app);
+      } else if (!directionId) {
+        app.log.warn(
+          `[sortie] Préparation rejetée ${reference} : aucune direction sur la sortie, notification 'preparation_rejetee' non envoyée.`
+        );
+      } else {
+        app.log.warn(
+          `[sortie] Préparation rejetée ${reference} : aucun dépositaire trouvé pour la direction ${directionId}, notification non envoyée.`
+        );
+      }
+    } catch (e) {
+      app.log.warn(`[sortie] Échec de la notification 'preparation_rejetee' : ${e.message}`);
+    }
 
     const finale = await loadSortie(app, documentId);
     await tracerMouvementSortie(

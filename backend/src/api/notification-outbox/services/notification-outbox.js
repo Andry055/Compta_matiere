@@ -26,14 +26,47 @@ const EVENT_TYPE_PAR_ROLE = {
   depositaire: 'ordre_pret_distribution',
   magasinier: 'ordre_sortie_autorise',
   demandeur: 'demande_aboutie',
+  // Nouveaux types pour les notifications de préparation (magasinier → dépositaire)
+  depositaire_preparation_terminee: 'preparation_terminee',
+  depositaire_preparation_rejetee: 'preparation_rejetee',
+};
+
+/**
+ * Mappe le paramètre de rôle (clé EVENT_TYPE_PAR_ROLE) vers le rôle métier réel
+ * pour le champ recipientRole en base.
+ */
+const ROLE_REEL_PAR_PARAM = {
+  depositaire: 'depositaire',
+  magasinier: 'magasinier',
+  demandeur: 'demandeur',
+  depositaire_preparation_terminee: 'depositaire',
+  depositaire_preparation_rejetee: 'depositaire',
 };
 
 const OUTBOX_UID = 'api::notification-outbox.notification-outbox';
 
 /**
+ * Clé d'idempotence pour une entrée outbox liée à une sortie.
+ * Format : `<eventType>:<sortieDocumentId>:<recipientId>` — identique à la
+ * convention utilisée par `nouvelle_demande`
+ * (`nouvelle_demande:${demandeDocumentId}:${recipientId}`).
+ *
+ * @param {string} eventType - type d'événement outbox
+ * @param {string} sortieDocumentId - documentId de la sortie
+ * @param {number|string} recipientId - identifiant du destinataire
+ * @returns {string}
+ */
+function cleUniciteSortie(eventType, sortieDocumentId, recipientId) {
+  return `${eventType}:${sortieDocumentId}:${recipientId}`;
+}
+
+/**
  * Crée les entrées outbox pour une liste de destinataires.
  * Doit être appelée à l'intérieur d'un rappel `app.db.transaction(...)` pour
  * que les insertions rejoignent automatiquement la transaction en cours.
+ *
+ * IDEMPOTENCE : une entrée portant la même `cleUnicite` (`<eventType>:<sortieId>:<recipientId>`)
+ * n'est pas recréée si elle existe déjà.
  *
  * @param {object} app - instance Strapi
  * @param {string} sortieDocumentId - documentId de la sortie
@@ -48,20 +81,160 @@ async function creerEntrees(app, sortieDocumentId, destinataires, role, payload)
     throw new Error(`Rôle de destinataire inconnu pour l'outbox : ${role}`);
   }
 
-  const maintenant = new Date();
+  // Le recipientRole stocké en base doit être le rôle métier réel (ex: 'depositaire'),
+  // pas la clé du paramètre (ex: 'depositaire_preparation_terminee').
+  const recipientRole = ROLE_REEL_PAR_PARAM[role] || role;
 
   for (const destinataire of destinataires || []) {
+    const cleUnicite = cleUniciteSortie(eventType, sortieDocumentId, destinataire.id);
+
+    // Idempotence : ne pas recréer une entrée déjà présente.
+    let existante;
+    try {
+      existante = await app.documents(OUTBOX_UID).findOne({
+        where: { cleUnicite },
+      });
+    } catch (e) {
+      app.log.warn(
+        `[notification-outbox] Impossible de vérifier l'idempotence "${cleUnicite}" (sortie ${sortieDocumentId}, destinataire ${destinataire.id}) : ${e.message}`
+      );
+    }
+    if (existante) {
+      app.log.debug(
+        `[notification-outbox] Entrée outbox déjà existante (eventType=${eventType}, sortie=${sortieDocumentId}, destinataire=${destinataire.id}) : ignorée (idempotence).`
+      );
+      continue;
+    }
+
+    try {
+      await app.documents(OUTBOX_UID).create({
+        data: {
+          sortie: sortieDocumentId,
+          eventType,
+          recipientId: destinataire.id,
+          recipientRole: recipientRole,
+          cleUnicite,
+          payload,
+          status: 'pending',
+          attempts: 0,
+        },
+      });
+      app.log.debug(
+        `[notification-outbox] Entrée outbox créée (eventType=${eventType}, sortie=${sortieDocumentId}, destinataire=${destinataire.id}, recipientRole=${recipientRole}, cleUnicite=${cleUnicite}).`
+      );
+    } catch (e) {
+      app.log.warn(
+        `[notification-outbox] Échec de création de l'entrée outbox (eventType=${eventType}, sortie=${sortieDocumentId}, destinataire=${destinataire.id}) : ${e.message}`
+      );
+    }
+  }
+}
+
+/**
+ * Type d'événement de la notification « nouvelle demande ».
+ */
+const EVENT_TYPE_NOUVELLE_DEMANDE = 'nouvelle_demande';
+
+/**
+ * Clé d'idempotence d'un événement `nouvelle_demande`.
+ *
+ * Elle est UNIQUE en base (attribut `cleUnicite`) : une même demande ne peut
+ * produire qu'une seule notification pour un même destinataire. Elle est
+ * aussi reprise dans le payload (`notifId`) afin que le frontend utilise le
+ * MÊME identifiant pour l'événement SSE et pour la réconciliation au
+ * rechargement : c'est ce qui empêche le doublon d'affichage.
+ *
+ * @param {string} demandeDocumentId - documentId de la demande
+ * @param {number|string} recipientId - identifiant numérique du destinataire
+ * @returns {string}
+ */
+function cleUniciteNouvelleDemande(demandeDocumentId, recipientId) {
+  return `${EVENT_TYPE_NOUVELLE_DEMANDE}:${demandeDocumentId}:${recipientId}`;
+}
+
+/**
+ * Vrai si une entrée outbox portant cette clé d'idempotence existe déjà.
+ *
+ * @param {object} app - instance Strapi
+ * @param {string} cleUnicite - clé d'idempotence
+ * @returns {Promise<boolean>}
+ */
+async function entreeDejaNotifiee(app, cleUnicite) {
+  try {
+    const existante = await app.db.query(OUTBOX_UID).findOne({
+      where: { cleUnicite },
+    });
+    return Boolean(existante);
+  } catch (e) {
+    // Lecture impossible : on ne peut rien affirmer, on laisse l'insertion
+    // décider (et éventualiser l'annulation de la transaction).
+    return false;
+  }
+}
+
+/**
+ * Crée l'entrée outbox de l'événement `nouvelle_demande` (demande créée par
+ * un demandeur → notification adressée au seul dépositaire général).
+ *
+ * L'événement est lié à la DEMANDE (et non à une sortie) : la relation
+ * `sortie` reste vide.
+ *
+ * IDEMPOTENCE : la clé `cleUnicite` est UNIQUE en base. Une notification déjà
+ * présente pour cette demande n'est pas recréée — l'opération est donc sans
+ * effet de bord sur la demande, qui reste enregistrée.
+ *
+ * NOTE — la détection du doublon ne se fie PAS au message de l'erreur : le
+ * dialecte SQLite de Strapi transforme TOUTE violation de contrainte (errno
+ * 19 : UNIQUE, NOT NULL, CHECK…) en `NotNullError`, ce qui perd la nature
+ * exacte de l'erreur. On vérifie donc l'EXISTENCE de la ligne après l'échec :
+ * si elle est là, c'est bien un doublon, sinon l'erreur est réelle et doit
+ * être propagée (la transaction est alors annulée).
+ *
+ * Doit être appelée à l'intérieur d'un rappel `app.db.transaction(...)` :
+ * en Strapi 5 le service de documents rejoint la transaction ambiante, la
+ * demande et sa notification sont donc écrites ensemble (ou pas du tout).
+ *
+ * @param {object} app - instance Strapi
+ * @param {string} demandeDocumentId - documentId de la demande
+ * @param {{id: number, email?: string, username?: string}} destinataire - destinataire résolu
+ * @param {object} payload - données de l'événement SSE
+ * @returns {Promise<boolean>} true si l'entrée a été créée, false si elle existait déjà
+ */
+async function creerEntreeNouvelleDemande(app, demandeDocumentId, destinataire, payload) {
+  const cleUnicite = cleUniciteNouvelleDemande(demandeDocumentId, destinataire.id);
+
+  if (await entreeDejaNotifiee(app, cleUnicite)) {
+    app.log.warn(
+      `[notification-outbox] Une notification « ${EVENT_TYPE_NOUVELLE_DEMANDE} » existe déjà pour la demande ${demandeDocumentId} : elle n'est pas recréée.`
+    );
+    return false;
+  }
+
+  try {
     await app.documents(OUTBOX_UID).create({
       data: {
-        sortie: sortieDocumentId,
-        eventType,
+        demande: demandeDocumentId,
+        eventType: EVENT_TYPE_NOUVELLE_DEMANDE,
         recipientId: destinataire.id,
-        recipientRole: role,
-        payload,
+        recipientRole: 'depositaire',
+        cleUnicite,
+        payload: { ...(payload || {}), notifId: cleUnicite },
         status: 'pending',
         attempts: 0,
       },
     });
+    return true;
+  } catch (e) {
+    // La notification existe-t-elle DÉJÀ (doublon concurrent) ? Si oui, la
+    // demande n'a rien perdu : on n'annule pas sa création. Sinon, l'erreur
+    // est technique et doit remonter pour annuler la transaction.
+    if (await entreeDejaNotifiee(app, cleUnicite)) {
+      app.log.warn(
+        `[notification-outbox] Une notification « ${EVENT_TYPE_NOUVELLE_DEMANDE} » existe déjà pour la demande ${demandeDocumentId} : elle n'est pas recréée.`
+      );
+      return false;
+    }
+    throw e;
   }
 }
 
@@ -71,6 +244,13 @@ async function creerEntrees(app, sortieDocumentId, destinataires, role, payload)
  *
  * L'unicité est garantie par le WHERE status = 'pending' : deux appels
  * concurrents ne revendiqueront jamais la même entrée.
+ *
+ * ATTENTION — cette requête est du SQL BRUT : les noms de colonnes sont
+ * ceux de la TABLE (snake_case), pas ceux des attributs Strapi (camelCase).
+ * `last_attempt_at` / `updated_at` / `last_error` sont donc les noms
+ * corrects ; les former camelCase ('lastAttemptAt', 'updatedAt',
+ * 'lastError') fait échouer l'UPDATE avec « no such column » et bloque
+ * TOUTE distribution.
  *
  * @param {object} trx - transaction Knex active
  * @returns {Promise<Array<object>>} entrées revendiquées (status 'processing')
@@ -83,8 +263,8 @@ async function reclamerEntrees(trx) {
     .update({
       status: 'processing',
       attempts: trx.raw('attempts + 1'),
-      lastAttemptAt: maintenant,
-      updatedAt: maintenant,
+      last_attempt_at: maintenant,
+      updated_at: maintenant,
     })
     .returning('*');
 
@@ -99,8 +279,19 @@ async function reclamerEntrees(trx) {
  * @returns {Promise<number>} nombre de flux SSE sur lesquels l'événement a été écrit
  */
 async function envoyerEntree(app, entree) {
-  const userId = Number(entree.recipientId);
-  return sseBroadcastToUser(userId, entree.eventType, entree.payload || {});
+  // La requête SQL brute de `reclamerEntrees` retourne les noms de colonnes
+  // en snake_case (recipient_id), pas en camelCase (recipientId).
+  const userId = Number(entree.recipient_id);
+  if (!Number.isInteger(userId) || userId <= 0) {
+    // Destinataire absent ou invalide : la notification ne peut pas être
+    // adressée. On échoue explicitement plutôt que de diffuser à un
+    // identifiant fantôme (qui renverrait 0 flux et ferait boucler les
+    // tentatives sans jamais être délivrée).
+    throw new Error(
+      `Destinataire invalide pour l'entrée #${entree.id} : ${entree.recipient_id}`
+    );
+  }
+  return sseBroadcastToUser(userId, entree.event_type, entree.payload || {});
 }
 
 /**
@@ -114,7 +305,7 @@ async function marquerEnvoyee(trx, entree) {
   const maintenant = new Date();
   await trx(TABLE_OUTBOX)
     .where({ id: entree.id })
-    .update({ status: 'sent', updatedAt: maintenant });
+    .update({ status: 'sent', updated_at: maintenant });
 }
 
 /**
@@ -132,8 +323,8 @@ async function marquerEnvoyee(trx, entree) {
 async function marquerEchec(trx, entree, erreur) {
   const maintenant = new Date();
   const donnees = {
-    lastError: erreur || '',
-    updatedAt: maintenant,
+    last_error: erreur || '',
+    updated_at: maintenant,
   };
 
   if (entree.attempts >= MAX_TENTATIVES) {
@@ -145,14 +336,6 @@ async function marquerEchec(trx, entree, erreur) {
   await trx(TABLE_OUTBOX).where({ id: entree.id }).update(donnees);
 }
 
-/**
- * Traite une entrée outbox revendiquée : envoi SSE puis mise à jour du statut.
- *
- * @param {object} app - instance Strapi
- * @param {object} trx - transaction Knex active
- * @param {object} entree - entrée outbox
- * @returns {Promise<void>}
- */
 /**
  * Traite une entrée outbox revendiquée : envoi SSE puis mise à jour du statut.
  * Retourne `true` si l'entrée a été envoyée avec succès, `false` sinon.
@@ -171,7 +354,7 @@ async function traiterEntree(app, trx, entree) {
       // qu'elle soit reprise par un prochain passage du distributeur
       // (cron périodique) ou par la réconciliation frontend.
       throw new Error(
-        `Aucun flux SSE ouvert pour l'utilisateur #${entree.recipientId}`
+        `Aucun flux SSE ouvert pour l'utilisateur #${entree.recipient_id}`
       );
     }
     await marquerEnvoyee(trx, entree);
@@ -225,8 +408,11 @@ module.exports = {
   TABLE_OUTBOX,
   MAX_TENTATIVES,
   EVENT_TYPE_PAR_ROLE,
+  ROLE_REEL_PAR_PARAM,
+  EVENT_TYPE_NOUVELLE_DEMANDE,
   OUTBOX_UID,
   creerEntrees,
+  creerEntreeNouvelleDemande,
   reclamerEntrees,
   envoyerEntree,
   marquerEnvoyee,

@@ -55,9 +55,14 @@ interface DistributionProps {
   initialDemande?: DemandeRecord | null;
   /** Notifie le parent que la demande a été reprise par le formulaire. */
   onInitialDemandeConsumed?: () => void;
+  /** ID de la sortie visée par une notification (magasinier/logistique).
+   *  Permet de basculer sur l'onglet approprié et de mettre en surbrillance. */
+  sortieCibleId?: string | number | null;
+  /** Notifie le parent que la sortie visée a été traitée. */
+  onSortieCibleConsumed?: () => void;
 }
 
-export function Distribution({ initialDemande, onInitialDemandeConsumed }: DistributionProps) {
+export function Distribution({ initialDemande, onInitialDemandeConsumed, sortieCibleId, onSortieCibleConsumed }: DistributionProps) {
   const {
     materials,
     isLoading: isLoadingMaterials,
@@ -136,6 +141,25 @@ export function Distribution({ initialDemande, onInitialDemandeConsumed }: Distr
     setActiveTab("requests");
     onInitialDemandeConsumed?.();
   }, [initialDemande, onInitialDemandeConsumed]);
+
+  // ── Ouverture depuis notification (magasinier/logistique) ───────────────
+  // Quand on clique sur une notification de préparation/autorisation, on
+  // bascule sur l'onglet « Ordres de sortie » pour afficher la liste à jour.
+  // Le rafraîchissement a déjà été déclenché par le parent (DashboardLayout)
+  // via sortiesActionsStore.refresh() avant la navigation.
+  useEffect(() => {
+    if (sortieCibleId == null) return;
+    setActiveTab("ordres");
+    // On filtre sur « En préparation » pour le magasinier, « À autoriser » pour
+    // le logistique — le composant ListeOrdresSortie gère le filtre via filtreSorties.
+    // Le rôle est connu via userRole (chargé plus haut).
+    if (userRole === "magasinier") {
+      setFiltreSorties((prev) => ({ statut: "en_preparation", version: prev.version + 1 }));
+    } else if (userRole === "logistique") {
+      setFiltreSorties((prev) => ({ statut: "a_autoriser", version: prev.version + 1 }));
+    }
+    onSortieCibleConsumed?.();
+  }, [sortieCibleId, userRole, onSortieCibleConsumed]);
 
   // Handler for successful sortie creation
   const handleNouvelOrdreSuccess = (reference: string) => {

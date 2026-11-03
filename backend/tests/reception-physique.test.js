@@ -749,3 +749,71 @@ test('Test 18 — Échec de distribuerNotifications n\'empêche pas la création
   assert.strictEqual(appelsNotification.creerEntrees, 2, 'creerEntrees doit avoir été appelé deux fois (magasinier + dépositaire)');
   assert.strictEqual(appelsNotification.distribuerNotifications, 1, 'distribuerNotifications doit avoir été tenté');
 });
+
+test('Test 19 — Sortie sans direction (cas des anciennes sorties sortie_effectuee) refusé', async () => {
+  reinitialiser();
+
+  // Une sortie sortie_effectuee SANS direction (comme les 3 anciennes sorties SORT-2017-001/2019-001/2020-001)
+  TABLES['api::sortie.sortie'].push({
+    document_id: 's_sans_direction',
+    reference: 'SOR-2017-001',
+    statut: 'sortie_effectuee',
+    direction: null,
+  });
+
+  const demandeur = UTILISATEURS.find((u) => u.roleType === 'demandeur'); // DRH → directionIds = ['d_drh']
+  const ctx = contexteAppel(
+    {
+      sortieId: 's_sans_direction',
+      date_reception: '2026-10-25T10:00:00.000Z',
+      statut: 'conforme',
+      quantite_prevue: 10,
+      quantite_recue: 8,
+      utilisateur: demandeur.username,
+    },
+    demandeur
+  );
+
+  const resultat = await controleur.create(ctx);
+
+  assert.strictEqual(ctx.status, 403, '403 attendu quand la sortie n\'a pas de direction');
+  assert.match(resultat.error.message, /direction/);
+  assert.strictEqual(appelsSuper.create, 0, 'super.create ne doit pas être appelé pour une sortie sans direction');
+});
+
+test('Test 20 — Double réception sur la même sortie autorisée (pas d\'idempotence au niveau backend)', async () => {
+  reinitialiser();
+
+  const demandeur = UTILISATEURS.find((u) => u.roleType === 'demandeur'); // DRH → directionIds = ['d_drh']
+
+  // Première réception
+  const ctx1 = contexteAppel(
+    {
+      sortieId: 's_se_drh',
+      date_reception: '2026-10-25T10:00:00.000Z',
+      statut: 'conforme',
+      quantite_prevue: 10,
+      quantite_recue: 5,
+      utilisateur: demandeur.username,
+    },
+    demandeur
+  );
+  await controleur.create(ctx1);
+  assert.strictEqual(ctx1.status, 201, 'première réception autorisée (201)');
+
+  // Deuxième réception sur la même sortie — pas de contrôle d'idempotence côté backend
+  const ctx2 = contexteAppel(
+    {
+      sortieId: 's_se_drh',
+      date_reception: '2026-10-26T10:00:00.000Z',
+      statut: 'conforme',
+      quantite_prevue: 10,
+      quantite_recue: 5,
+      utilisateur: demandeur.username,
+    },
+    demandeur
+  );
+  const resultat2 = await controleur.create(ctx2);
+  assert.strictEqual(ctx2.status, 201, 'deuxième réception autorisée (pas d\'idempotence backend)');
+  assert.strictEqual(appelsSuper.create, 2, 'super.create appelé deux fois');
+});

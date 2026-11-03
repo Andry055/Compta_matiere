@@ -22,14 +22,35 @@ let listeners: Array<(event: SseEvent) => void> = [];
 let isConnecting = false;
 let currentJwt: string | null = null;
 let currentUserId: number | null = null;
+let connectedUserId: number | null = null; // Track the user ID we're actually connected for
 
 /**
  * Ouvre (ou rouvre) la connexion SSE pour l'utilisateur donné.
  * Appelée à la connexion d'un Demandeur.
  */
 export function connectSSE(userId: number, jwt: string): void {
-  if (eventSource?.readyState === EventSource.OPEN) return;
-  if (isConnecting) return;
+  console.log('[SSE] connectSSE appelé pour userId:', userId, '| état:', {
+    connectedUserId,
+    eventSourceReady: eventSource?.readyState,
+    isConnecting,
+    currentUserId
+  });
+
+  // Si déjà connecté pour cet utilisateur, ne rien faire.
+  if (connectedUserId === userId && eventSource?.readyState === EventSource.OPEN) {
+    console.log('[SSE] Déjà connecté pour cet utilisateur, ignoré');
+    return;
+  }
+  // Si une connexion est en cours pour le même user, ne pas en créer une nouvelle.
+  if (isConnecting && currentUserId === userId) {
+    console.log('[SSE] Connexion en cours pour cet utilisateur, ignoré');
+    return;
+  }
+  // Si on change d'utilisateur, déconnecter l'ancien d'abord.
+  if (connectedUserId !== null && connectedUserId !== userId) {
+    console.log('[SSE] Changement d\'utilisateur, déconnexion de l\'ancien:', connectedUserId)
+    disconnectSSE();
+  }
 
   isConnecting = true;
   currentJwt = jwt;
@@ -42,14 +63,18 @@ export function connectSSE(userId: number, jwt: string): void {
 
   es.onopen = () => {
     isConnecting = false;
-    console.log('[SSE] Connecté (utilisateur #' + userId + ')');
+    connectedUserId = userId;
+    console.log('[SSE] ✅ Connecté avec succès (utilisateur #' + userId + ')');
   };
 
-  es.onmessage = (event) => {
-    // Le type provient du champ `event:` du flux SSE (ex. 'demande_aboutie',
-    // 'ordre_pret_distribution', 'ordre_sortie_autorise').
-    // Les messages sans `event:` explicite sont de type 'message'.
-    const type = (event as any).type || 'message';
+  /**
+   * Distribution d'un événement SSE aux abonnés de l'application.
+   *
+   * Le type de l'événement est celui du champ `event:` du flux SSE
+   * (ex. 'nouvelle_demande').
+   */
+  const traiterEvenement = (event: MessageEvent) => {
+    const type = event.type || "message";
     try {
       const data = JSON.parse(event.data);
       listeners.forEach((cb) => cb({ type, data }));
@@ -58,11 +83,31 @@ export function connectSSE(userId: number, jwt: string): void {
     }
   };
 
+  es.onmessage = traiterEvenement;
+
+  // Les événements qui portent un NOM dans le champ `event:` ne déclenchent
+  // PAS `onmessage` : le navigateur ne les distribue qu'aux écouteurs
+  // enregistrés pour ce type précis (cf. spec EventSource).
+  // On doit donc s'abonner explicitement à CHAQUE type d'événement utilisé.
+  const eventTypes = [
+    "nouvelle_demande",
+    "demande_aboutie",
+    "ordre_pret_distribution",
+    "ordre_sortie_autorise",
+    "preparation_terminee",
+    "preparation_rejetee",
+  ];
+  for (const type of eventTypes) {
+    es.addEventListener(type, traiterEvenement as EventListener);
+  }
+
   es.onerror = () => {
     es.close();
     eventSource = null;
     isConnecting = false;
-    // Reconnexion après 3 secondes si l'utilisateur est toujours le même.
+    // Reconnexion après 3 secondes si l'utilisateur courant a toujours un JWT valide.
+    // On vérifie currentUserId (l'utilisateur pour lequel on VEUT se connecter)
+    // et pas connectedUserId (qui n'est défini qu'après onopen réussi).
     if (currentUserId !== null && currentJwt) {
       reconnectTimeout = setTimeout(() => {
         connectSSE(currentUserId!, currentJwt!);
@@ -78,18 +123,31 @@ export function connectSSE(userId: number, jwt: string): void {
  * Appelée à la déconnexion ou au changement d'utilisateur.
  */
 export function disconnectSSE(): void {
+  console.log('[SSE] disconnectSSE appelé, état actuel:', {
+    hasEventSource: !!eventSource,
+    readyState: eventSource?.readyState,
+    isConnecting,
+    currentUserId,
+    connectedUserId,
+    listenersCount: listeners.length
+  });
+
   if (reconnectTimeout) {
     clearTimeout(reconnectTimeout);
     reconnectTimeout = null;
   }
   if (eventSource) {
+    console.log('[SSE] Fermeture de la connexion EventSource')
     eventSource.close();
     eventSource = null;
   }
   isConnecting = false;
   currentJwt = null;
   currentUserId = null;
+  connectedUserId = null;
   listeners = [];
+
+  console.log('[SSE] Déconnexion terminée, état nettoyé')
 }
 
 /**

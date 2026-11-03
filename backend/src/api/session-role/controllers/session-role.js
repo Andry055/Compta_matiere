@@ -47,6 +47,31 @@ async function roleDeLUtilisateur(app, userId) {
   return { id: null, name: null, type };
 }
 
+/** Résout la direction de rattachement de l'utilisateur connecté.
+ *  La liaison utilisateur → direction est stockée dans la table de jonction
+ *  `up_users_direction_lnk` (créée au bootstrap). Cette lecture est une
+ *  lecture simple de référence, jamais une validation de mot de passe.
+ *
+ *  Note : `app.db.getConnection()` retourne une instance Knex (pas better-sqlite3),
+ *  donc on utilise `app.db.connection.raw()` avec des paramètres liés. */
+async function directionDeLUtilisateur(app, userId) {
+  try {
+    const rows = await app.db.connection.raw(
+      'SELECT d.id, d.nom_direction FROM up_users_direction_lnk ud JOIN directions d ON d.id = ud.direction_id WHERE ud.user_id = ?',
+      [userId]
+    );
+    const row = Array.isArray(rows) ? rows[0] : (rows && rows[0] ? rows[0] : null);
+    if (row) {
+      return { id: row.id, nom_direction: row.nom_direction };
+    }
+  } catch (e) {
+    app.log.warn(
+      `[session] Direction introuvable pour l'utilisateur #${userId} : ${e.message}`
+    );
+  }
+  return null;
+}
+
 module.exports = {
   /**
    * GET /api/session/role
@@ -68,6 +93,7 @@ module.exports = {
     }
 
     const role = await roleDeLUtilisateur(strapi, user.id);
+    const direction = await directionDeLUtilisateur(strapi, user.id);
 
     // La réponse est bâtie à la main (et non via le Document Service) : elle
     // ne transite par aucun sanitizer, le champ `role` est donc réellement
@@ -81,6 +107,7 @@ module.exports = {
         department: user.department ?? null,
         fonction: user.fonction ?? null,
         role,
+        direction,
       },
     };
   },

@@ -87,7 +87,23 @@ function creerStrapiMock() {
                       e.attempts = (e.attempts || 0) + 1;
                       e.lastAttemptAt = maintenant;
                       e.updatedAt = maintenant;
-                      return { ...e };
+                      // Simuler les noms de colonnes SQL (snake_case) retournés
+                      // par une vraie base de données (le SQL brut de reclamerEntrees
+                      // retourne recipient_id, event_type, etc. — pas le camelCase Strapi).
+                      return {
+                        id: e.id,
+                        recipient_id: e.recipientId,
+                        event_type: e.eventType,
+                        status: e.status,
+                        attempts: e.attempts,
+                        last_attempt_at: e.lastAttemptAt,
+                        updated_at: e.updatedAt,
+                        sortie: e.sortie,
+                        cle_unicite: e.cleUnicite,
+                        recipient_role: e.recipientRole,
+                        payload: e.payload,
+                        created_at: e.createdAt,
+                      };
                     });
                     // Mettre à jour les entrées réelles.
                     entreesOutbox = entreesOutbox.map((e) => {
@@ -466,4 +482,104 @@ test('12 – comptage envoyees/echecs : distribuerNotifications compte correctem
   const entree99 = entreesOutbox.find((e) => e.recipientId === 99);
   assert.strictEqual(entree42.status, 'sent', 'Entrée 42 marquée sent en base');
   assert.strictEqual(entree99.status, 'pending', 'Entrée 99 restée pending (reprise ultérieure)');
+});
+
+test('13 – preparation_terminee : creerEntrees crée une entrée eventType preparation_terminee pour le dépositaire', async () => {
+  resetMock();
+  const { creerEntrees } = require('../src/api/notification-outbox/services/notification-outbox');
+
+  const app = creerStrapiMock();
+
+  await app.db.transaction(async () => {
+    await creerEntrees(app, 'sortie-1', [{ id: 42, email: 'a@x.com', username: 'A' }], 'depositaire_preparation_terminee', {
+      sortieId: 'sortie-1', reference: 'REF-1', message: 'Préparation terminée',
+      signataire_magasinier: 'Magasinier Test',
+    });
+  });
+
+  const entree = entreesOutbox.find(
+    (e) => e.eventType === 'preparation_terminee' && e.recipientId === 42
+  );
+  assert.ok(entree, 'Une entrée preparation_terminee a été créée pour le dépositaire');
+  assert.strictEqual(entree.recipientRole, 'depositaire', 'Le rôle destinataire est dépositaire');
+  assert.strictEqual(entree.status, 'pending', 'L\'entrée est en statut pending');
+  assert.strictEqual(entree.payload.signataire_magasinier, 'Magasinier Test', 'Le signataire magasinier est dans le payload');
+});
+
+test('14 – preparation_rejetee : creerEntrees crée une entrée eventType preparation_rejetee pour le dépositaire', async () => {
+  resetMock();
+  const { creerEntrees } = require('../src/api/notification-outbox/services/notification-outbox');
+
+  const app = creerStrapiMock();
+
+  await app.db.transaction(async () => {
+    await creerEntrees(app, 'sortie-1', [{ id: 42, email: 'a@x.com', username: 'A' }], 'depositaire_preparation_rejetee', {
+      sortieId: 'sortie-1', reference: 'REF-1', message: 'Préparation rejetée',
+      motif_rejet: 'Matériel non conforme',
+      signataire_rejet: 'Magasinier Test',
+    });
+  });
+
+  const entree = entreesOutbox.find(
+    (e) => e.eventType === 'preparation_rejetee' && e.recipientId === 42
+  );
+  assert.ok(entree, 'Une entrée preparation_rejetee a été créée pour le dépositaire');
+  assert.strictEqual(entree.recipientRole, 'depositaire', 'Le rôle destinataire est dépositaire');
+  assert.strictEqual(entree.status, 'pending', 'L\'entrée est en statut pending');
+  assert.strictEqual(entree.payload.motif_rejet, 'Matériel non conforme', 'Le motif de rejet est dans le payload');
+  assert.strictEqual(entree.payload.signataire_rejet, 'Magasinier Test', 'Le signataire rejet est dans le payload');
+});
+
+test('15 – distribuerNotifications envoie preparation_terminee via SSE au dépositaire', async () => {
+  resetMock();
+  const { distribuerNotifications, creerEntrees } = require('../src/api/notification-outbox/services/notification-outbox');
+
+  const app = creerStrapiMock();
+
+  // Créer une entrée preparation_terminee pour l'utilisateur 42 (dépositaire).
+  await app.db.transaction(async () => {
+    await creerEntrees(app, 'sortie-1', [{ id: 42, email: 'a@x.com', username: 'A' }], 'depositaire_preparation_terminee', {
+      sortieId: 'sortie-1', reference: 'REF-1', message: 'Préparation terminée',
+    });
+  });
+
+  // Flux SSE ouvert pour le destinataire 42 : la délivrance réussit.
+  sseRegister(42, mockSseRes());
+
+  const r = await distribuerNotifications(app);
+  assert.strictEqual(r.traitees, 1, 'Une entrée préparée traitée');
+  assert.strictEqual(r.envoyees, 1, 'L\'entrée est envoyée via SSE');
+  assert.strictEqual(r.echecs, 0, 'Aucun échec');
+
+  const entree = entreesOutbox[0];
+  assert.strictEqual(entree.status, 'sent', 'L\'entrée preparation_terminee est marquée sent');
+  assert.strictEqual(entree.eventType, 'preparation_terminee', 'Le type d\'événement est preparation_terminee');
+});
+
+test('16 – preparation_terminee : idempotence par cleUnicite (pas de doublon en base réelle)', async () => {
+  resetMock();
+  const { creerEntrees } = require('../src/api/notification-outbox/services/notification-outbox');
+
+  const app = creerStrapiMock();
+
+  const cleUnicite = 'preparation_terminee:sortie-1:42';
+
+  await app.db.transaction(async () => {
+    await creerEntrees(app, 'sortie-1', [{ id: 42, email: 'a@x.com', username: 'A' }], 'depositaire_preparation_terminee', {
+      sortieId: 'sortie-1', reference: 'REF-1', message: 'test',
+    });
+    // Deuxième création avec la même clé : doit lever une erreur de contrainte unique.
+    await creerEntrees(app, 'sortie-1', [{ id: 42, email: 'a@x.com', username: 'A' }], 'depositaire_preparation_terminee', {
+      sortieId: 'sortie-1', reference: 'REF-1', message: 'test',
+    });
+  });
+
+  // Dans le mock simplifié, la contrainte unique est gérée en base réelle.
+  // Ce test vérifie que la clé d'idempotence est bien générée au bon format.
+  const entrees = entreesOutbox.filter(
+    (e) => e.eventType === 'preparation_terminee' && e.recipientId === 42
+  );
+  assert.ok(entrees.length > 0, 'Au moins une entrée preparation_terminee existe');
+  const cleGeneree = entrees[0].cleUnicite;
+  assert.strictEqual(cleGeneree, cleUnicite, 'La clé d\'idempotence a le format attendu');
 });

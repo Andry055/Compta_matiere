@@ -22,6 +22,7 @@ export interface User {
   permissions: string[]
   demandeurLevel?: DemandeurLevel
   directionId?: string
+  directionName?: string
   serviceId?: string
 }
 
@@ -98,7 +99,7 @@ export default function App() {
     }
   }, [currentUser])
 
-  // Gestion des événements SSE reçus (demande_aboutie, ordre_pret_distribution, ordre_sortie_autorise).
+  // Gestion des événements SSE reçus (demande_aboutie, ordre_pret_distribution, ordre_sortie_autorise, preparation_terminee, preparation_rejetee).
   useEffect(() => {
     const rolesSSE = ['demandeur', 'depositaire', 'magasinier']
     if (!currentUser?.role || !rolesSSE.includes(currentUser.role)) return
@@ -171,6 +172,105 @@ export default function App() {
         })
 
         setNotificationVersion((v) => v + 1)
+      } else if (event.type === 'preparation_terminee' && currentUser.role === 'depositaire') {
+        // Notification au dépositaire : le magasinier a terminé la préparation
+        const { reference, date_heure, direction, message, signataire_magasinier, sortieId } = event.data
+
+        // Identifiant stable pour éviter les doublons (réconciliation outbox + SSE)
+        const notificationId = typeof sortieId === 'string' && sortieId
+          ? `preparation_terminee-${sortieId}`
+          : undefined
+
+        // Afficher l'heure locale (HH:MM) pour l'utilisateur
+        const dateAffichage = date_heure
+          ? new Date(date_heure).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+          : new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+        pushRealtimeNotification(
+          'sortie',
+          message || `La préparation de l'ordre de sortie (${reference || ''}) est terminée et prête pour votre signature.`,
+          date_heure || new Date().toISOString(),
+          notificationId,
+          currentUser.role,
+          undefined,
+          sortieId
+        )
+
+        toast.success("Préparation terminée", {
+          description:
+            message ||
+            `Le magasinier ${signataire_magasinier || ''} a terminé la préparation de l'ordre ${reference || ''} à ${dateAffichage}.`,
+        })
+
+        setNotificationVersion((v) => v + 1)
+      } else if (event.type === 'preparation_rejetee' && currentUser.role === 'depositaire') {
+        // Notification au dépositaire : le magasinier a rejeté la préparation
+        const { reference, date_heure, direction, message, motif_rejet, signataire_rejet, sortieId } = event.data
+
+        // Identifiant stable pour éviter les doublons
+        const notificationId = typeof sortieId === 'string' && sortieId
+          ? `preparation_rejetee-${sortieId}`
+          : undefined
+
+        // Afficher l'heure locale (HH:MM) pour l'utilisateur
+        const dateAffichage = date_heure
+          ? new Date(date_heure).toLocaleString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+          : new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+
+        pushRealtimeNotification(
+          'sortie',
+          message || `La préparation de l'ordre de sortie (${reference || ''}) a été rejetée par le magasinier.`,
+          date_heure || new Date().toISOString(),
+          notificationId,
+          currentUser.role,
+          undefined,
+          sortieId
+        )
+
+        toast.error("Préparation rejetée", {
+          description:
+            message ||
+            `Le magasinier ${signataire_rejet || ''} a rejeté la préparation de l'ordre ${reference || ''} à ${dateAffichage}. Motif : ${motif_rejet || 'Non spécifié'}.`,
+        })
+
+        setNotificationVersion((v) => v + 1)
+      } else if (event.type === 'nouvelle_demande' && currentUser.role === 'depositaire') {
+        const {
+          notifId,
+          demandeDocumentId,
+          demandeReference,
+          demandeDate,
+          demandeur,
+          message,
+        } = event.data
+
+        // L'identifiant de la notification est STABLE (clé d'idempotence
+        // calculée par le serveur) : l'événement SSE et la réconciliation de
+        // l'outbox produisent le MÊME identifiant, donc la notification
+        // n'apparaît jamais deux fois.
+        const notificationId =
+          typeof notifId === 'string' && notifId
+            ? notifId
+            : typeof demandeDocumentId === 'string' && demandeDocumentId
+              ? `nouvelle_demande-${demandeDocumentId}`
+              : undefined
+
+        pushRealtimeNotification(
+          'nouvelle_demande',
+          message || `Une nouvelle demande (${demandeReference || ''}) a été déposée.`,
+          demandeDate || new Date().toISOString(),
+          notificationId,
+          currentUser.role,
+          typeof demandeDocumentId === 'string' ? demandeDocumentId : undefined
+        )
+
+        toast.success("Nouvelle demande", {
+          description:
+            message ||
+            `La demande ${demandeReference || ''} a été déposée${demandeur ? ` par ${demandeur}` : ''}.`,
+        })
+
+        setNotificationVersion((v) => v + 1)
       }
     })
 
@@ -209,6 +309,14 @@ export default function App() {
   // le dépositaire. Même principe que pour le demandeur : les notifications
   // de réception physique émises pendant une déconnexion SSE sont persistées
   // en outbox et doivent être rejouées à la reconnexion.
+  //
+  // L'événement `nouvelle_demande` est traité À PART : il porte son propre
+  // identifiant stable (`payload.notifId`) et cible une demande précise. Il
+  // ne doit donc JAMAIS être réinjecté comme une notification générique
+  // « sortie », sous peine d'apparaître deux fois.
+  //
+  // Les nouveaux événements `preparation_terminee` et `preparation_rejetee`
+  // sont traités de la même façon : identifiant stable basé sur sortieId.
   useEffect(() => {
     if (currentUser?.role !== 'magasinier' && currentUser?.role !== 'depositaire') return
     const jwt = getStrapiJwt()
@@ -218,6 +326,79 @@ export default function App() {
       const notifications = await fetchNotificationsOutbox()
       if (!mounted) return
       for (const n of notifications ?? []) {
+        if (n.eventType === 'nouvelle_demande') {
+          const payload = n.payload ?? {}
+          const demandeDocumentId =
+            typeof payload.demandeDocumentId === 'string'
+              ? payload.demandeDocumentId
+              : undefined
+          // MÊME identifiant que celui utilisé par l'événement SSE : la
+          // notification déjà reçue en direct n'est pas dupliquée.
+          const notificationId =
+            typeof payload.notifId === 'string' && payload.notifId
+              ? payload.notifId
+              : demandeDocumentId
+                ? `nouvelle_demande-${demandeDocumentId}`
+                : `outbox-${n.id}`
+          pushRealtimeNotification(
+            'nouvelle_demande',
+            typeof payload.message === 'string'
+              ? payload.message
+              : `Une nouvelle demande (${payload.demandeReference || ''}) a été déposée.`,
+            (typeof payload.demandeDate === 'string' && payload.demandeDate) ||
+              n.createdAt ||
+              new Date().toISOString(),
+            notificationId,
+            currentUser.role,
+            demandeDocumentId
+          )
+          continue
+        }
+
+        // Traitement spécifique pour preparation_terminee (dépositaire)
+        if (n.eventType === 'preparation_terminee' && currentUser.role === 'depositaire') {
+          const payload = n.payload ?? {}
+          const sortieId = typeof payload.sortieId === 'string' ? payload.sortieId : undefined
+          const notificationId = sortieId ? `preparation_terminee-${sortieId}` : `outbox-${n.id}`
+
+          pushRealtimeNotification(
+            'sortie',
+            typeof payload.message === 'string'
+              ? payload.message
+              : `La préparation de l'ordre de sortie (${payload.reference || ''}) est terminée et prête pour votre signature.`,
+            (typeof payload.date_heure === 'string' && payload.date_heure) ||
+              n.createdAt ||
+              new Date().toISOString(),
+            notificationId,
+            currentUser.role,
+            undefined,
+            sortieId
+          )
+          continue
+        }
+
+        // Traitement spécifique pour preparation_rejetee (dépositaire)
+        if (n.eventType === 'preparation_rejetee' && currentUser.role === 'depositaire') {
+          const payload = n.payload ?? {}
+          const sortieId = typeof payload.sortieId === 'string' ? payload.sortieId : undefined
+          const notificationId = sortieId ? `preparation_rejetee-${sortieId}` : `outbox-${n.id}`
+
+          pushRealtimeNotification(
+            'sortie',
+            typeof payload.message === 'string'
+              ? payload.message
+              : `La préparation de l'ordre de sortie (${payload.reference || ''}) a été rejetée par le magasinier.`,
+            (typeof payload.date_heure === 'string' && payload.date_heure) ||
+              n.createdAt ||
+              new Date().toISOString(),
+            notificationId,
+            currentUser.role,
+            undefined,
+            sortieId
+          )
+          continue
+        }
+
         const message =
           typeof n.payload?.message === 'string' ? n.payload.message : `Une notification de réception est en attente.`
         pushRealtimeNotification(
@@ -247,11 +428,17 @@ export default function App() {
   }
 
   const handleLogout = () => {
+    // Confirmation avant déconnexion
+    if (!window.confirm("Êtes-vous sûr de vouloir vous déconnecter ?")) {
+      return;
+    }
+
     const logoutUser = currentUser
     setCurrentUser(null)
     setAuthError(null)
 
     // Déconnecte le flux SSE s'il est ouvert.
+    console.log('[App] Déconnexion utilisateur, fermeture SSE...')
     disconnectSSE()
 
     // Clear all stored authentication data
@@ -261,7 +448,7 @@ export default function App() {
     localStorage.removeItem('savedEmail')
     // Jeton JWT Content API
     clearStrapiSession()
-    
+
     if (logoutUser) {
       console.log(`User logged out: ${logoutUser.email} at ${new Date().toISOString()}`)
     }

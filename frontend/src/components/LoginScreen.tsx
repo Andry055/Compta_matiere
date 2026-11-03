@@ -163,6 +163,7 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
     }
 
     setIsLoading(false);
+    return;
   };
 
   useState(() => {

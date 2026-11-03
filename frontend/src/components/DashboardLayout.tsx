@@ -25,6 +25,7 @@ import { User } from "../App"
 import type { DemandeRecord } from "../lib/demandes"
 import { ROLES_CONFIG, AppRole } from "../types/roles"
 import { ErrorBoundary } from "./ErrorBoundary"
+import { sortiesActionsStore } from "../lib/sortiesActionsStore"
 
 interface DashboardLayoutProps {
   user: User
@@ -46,6 +47,12 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
   // Pièce à ouvrir dans l'écran Arrivée Matériel, demandée par un clic sur une
   // notification de la cloche du navbar (les 3 rôles du flux de réception).
   const [entreeCibleId, setEntreeCibleId] = useState<string | number | null>(null)
+  // Demande à ouvrir dans l'écran Demandes, demandée par un clic sur une
+  // notification « nouvelle demande » de la cloche (dépositaire général).
+  const [demandeCibleId, setDemandeCibleId] = useState<string | null>(null)
+  // Sortie à ouvrir dans l'espace Distribution, demandée par un clic sur une
+  // notification de préparation (magasinier) ou d'autorisation (logistique).
+  const [sortieCibleId, setSortieCibleId] = useState<string | number | null>(null)
   // Demande APPROUVÉE à transformer en ordre de sortie (étape 3) : posée par
   // l'écran Décision (clic « Créer l'ordre de sortie »), elle ouvre la page
   // Distribution sur l'onglet « Ordres de sortie » avec le formulaire prérempli.
@@ -124,6 +131,8 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
           <Distribution
             initialDemande={ordreSortieDemande}
             onInitialDemandeConsumed={() => setOrdreSortieDemande(null)}
+            sortieCibleId={sortieCibleId}
+            onSortieCibleConsumed={() => setSortieCibleId(null)}
           />
         )
       case "movements":
@@ -136,6 +145,8 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
             user={user}
             detailRequestId={requestDetailId ?? undefined}
             onDetailConsumed={() => setRequestDetailId(null)}
+            demandeCibleId={demandeCibleId ?? undefined}
+            onDemandeCibleConsumed={() => setDemandeCibleId(null)}
             onCreerOrdreSortie={handleCreerOrdreSortie}
           />
         )
@@ -155,6 +166,11 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
     // Une navigation classique invalide la pièce demandée par une notification :
     // l'utilisateur choisit librement son écran d'arrivée.
     setEntreeCibleId(null)
+    // …ainsi que la demande visée par une notification : elle ne doit être
+    // ouverte que par le clic correspondant.
+    setDemandeCibleId(null)
+    // …ainsi que la sortie visée par une notification de préparation/autorisation.
+    setSortieCibleId(null)
     // …ainsi que la demande en attente de transformation en ordre de sortie :
     // seul un clic sur « Créer l'ordre de sortie » doit ouvrir le formulaire
     // prérempli.
@@ -174,6 +190,34 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
   const handleOuvrirNotification = (entreeId: string | number) => {
     setEntreeCibleId(entreeId)
     setActiveSection("arrivee")
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
+  }
+
+  // Ouverture d'une DEMANDE depuis une notification « nouvelle demande » de
+  // la cloche : la cible est posée AVANT le changement d'écran (handleSectionChange
+  // effacerait toute cible), pour que l'écran Demandes s'ouvre directement sur
+  // la demande concernée.
+  const handleOuvrirDemande = (demandeDocumentId: string) => {
+    setDemandeCibleId(demandeDocumentId)
+    setActiveSection("requests")
+    if (isMobile) {
+      setMobileMenuOpen(false)
+    }
+  }
+
+  // Ouverture d'une SORTIE depuis une notification de préparation/autorisation :
+  // on pose la cible, on déclenche un rafraîchissement immédiat du store partagé
+  // pour récupérer les données en temps réel, puis on navigue vers Distribution.
+  const handleOuvrirSortieNotification = (sortieId?: string | number) => {
+    if (sortieId != null) {
+      setSortieCibleId(sortieId)
+    }
+    // Rafraîchissement immédiat pour que l'onglet « À préparer » affiche
+    // les données à jour sans attendre le prochain sondage (20 s).
+    void sortiesActionsStore.refresh()
+    setActiveSection("distribution")
     if (isMobile) {
       setMobileMenuOpen(false)
     }
@@ -267,12 +311,16 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
 
             {/* Notifications : actions en attente du rôle + informations. Un clic sur une
                 notification de réception ouvre la pièce dans Arrivée Matériel ; une
-                notification de sortie acceptée (dépositaire) ouvre Distribution. */}
+                notification de sortie acceptée (dépositaire) ouvre Distribution ; une
+                notification de préparation/autorisation (magasinier/logistique) ouvre
+                Distribution avec rafraîchissement temps réel ; une notification
+                « nouvelle demande » ouvre la demande concernée. */}
             <NotificationBell
               user={user}
               version={notificationVersion}
               onOpenEntree={handleOuvrirNotification}
-              onOpenSortie={() => handleSectionChange("distribution")}
+              onOpenSortie={handleOuvrirSortieNotification}
+              onOpenDemande={handleOuvrirDemande}
             />
 
             {/* Theme Toggle */}

@@ -36,6 +36,8 @@ export function mapStrapiUser(
     email: user.email,
     role: role as User["role"],
     department: user.department || "",
+    directionId: user.direction?.id?.toString() ?? undefined,
+    directionName: user.direction?.nom_direction ?? undefined,
     permissions: ["equipment.view"],
     ...(role === "demandeur"
       ? { demandeurLevel: (user.department || "").includes(" - ") ? ("service" as const) : ("direction" as const) }

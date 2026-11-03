@@ -14,6 +14,14 @@ interface RequestsProps {
   /** Notifie le parent que le détail demandé a été ouvert */
   onDetailConsumed?: () => void
   /**
+   * documentId de la demande à mettre en évidence (clic sur une notification
+   * « nouvelle demande » dans la cloche). L'écran Décision la met en évidence
+   * et la fait défiler jusqu'à elle.
+   */
+  demandeCibleId?: string
+  /** Notifie le parent que la demande visée a été prise en compte */
+  onDemandeCibleConsumed?: () => void
+  /**
    * Étape 3 : le dépositaire clique sur « Créer l'ordre de sortie » → le
    * parent ouvre la page Distribution (onglet « Ordres de sortie ») avec le
    * formulaire prérempli à partir de la demande.
@@ -21,7 +29,14 @@ interface RequestsProps {
   onCreerOrdreSortie?: (demande: DemandeRecord) => void
 }
 
-export function Requests({ user, detailRequestId, onDetailConsumed, onCreerOrdreSortie }: RequestsProps) {
+export function Requests({
+  user,
+  detailRequestId,
+  onDetailConsumed,
+  demandeCibleId,
+  onDemandeCibleConsumed,
+  onCreerOrdreSortie,
+}: RequestsProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("Tous")
   const [loadingRequests, setLoadingRequests] = useState<{ [key: number]: string }>({})
@@ -80,6 +95,8 @@ export function Requests({ user, detailRequestId, onDetailConsumed, onCreerOrdre
     return (
       <DecisionRequests
         user={user}
+        demandeCibleId={demandeCibleId}
+        onDemandeCibleConsumed={onDemandeCibleConsumed}
         onCreerOrdreSortie={
           user?.role === "depositaire" ? onCreerOrdreSortie : undefined
         }

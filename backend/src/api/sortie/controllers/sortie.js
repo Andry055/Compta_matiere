@@ -180,7 +180,12 @@ async function documentIdsDuDirection(strapi, user) {
   if (!directionNom) return [];
 
   const directions = await strapi.documents('api::direction.direction').findMany({
-    filters: { nom_direction: { $eqi: directionNom } },
+    filters: {
+      $or: [
+        { nom_direction: { $eqi: directionNom } },
+        { abreviation: { $eqi: directionNom } },
+      ],
+    },
     fields: ['documentId'],
     limit: -1,
   });
@@ -1403,5 +1408,54 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     });
 
     return { data: mouvements };
+  },
+
+  /**
+   * GET /api/sorties/:documentId/remise-detenteur
+   * Retourne la remise au détenteur associée à ce dossier de sortie,
+   * si elle existe. Accessible aux rôles qui lisent les sorties.
+   * Le Demandeur ne voit que la remise de SES sorties (direction).
+   */
+  async findRemiseDetenteur(ctx) {
+    const app = strapi;
+    const { documentId } = ctx.params;
+
+    // Vérifier que la sortie existe
+    const sortie = await app.documents(SORTIE_UID).findOne({ documentId });
+    if (!sortie) {
+      ctx.status = 404;
+      ctx.body = { error: { status: 404, name: 'NotFoundError', message: 'Sortie introuvable.' } };
+      return ctx.body;
+    }
+
+    // Le Demandeur ne voit que les remises de SES sorties (direction)
+    if (await isDemandeurSession(app, ctx)) {
+      const miens = await documentIdsPossedesPar(app, ctx.state.user);
+      const directionSorties = await documentIdsDuDirection(app, ctx.state.user);
+      const tousIds = [...new Set([...miens, ...directionSorties])];
+      if (!tousIds.includes(documentId)) {
+        return forbid(
+          ctx,
+          "Accès refusé : vous ne pouvez consulter la remise au détenteur que des sorties de votre direction.",
+          403
+        );
+      }
+    }
+
+    // Chercher la remise-detenteur liée à cette sortie
+    const remise = await app.documents('api::remise-detenteur.remise-detenteur').findFirst({
+      filters: { sortie: { documentId: { $eq: documentId } } },
+      populate: {
+        lignes: { populate: ['sortie_ligne'] },
+        sortie: { populate: { direction: true } },
+      },
+      sort: { date_enregistrement: 'desc' },
+    });
+
+    if (!remise) {
+      return { data: null, meta: { remise_enregistree: false } };
+    }
+
+    return { data: remise, meta: { remise_enregistree: true } };
   },
 });

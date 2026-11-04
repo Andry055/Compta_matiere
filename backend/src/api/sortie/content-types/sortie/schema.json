@@ -123,6 +123,15 @@
       "type": "boolean",
       "default": false,
       "description": "Empêche le renvoi des notifications SSE de validation après une première émission réussie."
+    },
+    "remise_detenteur_cloturee": {
+      "type": "boolean",
+      "default": false,
+      "description": "Verrou anti-double : passe à true à l'enregistrement de la remise du matériel au détenteur (une seule remise par dossier)."
+    },
+    "remise_detenteur_date": {
+      "type": "text",
+      "description": "Date (AAAA-MM-JJ) de la remise du matériel au détenteur, recopiée depuis l'enregistrement de remise."
     }
   }
 }

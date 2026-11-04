@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "../ui/card";
 import { Button } from "../ui/button";
 import { Badge } from "../ui/badge";
@@ -15,16 +15,18 @@ import { ListeSortiesARéceptionner } from "./ListeSortiesARéceptionner";
 import { FormulaireRéception } from "./FormulaireRéception";
 import { DéclarationAnomalie } from "./DéclarationAnomalie";
 import { HistoriqueRéceptions } from "./HistoriqueRéceptions";
+import { RemiseDetenteurDemandeur } from "./RemiseDetenteurDemandeur";
 import {
   Truck,
   RefreshCw,
   AlertTriangle,
   History,
+  PackageCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import "./EcranReception.css";
 
-type Onglet = "recevoir" | "historique" | "anomalies";
+type Onglet = "recevoir" | "historique" | "anomalies" | "remise-detenteur";
 
 const STATUT_BADGE: Record<string, string> = {
   "En cours": "bg-blue-50 text-blue-700 border-blue-200",
@@ -139,6 +141,14 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
   const countARéceptionner = sorties.length;
   const countAnomaliesOuvertes = 0; // Les anomalies proviennent désormais de l'API backend (non connectée en Phase 1)
 
+  // Compter les sorties éligibles pour la remise au détenteur (reliquat = 0, statut Sortie effectuée)
+  const countRemiseDetenteur = useMemo(() => {
+    return sortiesServeur.filter((sortie) => {
+      const reliquat = getReliquat(sortie, receptionsServeur);
+      return sortie.statut === "Sortie effectuée" && reliquat <= 0;
+    }).length;
+  }, [sortiesServeur, receptionsServeur]);
+
   return (
     <div className="msr-page">
       {/* En-tête */}
@@ -176,6 +186,10 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
         <div className="msr-compteur">
           <div className="msr-compteur-valeur">{countAnomaliesOuvertes}</div>
           <div className="msr-compteur-libelle">Anomalies ouvertes</div>
+        </div>
+        <div className="msr-compteur">
+          <div className="msr-compteur-valeur">{countRemiseDetenteur}</div>
+          <div className="msr-compteur-libelle">Éligibles remise détenteur</div>
         </div>
         <div className="msr-compteur">
           <div className="msr-compteur-valeur">{sortiesServeur.length}</div>
@@ -231,6 +245,14 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
             </span>
           )}
         </button>
+        <button
+          onClick={() => setOnglet("remise-detenteur")}
+          className={`msr-onglet ${
+            onglet === "remise-detenteur" ? "msr-onglet--actif" : ""
+          }`}
+        >
+          <PackageCheck className="w-4 h-4 mr-1" /> Remise détenteur
+        </button>
       </div>
 
       {/* Contenu selon l'onglet */}
@@ -260,6 +282,14 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
               </p>
             </div>
           </div>
+        )}
+        {onglet === "remise-detenteur" && (
+          <RemiseDetenteurDemandeur
+            sorties={sortiesServeur}
+            receptionsServeur={receptionsServeur}
+            user={{ ...user, directionId }}
+            onRemiseConfirmee={chargerDonnées}
+          />
         )}
       </div>
 

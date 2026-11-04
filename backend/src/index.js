@@ -524,6 +524,12 @@ const RECEPTION_PHYSIQUE_ACTIONS = [
   'api::reception-physique.reception-physique.create',
 ];
 
+// Lecture seule : `create` reste réservé aux rôles Demandeur/Dépositaire
+// (contrôle métier dans le contrôleur, voir isDemandeur()).
+const RECEPTION_PHYSIQUE_READ_ACTIONS = RECEPTION_PHYSIQUE_ACTIONS.filter(
+  (action) => !action.endsWith('.create')
+);
+
 // ---------------------------------------------------------------------------
 // Notification Outbox : lecture des notifications de l'utilisateur connecté.
 //
@@ -1039,7 +1045,7 @@ async function ensureAuthSetup(strapi) {
     }
   }
 
-  // 2treize) Permissions « Remise au détenteur » : accordées aux rôles
+// 2treize) Permissions « Remise au détenteur » : accordées aux rôles
   // Demandeur et Dépositaire (le contrôleur accepte les deux). Le contrôleur
   // vérifie en outre l'appropriation par direction.
   // Les permissions sur les lignes sont nécessaires pour que le sanitizer
@@ -1082,6 +1088,24 @@ async function ensureAuthSetup(strapi) {
       accordees.add(cle);
     }
     for (const action of REMISE_DETENTEUR_LIGNE_ACTIONS) {
+      const cle = `admin:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roles.admin.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2treize bis) LECTURE DES RÉCEPTIONS PHYSIQUES pour l'admin APPLICATIF.
+  //
+  // Même défaut que les sorties (voir « 2septies ter ») : le rôle `admin`
+  // (« Administration Centrale ») a accès à TOUTES les rubriques côté
+  // frontend (SimpleSidebar : `allowedPages = navItems.map(...)`, et
+  // DashboardLayout ne le redirige jamais), mais `GET /api/receptions-physiques`
+  // lui renvoyait 403 et l'écran « Réception physique » affichait une erreur au
+  // chargement. Seules des permissions de LECTURE sont accordées — `create`
+  // reste réservé au Demandeur/Dépositaire.
+  if (roles.admin) {
+    for (const action of RECEPTION_PHYSIQUE_READ_ACTIONS) {
       const cle = `admin:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: roles.admin.id } });

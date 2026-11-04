@@ -67,6 +67,14 @@
   --sidebar-border: oklch(0.90 0.008 250);
   --sidebar-ring: oklch(0.53 0.13 233);
 
+  /* --- Bloc de marque (haut de la sidebar) — thème clair --- */
+  --sidebar-w: 300px; /* largeur de la sidebar pour la ligne de marque complète */
+  --brand-title: #0b2a4a;
+  --brand-accent: #0e9488;
+  --brand-sub: #5a6f7d;
+  --brand-sep: #c6d3db;
+  --brand-line: #dce6ec;
+
   /* --- Jetons d'extension « console » --- */
   --cm-accent: oklch(0.53 0.13 233);
   --cm-accent-soft: oklch(0.60 0.12 225);
@@ -133,6 +141,13 @@
   --sidebar-border: oklch(0.30 0.018 248);
   --sidebar-ring: oklch(0.80 0.125 205);
 
+  /* --- Bloc de marque (haut de la sidebar) — thème sombre --- */
+  --brand-title: #f3f8fa;
+  --brand-accent: #2dd4bf;
+  --brand-sub: #93a8b5;
+  --brand-sep: #2a3b47;
+  --brand-line: #1d2d38;
+
   /* --- Jetons d'extension « console » --- */
   --cm-accent: oklch(0.80 0.125 205);
   --cm-accent-soft: oklch(0.70 0.12 210);
@@ -172,6 +187,114 @@
   }
 }
 
+/* Nouvelles classes pour le design LoginScreen */
+
+.cm-grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    linear-gradient(rgba(69, 108, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(69, 108, 150, 0.3) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.3;
+}
+
+.cm-metal-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  mx: auto;
+  width: 640px;
+  height: 100vh;
+  max-width: 100%;
+  background: linear-gradient(180deg, #d4dae1 0%, #b8c0ca 100%);
+  border-left: 1px solid rgba(0,0,0,0.1);
+  border-right: 1px solid rgba(0,0,0,0.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-metal-stripes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent 36px,
+    rgba(255,255,255,0.03) 36px,
+    rgba(255,255,255,0.03) 40px
+  );
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-glass-side {
+  position: absolute;
+  top: 0;
+  width: 25%;
+  height: 100%;
+  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255,255,255,0.1);
+  pointer-events: none;
+}
+
+.cm-page-title {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #0a0e16;
+  font-weight: 800;
+  font-size: 56px;
+}
+
+.cm-page-subtext {
+  font-size: 1.125rem;
+  color: #8fa3bf;
+  margin-top: 0.5rem;
+}
+
+.cm-card-login {
+  @apply cm-panel cm-panel-solid;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid #1b2a42;
+  box-shadow: var(--cm-shadow-lg), 0 0 60px -20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+}
+
+.cm-input-login {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:ring-2 focus:ring-primary/20;
+  border-radius: 12px;
+}
+
+.cm-input-login:focus {
+  @apply cm-input-login cm-focus;
+  border-color: #3ddc84;
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
+}
+
+.cm-drop-shadow {
+  drop-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
 @keyframes cm-rise {
   from {
     opacity: 0;
@@ -183,6 +306,114 @@
   }
 }
 
+/* Nouvelles classes pour le design LoginScreen */
+
+.cm-grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    linear-gradient(rgba(69, 108, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(69, 108, 150, 0.3) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.3;
+}
+
+.cm-metal-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  mx: auto;
+  width: 640px;
+  height: 100vh;
+  max-width: 100%;
+  background: linear-gradient(180deg, #d4dae1 0%, #b8c0ca 100%);
+  border-left: 1px solid rgba(0,0,0,0.1);
+  border-right: 1px solid rgba(0,0,0,0.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-metal-stripes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent 36px,
+    rgba(255,255,255,0.03) 36px,
+    rgba(255,255,255,0.03) 40px
+  );
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-glass-side {
+  position: absolute;
+  top: 0;
+  width: 25%;
+  height: 100%;
+  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255,255,255,0.1);
+  pointer-events: none;
+}
+
+.cm-page-title {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #0a0e16;
+  font-weight: 800;
+  font-size: 56px;
+}
+
+.cm-page-subtext {
+  font-size: 1.125rem;
+  color: #8fa3bf;
+  margin-top: 0.5rem;
+}
+
+.cm-card-login {
+  @apply cm-panel cm-panel-solid;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid #1b2a42;
+  box-shadow: var(--cm-shadow-lg), 0 0 60px -20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+}
+
+.cm-input-login {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:ring-2 focus:ring-primary/20;
+  border-radius: 12px;
+}
+
+.cm-input-login:focus {
+  @apply cm-input-login cm-focus;
+  border-color: #3ddc84;
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
+}
+
+.cm-drop-shadow {
+  drop-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
 @keyframes cm-sweep {
   from {
     transform: translateX(-100%);
@@ -192,6 +423,114 @@
   }
 }
 
+/* Nouvelles classes pour le design LoginScreen */
+
+.cm-grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    linear-gradient(rgba(69, 108, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(69, 108, 150, 0.3) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.3;
+}
+
+.cm-metal-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  mx: auto;
+  width: 640px;
+  height: 100vh;
+  max-width: 100%;
+  background: linear-gradient(180deg, #d4dae1 0%, #b8c0ca 100%);
+  border-left: 1px solid rgba(0,0,0,0.1);
+  border-right: 1px solid rgba(0,0,0,0.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-metal-stripes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent 36px,
+    rgba(255,255,255,0.03) 36px,
+    rgba(255,255,255,0.03) 40px
+  );
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-glass-side {
+  position: absolute;
+  top: 0;
+  width: 25%;
+  height: 100%;
+  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255,255,255,0.1);
+  pointer-events: none;
+}
+
+.cm-page-title {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #0a0e16;
+  font-weight: 800;
+  font-size: 56px;
+}
+
+.cm-page-subtext {
+  font-size: 1.125rem;
+  color: #8fa3bf;
+  margin-top: 0.5rem;
+}
+
+.cm-card-login {
+  @apply cm-panel cm-panel-solid;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid #1b2a42;
+  box-shadow: var(--cm-shadow-lg), 0 0 60px -20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+}
+
+.cm-input-login {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:ring-2 focus:ring-primary/20;
+  border-radius: 12px;
+}
+
+.cm-input-login:focus {
+  @apply cm-input-login cm-focus;
+  border-color: #3ddc84;
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
+}
+
+.cm-drop-shadow {
+  drop-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
 @keyframes cm-fade {
   from {
     opacity: 0;
@@ -199,6 +538,114 @@
   to {
     opacity: 1;
   }
+}
+
+/* Nouvelles classes pour le design LoginScreen */
+
+.cm-grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    linear-gradient(rgba(69, 108, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(69, 108, 150, 0.3) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.3;
+}
+
+.cm-metal-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  mx: auto;
+  width: 640px;
+  height: 100vh;
+  max-width: 100%;
+  background: linear-gradient(180deg, #d4dae1 0%, #b8c0ca 100%);
+  border-left: 1px solid rgba(0,0,0,0.1);
+  border-right: 1px solid rgba(0,0,0,0.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-metal-stripes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent 36px,
+    rgba(255,255,255,0.03) 36px,
+    rgba(255,255,255,0.03) 40px
+  );
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-glass-side {
+  position: absolute;
+  top: 0;
+  width: 25%;
+  height: 100%;
+  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255,255,255,0.1);
+  pointer-events: none;
+}
+
+.cm-page-title {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #0a0e16;
+  font-weight: 800;
+  font-size: 56px;
+}
+
+.cm-page-subtext {
+  font-size: 1.125rem;
+  color: #8fa3bf;
+  margin-top: 0.5rem;
+}
+
+.cm-card-login {
+  @apply cm-panel cm-panel-solid;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid #1b2a42;
+  box-shadow: var(--cm-shadow-lg), 0 0 60px -20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+}
+
+.cm-input-login {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:ring-2 focus:ring-primary/20;
+  border-radius: 12px;
+}
+
+.cm-input-login:focus {
+  @apply cm-input-login cm-focus;
+  border-color: #3ddc84;
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
+}
+
+.cm-drop-shadow {
+  drop-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
 }
 
 /* ==========================================================================
@@ -444,6 +891,111 @@ input[type="radio"] {
   -webkit-backdrop-filter: blur(20px) saturate(150%);
   backdrop-filter: blur(20px) saturate(150%);
   border-right: 1px solid var(--sidebar-border);
+}
+
+/* Largeur de la sidebar portant le bloc de marque (1ère page).
+   `w-72` (288px) est trop étroit pour la ligne complète : pilotée par
+   --sidebar-w. La position du contenu principal suit automatiquement
+   (conteneur flex, aucun décalage manuel). */
+.cm-sidebar-w {
+  width: var(--sidebar-w);
+}
+
+/* --- En-tête de marque : logo MTEFoP | icône AssetTrack + titre --- */
+.cm-brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  height: 72px; /* aligné sur la hauteur de la barre du haut */
+  padding: 0 16px;
+  border-bottom: 1px solid var(--brand-line);
+  overflow: hidden; /* jamais de débordement horizontal */
+}
+
+.cm-brand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1 1 auto;
+  border-radius: calc(var(--radius) + 2px);
+  text-decoration: none;
+  color: inherit;
+  /* halo teal très discret derrière l'icône */
+  background-image: radial-gradient(
+    circle at 90px 50%,
+    rgba(45, 212, 191, 0.08),
+    transparent 65%
+  );
+}
+
+.cm-brand:focus-visible {
+  outline: 2px solid var(--brand-accent);
+  outline-offset: 2px;
+}
+
+.cm-brand-logo {
+  height: 44px;
+  width: auto;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.cm-brand-sep {
+  width: 1px;
+  height: 40px;
+  background-color: var(--brand-sep);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.cm-brand-icon {
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 11px;
+  object-fit: contain;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.4);
+}
+
+/* Titre + sous-titre : un seul bloc colonne, aligné à gauche. */
+.cm-brand-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  min-width: 0;
+  max-width: 150px; /* le sous-titre passe sur 2 lignes, jamais tronqué */
+}
+
+.cm-brand-title {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--brand-title);
+}
+
+.cm-brand-title-accent {
+  color: var(--brand-accent);
+}
+
+.cm-brand-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1.25;
+  color: var(--brand-sub);
+}
+
+/* Vue réduite / panneau mobile : icône + titre seuls. */
+@media (max-width: 899px) {
+  .cm-brand-logo,
+  .cm-brand-sep,
+  .cm-brand-sub {
+    display: none;
+  }
 }
 
 .cm-brand-mark {
@@ -1053,6 +1605,114 @@ input[type="radio"] {
   }
 }
 
+/* Nouvelles classes pour le design LoginScreen */
+
+.cm-grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    linear-gradient(rgba(69, 108, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(69, 108, 150, 0.3) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.3;
+}
+
+.cm-metal-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  mx: auto;
+  width: 640px;
+  height: 100vh;
+  max-width: 100%;
+  background: linear-gradient(180deg, #d4dae1 0%, #b8c0ca 100%);
+  border-left: 1px solid rgba(0,0,0,0.1);
+  border-right: 1px solid rgba(0,0,0,0.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-metal-stripes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent 36px,
+    rgba(255,255,255,0.03) 36px,
+    rgba(255,255,255,0.03) 40px
+  );
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-glass-side {
+  position: absolute;
+  top: 0;
+  width: 25%;
+  height: 100%;
+  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255,255,255,0.1);
+  pointer-events: none;
+}
+
+.cm-page-title {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #0a0e16;
+  font-weight: 800;
+  font-size: 56px;
+}
+
+.cm-page-subtext {
+  font-size: 1.125rem;
+  color: #8fa3bf;
+  margin-top: 0.5rem;
+}
+
+.cm-card-login {
+  @apply cm-panel cm-panel-solid;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid #1b2a42;
+  box-shadow: var(--cm-shadow-lg), 0 0 60px -20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+}
+
+.cm-input-login {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:ring-2 focus:ring-primary/20;
+  border-radius: 12px;
+}
+
+.cm-input-login:focus {
+  @apply cm-input-login cm-focus;
+  border-color: #3ddc84;
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
+}
+
+.cm-drop-shadow {
+  drop-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
 /* ==========================================================================
    13. RESPONSIVE — Allègement sur petits écrans
    ========================================================================== */
@@ -1066,6 +1726,232 @@ input[type="radio"] {
     -webkit-backdrop-filter: blur(10px) saturate(140%);
     backdrop-filter: blur(10px) saturate(140%);
   }
+}
+
+/* Nouvelles classes pour le design LoginScreen */
+
+.cm-grid-overlay {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image: 
+    linear-gradient(rgba(69, 108, 150, 0.3) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(69, 108, 150, 0.3) 1px, transparent 1px);
+  background-size: 72px 72px;
+  opacity: 0.3;
+}
+
+.cm-metal-panel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  mx: auto;
+  width: 640px;
+  height: 100vh;
+  max-width: 100%;
+  background: linear-gradient(180deg, #d4dae1 0%, #b8c0ca 100%);
+  border-left: 1px solid rgba(0,0,0,0.1);
+  border-right: 1px solid rgba(0,0,0,0.1);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), inset 0 -1px 0 rgba(0,0,0,0.1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-metal-stripes {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 100%;
+  background-image: repeating-linear-gradient(
+    to right,
+    transparent,
+    transparent 36px,
+    rgba(255,255,255,0.03) 36px,
+    rgba(255,255,255,0.03) 40px
+  );
+  pointer-events: none;
+}
+
+.cm-metal-panel .cm-glass-side {
+  position: absolute;
+  top: 0;
+  width: 25%;
+  height: 100%;
+  backdrop-filter: blur(12px) saturate(180%);
+  background-color: rgba(255,255,255,0.1);
+  pointer-events: none;
+}
+
+.cm-page-title {
+  font-size: 3rem;
+  font-weight: 900;
+  color: #0a0e16;
+  font-weight: 800;
+  font-size: 56px;
+}
+
+.cm-page-subtext {
+  font-size: 1.125rem;
+  color: #8fa3bf;
+  margin-top: 0.5rem;
+}
+
+.cm-card-login {
+  @apply cm-panel cm-panel-solid;
+  background: rgba(255, 255, 255, 0.8);
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid #1b2a42;
+  box-shadow: var(--cm-shadow-lg), 0 0 60px -20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+}
+
+.cm-input-login {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:ring-2 focus:ring-primary/20;
+  border-radius: 12px;
+}
+
+.cm-input-login:focus {
+  @apply cm-input-login cm-focus;
+  border-color: #3ddc84;
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
+}
+
+.cm-drop-shadow {
+  drop-shadow: 0 2px 4px rgba(0, 0, 0, 0.15);
+}
+
+/* ==========================================================================
+   Nouvelles classes pour le design LoginScreen
+   ========================================================================== */
+
+.cm-subgradient {
+  background-image: linear-gradient(to bottom, #2f7bff 0%, #3ddc84 100%);
+  height: 6px;
+  border-radius: 3px;
+}
+
+/* Styles additionnels pour les textes d'en-tête */
+
+.cm-page-header {
+  text-align: center;
+  margin-bottom: 1rem;
+}
+
+.cm-page-header .cm-eyebrow {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: #19d3f0;
+  background: linear-gradient(135deg, transparent 40%, #19d3f0 40%, #19d3f0 60%, transparent);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  padding: 0 4px;
+}
+
+.cm-page-title {
+  font-size: 3rem;
+  font-weight: 900;
+  background: linear-gradient(to bottom, #fff 0%, #3ddc84 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  line-height: 1.1;
+}
+
+.cm-page-subtext {
+  font-size: 0.875rem;
+  color: #8fa3bf;
+  margin-top: 0.5rem;
+}
+
+/* Styles pour les champs de formulaire améliorés */
+
+.cm-input {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:border-primary focus:ring-2 focus:ring-primary/20;
+}
+
+.cm-input:focus {
+  @apply cm-field cm-focus;
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
+}
+
+.cm-bg-login {
+  @apply cm-shell;
+  background-image: 
+    radial-gradient(circle at top, var(--cm-aurora) 0%, transparent 50%),
+    radial-gradient(circle at bottom right, var(--cm-aurora-2) 0%, transparent 50%);
+  background-size: 500px 500px;
+  background-position: top left, bottom right;
+  background-repeat: no-repeat;
+  background-attachment: local;
+}
+
+.cm-grid-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: 
+    linear-gradient(var(--cm-grid) 2px, transparent 2px),
+    linear-gradient(90deg, var(--cm-grid) 2px, transparent 2px);
+  background-size: 44px 44px;
+  opacity: 0.025;
+  z-index: 0;
+  mask-image: radial-gradient(ellipse 80% 60% at 50% 20%, black 20%, transparent 70%),
+    radial-gradient(ellipse 80% 60% at 100% 80%, black 20%, transparent 70%);
+}
+
+.cm-card-login {
+  @apply cm-panel cm-panel-solid;
+  border-color: #1b2a42;
+  box-shadow: var(--cm-shadow-lg),
+    0 0 60px -20px rgba(0, 0, 0, 0.5);
+  border-radius: 20px;
+}
+
+.cm-input-login {
+  @apply cm-field;
+  border-color: #19d3f0;
+  @apply focus:ring-2 focus:ring-primary/20;
+  border-radius: 12px;
+}
+
+.cm-input-login:focus {
+  @apply cm-input-login cm-focus;
+  border-color: #3ddc84;
+  box-shadow: 0 0 10px rgba(61, 220, 132, 0.4);
+}
+
+.cm-btn-connexion {
+  @apply cm-btn-primary;
+  background: linear-gradient(135deg, #19d3f0, #3ddc84);
+  color: #0a0e16;
+  font-weight: 600;
+  @apply hover:translate-y-1 hover:shadow-lg;
 }
 
 }

@@ -73,7 +73,7 @@ export function Settings() {
     timezone: "Europe/Paris",
     
     // General settings
-    companyName: "ComptaMatière",
+    companyName: "AssetTrack",
     companyEmail: "admin@company.com",
     supportEmail: "support@company.com",
     maxUsers: "100"

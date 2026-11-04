@@ -255,7 +255,7 @@ export function getHistoriqueAffectations(
       if (a.type === "affectation_interne") {
         evenements.push({
           date,
-          libelle: "Affectation interne",
+          libelle: "Transfert interne",
           detail: `${a.serviceSource} → ${a.serviceDestination} (même Direction ${a.directionSource}) — pas de sortie, pas de nouvelle entrée, ${a.quantite} unité(s)`,
         });
       } else {

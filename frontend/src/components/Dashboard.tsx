@@ -617,7 +617,7 @@ export function Dashboard({ user }: { user?: User }) {
         <div className="min-w-0">
           <p className="cm-eyebrow cm-eyebrow-accent mb-1.5">Pilotage</p>
           <h1 className="cm-title text-2xl sm:text-3xl mb-2">
-            Tableau de Bord - ComptaMatière
+            Tableau de Bord - AssetTrack
           </h1>
           <p className="cm-subtitle">
             Vue d'ensemble du système de comptabilité matière avec traçabilité

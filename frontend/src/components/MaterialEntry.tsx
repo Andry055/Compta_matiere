@@ -2554,7 +2554,7 @@ export function Step4PVReception({
           </CardContent>
           <CardFooter className="text-center text-xs text-muted-foreground print:text-gray-500">
             <div className="w-full text-center">
-              Document généré le {now} — ComptaMatière © {new Date().getFullYear()}
+              Document généré le {now} — AssetTrack © {new Date().getFullYear()}
             </div>
           </CardFooter>
         </Card>

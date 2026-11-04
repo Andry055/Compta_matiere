@@ -23,6 +23,8 @@ import {
   calculerStock,
   getStatistiquesAffectations,
   getStatutAffectationAffiche,
+  directionDestinataireDe,
+  validationsAttendues,
   getValidationCount,
   listerAffectations,
   statutAffectationBadge,
@@ -147,7 +149,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
           setShowNewForm(false);
           recharger();
           setFlash(
-            `✓ Affectation ${ref} créée (0/4) — en attente des validations.`
+            `✓ Transfert ${ref} créé (0/2) — en attente des validations.`
           );
           window.setTimeout(() => setFlash(""), 6000);
         }}
@@ -166,28 +168,28 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
 
   const statCards = [
     {
-      label: "Total des affectations",
+      label: "Total des transferts",
       value: stats.total,
       icon: Package,
       iconClass:
         "bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400",
     },
     {
-      label: `Affectations du mois (${stats.moisLabel})`,
+      label: `Transferts du mois (${stats.moisLabel})`,
       value: stats.duMois,
       icon: CalendarDays,
       iconClass:
         "bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400",
     },
     {
-      label: "Affectations en attente",
+      label: "Transferts en attente",
       value: stats.enAttente,
       icon: Clock,
       iconClass:
         "bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400",
     },
     {
-      label: "Affectations validées",
+      label: "Transferts validés",
       value: stats.validees,
       icon: CheckCircle2,
       iconClass:
@@ -201,10 +203,10 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
-            Affectations
+            Transferts
           </h1>
           <p className="text-muted-foreground text-sm sm:text-base">
-            Gestion des affectations de matériels entre services
+            Gestion des transferts de matériels entre services
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -214,7 +216,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
               className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
             >
               <Plus className="h-4 w-4" />
-              Nouvelle affectation
+              Nouveau transfert
             </button>
           )}
           <button
@@ -240,10 +242,10 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
 
       {/* Rappel métier */}
       <Message variant="info" size="sm" icon={BadgeCheck}>
-        Affectation = réaffectation interne entre deux services d'une MÊME
-        Direction : pas de sortie, pas de nouvelle entrée, seulement la mise à
-        jour du stock et la traçabilité. Validation obligatoire en 4 étapes (0/4
-        → 4/4) ; une affectation validée n'est plus modifiable.
+        Transfert = déplacement d'un matériel vers une AUTRE Direction : pas
+        de sortie, pas de nouvelle entrée, seulement la mise à jour du stock et
+        la traçabilité. Validation obligatoire en 2 étapes (0/2 → 2/2) ; un
+        transfert validé n'est plus modifiable.
       </Message>
 
       {/* Indicateurs */}
@@ -378,7 +380,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
       <div className="cm-panel cm-panel-solid rounded-lg">
         <div className="p-4 sm:p-6 border-b border-border">
           <h3 className="text-lg text-card-foreground">
-            Tableau des affectations ({filtered.length})
+            Tableau des transferts ({filtered.length})
           </h3>
           <p className="text-sm text-muted-foreground mt-1">
             Direction d'origine → Service origine → Transfert → Direction
@@ -393,7 +395,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Référence</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction d'origine</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service d'origine</th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service destinataire</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction destinataire</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Matériel</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Quantité</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Date</th>
@@ -410,8 +412,8 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       {records.length === 0
-                        ? "Aucune affectation — créez la première avec « + Nouvelle affectation »."
-                        : "Aucune affectation ne correspond aux critères."}
+                        ? "Aucun transfert — créez le premier avec « + Nouveau transfert »."
+                        : "Aucun transfert ne correspond aux critères."}
                     </td>
                   </tr>
                 ) : (
@@ -457,6 +459,7 @@ export function AffectationsPage({ user }: AffectationsPageProps) {
                         <td className="py-3 px-3">
                           <span
 title={`${count}/${attendues} validations`}
+title={`${count}/${attendues} validations`}
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono ${
                               count >= attendues
                                 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
@@ -498,7 +501,7 @@ title={`${count}/${attendues} validations`}
                 : `${startIndex + 1}-${Math.min(
                     startIndex + PAGE_SIZE,
                     filtered.length
-                  )} sur ${filtered.length} affectations`}
+                  )} sur ${filtered.length} transferts`}
             </div>
             <div className="flex items-center gap-2">
               <button

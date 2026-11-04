@@ -573,7 +573,7 @@ export async function genererPdfOrdreEntree(
   doc.text(`Statut : ${textePdf(ordre.statut)} (${ordre.nbSignatures}/3)`, PDF_MARGE + 36, cur + 13);
   doc.text(`Référence : ${textePdf(ordre.reference)}`, PDF_MARGE + 36, cur + 18);
   doc.text(
-    `Édité le : ${dateFr(new Date().toISOString())} — ComptaMatière`,
+    `Édité le : ${dateFr(new Date().toISOString())} — AssetTrack`,
     PDF_MARGE + 36,
     cur + 23
   );
@@ -965,7 +965,7 @@ export async function genererExcelOrdreEntree(
     `B${ligne}:J${ligne}`,
     `Le scan du QR Code identifie l'entrée ${ordre.reference} et permet de consulter ses informations selon les permissions. La validation exige une authentification et un rôle habilité (aucune signature électronique).\n\nÉdité le ${dateFr(
       new Date().toISOString()
-    )} — ComptaMatière`,
+    )} — AssetTrack`,
     { font: { size: 9 } }
   );
   ws.getRow(ligne).height = 62;

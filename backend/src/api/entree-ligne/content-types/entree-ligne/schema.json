@@ -26,6 +26,9 @@
     "numero_ordre": {
       "type": "integer"
     },
+    "numero": {
+      "type": "string"
+    },
     "designation": {
       "type": "string"
     },

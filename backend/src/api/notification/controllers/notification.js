@@ -53,9 +53,22 @@ module.exports = {
     // déclenchait une reconnexion du client toutes les 3 secondes et
     // empêchait toute notification push.
     ctx.respond = false;
+    ctx.res.flushHeaders();
 
     // Message de bienvenue pour valider l'ouverture du canal.
     ctx.res.write('event: connected\ndata: {"status":"ok","userId":' + JSON.stringify(userId) + '}\n\n');
+
+    const heartbeat = setInterval(() => {
+      if (ctx.res.writableEnded || ctx.res.destroyed) {
+        clearInterval(heartbeat);
+        return;
+      }
+
+      ctx.res.write(': keep-alive\n\n');
+    }, 25000);
+
+    ctx.res.on('close', () => clearInterval(heartbeat));
+    ctx.res.on('error', () => clearInterval(heartbeat));
 
     // Enregistre le flux pour cet utilisateur (retrait auto à la fermeture).
     sseRegister(userId, ctx.res);

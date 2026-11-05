@@ -1,9 +1,9 @@
 import React, { useState } from "react";
 import { Eye, EyeOff, LogIn, Loader2, Users, Sun, Moon } from "lucide-react";
 import { User as UserType } from "../App";
-import logoMtefop from "../../assets/LogoMETFOP.png";
-import logo from "../../assets/logo.png";
-import bgPhoto from "../../assets/METFOP.jpg";
+const logoMtefop = new URL("../../assets/LogoMETFOP.png", import.meta.url).href;
+const logo = new URL("../../assets/logo.png", import.meta.url).href;
+const bgPhoto = new URL("../../assets/METFOP.jpg", import.meta.url).href;
 import { strapiLogin, fetchSessionRole, setStrapiSession } from "../lib/api";
 import { mapStrapiUser } from "../lib/session";
 

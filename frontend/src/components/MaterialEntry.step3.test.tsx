@@ -19,24 +19,27 @@ function donneesTest(): ReceptionData {
     articles: [
       {
         id: "ligne-1",
+        numero: "ART-001",
         designation: "Clavier AZERTY",
-        referenceNomenclature: "NOM-001",
+        nomenclature: "05",
         quantiteCommandee: 10,
         quantiteLivree: 10,
         prixUnitaire: 25000,
       },
       {
         id: "ligne-2",
+        numero: "ART-002",
         designation: "Souris sans fil",
-        referenceNomenclature: "NOM-002",
+        nomenclature: "05",
         quantiteCommandee: 25,
         quantiteLivree: 25,
         prixUnitaire: 8000,
       },
       {
         id: "ligne-3",
+        numero: "ART-003",
         designation: "Écran 24 pouces",
-        referenceNomenclature: "NOM-003",
+        nomenclature: "05",
         quantiteCommandee: 5,
         quantiteLivree: 5,
         prixUnitaire: 120000,
@@ -77,9 +80,7 @@ function montantAriary(valeur: number): string {
   return valeur.toLocaleString("fr-MG").replace(/\s/g, " ") + " Ar";
 }
 
-/** La carte « Détails des articles » est la seule à contenir l'en-tête
- *  « Réf. Nomenclature » : la table du PV (étape 4) en a un aussi mais elle
- *  n'est pas rendue ici. */
+/** Carte « Détails des articles » du contrôle logistique. */
 function tableArticles(): HTMLElement {
   return screen.getByRole("table", {
     name: /détails des articles/i,
@@ -109,10 +110,11 @@ describe("Step3SignatureLogistique — enrichissement chef logistique", () => {
     // 1 en-tête + 3 articles + 1 pied de tableau (TOTAL GÉNÉRAL)
     expect(lignes).toHaveLength(5);
 
-    // Colonnes : celles du PV (étape 4) + les 2 ajoutées pour ce rôle.
+    // Colonnes : nomenclature et numéro affichés avant les données de l'article.
     for (const entete of [
+      "Nomenclature",
       "Désignation",
-      "Réf. Nomenclature",
+      "Numéro",
       "Quantité",
       "Prix unit.",
       "Valeur",
@@ -122,10 +124,11 @@ describe("Step3SignatureLogistique — enrichissement chef logistique", () => {
       expect(within(table).getByRole("columnheader", { name: entete })).toBeTruthy();
     }
 
-    // Détail ligne par ligne : désignation, réf, quantité, prix, valeur
+    // Détail ligne par ligne : nomenclature, désignation, numéro, quantité, prix, valeur
     const ligne1 = lignes[1];
+    expect(within(ligne1).getByText("05")).toBeTruthy();
     expect(within(ligne1).getByText("Clavier AZERTY")).toBeTruthy();
-    expect(within(ligne1).getByText("NOM-001")).toBeTruthy();
+    expect(within(ligne1).getByText("ART-001")).toBeTruthy();
     expect(within(ligne1).getByText("10")).toBeTruthy();
     expect(within(ligne1).getByText(montantAriary(25000))).toBeTruthy();
     expect(within(ligne1).getByText(montantAriary(250000))).toBeTruthy();

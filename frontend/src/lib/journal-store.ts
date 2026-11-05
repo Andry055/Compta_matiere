@@ -47,6 +47,9 @@ export function generateSequentialJournalId(): string {
 
 /** Correspondance code nomenclature → espèce (catégorie) du matériel. */
 const ESPECE_BY_CODE: Record<string, string> = {
+  "03": "Mobilier",
+  "05": "Matériel, véhicules et informatique",
+  "10": "Matériel fixe",
   INFO: "Informatique",
   IMPR: "Bureautique",
   BUR: "Bureautique",
@@ -54,10 +57,10 @@ const ESPECE_BY_CODE: Record<string, string> = {
   COMM: "Communication",
 };
 
-/** Dérive l'espèce depuis la référence nomenclature (ex. NOM-INFO-001 → Informatique). */
-function deriveEspece(referenceNomenclature: string): string {
-  const parts = referenceNomenclature.split("-");
-  const code = (parts.length >= 2 ? parts[1] : referenceNomenclature).trim();
+/** Dérive l'espèce depuis le code de nomenclature, en gardant les anciens formats texte. */
+function deriveEspece(nomenclature: string): string {
+  const parts = nomenclature.split("-");
+  const code = (parts.length >= 2 ? parts[1] : nomenclature).trim();
   if (!code) return "Divers";
   return ESPECE_BY_CODE[code.toUpperCase()] ?? code;
 }
@@ -139,9 +142,9 @@ export function appendJournalEntryFromReception(
           nom: data.fournisseur || "Fournisseur non renseigné",
           reference: data.numeroBL,
         },
-        numeroNomenclature: article.referenceNomenclature,
+        numeroNomenclature: article.nomenclature || "",
         designation: article.designation,
-        espece: deriveEspece(article.referenceNomenclature),
+        espece: deriveEspece(article.nomenclature || ""),
         uniteNombre: article.quantiteLivree,
         prixUnitaire: article.prixUnitaire,
         valeurTotale: article.quantiteLivree * article.prixUnitaire,

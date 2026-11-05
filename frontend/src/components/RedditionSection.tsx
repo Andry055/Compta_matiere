@@ -56,9 +56,11 @@ function dateFr(iso: string | null): string {
 
 interface RedditionSectionProps {
   user?: User
+  requestedTab?: RedditionOnglet
+  onTabChange?: (tab: RedditionOnglet) => void
 }
 
-type Onglet =
+export type RedditionOnglet =
   | "recapitulation"
   | "etat-appreciatif"
   | "inventaire"
@@ -67,7 +69,7 @@ type Onglet =
   | "bordereau"
   | "cloture"
 
-const ONGLETS: { id: Onglet; label: string }[] = [
+const ONGLETS: { id: RedditionOnglet; label: string }[] = [
   { id: "recapitulation", label: "Récapitulation" },
   { id: "etat-appreciatif", label: "État appréciatif" },
   { id: "inventaire", label: "Inventaire annuel" },
@@ -82,11 +84,17 @@ const ONGLETS: { id: Onglet; label: string }[] = [
  * Documents annuels officiels calculés depuis la base (aucune saisie).
  * Accès : dépositaire et comptable.
  */
-export function RedditionSection({ user }: RedditionSectionProps) {
+export function RedditionSection({
+  user,
+  requestedTab,
+  onTabChange,
+}: RedditionSectionProps) {
   const anneeCourante = new Date().getFullYear()
   const annees = Array.from({ length: 10 }, (_, i) => anneeCourante - i)
 
-  const [onglet, setOnglet] = useState<Onglet>("recapitulation")
+  const [onglet, setOnglet] = useState<RedditionOnglet>(
+    requestedTab || "recapitulation"
+  )
   const [annee, setAnnee] = useState(anneeCourante)
 
   const [recap, setRecap] = useState<Recapitulation | null>(null)
@@ -98,33 +106,63 @@ export function RedditionSection({ user }: RedditionSectionProps) {
   const [loading, setLoading] = useState(false)
   const [erreur, setErreur] = useState<string | null>(null)
 
+  useEffect(() => {
+    if (requestedTab) setOnglet(requestedTab)
+  }, [requestedTab])
+
   const charger = useCallback(async () => {
     setLoading(true)
     setErreur(null)
-    if (onglet === "recapitulation") {
-      const data = await fetchRecapitulation(annee)
-      setRecap(data)
-    } else if (onglet === "etat-appreciatif") {
-      const data = await fetchEtatAppreciatif(annee)
-      setEtat(data)
-    } else if (onglet === "grand-livre") {
-      const inv = inventaire ?? (await fetchInventaire(annee))
-      if (!inventaire && inv) setInventaire(inv)
-      const premier = inv?.sections.flatMap((s) => s.articles)[0]
-      const cible = materielChoisi || premier?.materielId || ""
-      if (cible) {
-        const data = await fetchGrandLivre(cible, annee)
-        setGrandLivre(data)
-        if (!materielChoisi && cible) setMaterielChoisi(cible)
-      } else {
-        setGrandLivre(null)
+    try {
+      if (onglet === "recapitulation") {
+        const data = await fetchRecapitulation(annee)
+        if (!data) throw new Error("Impossible de charger la récapitulation depuis le serveur.")
+        setRecap(data)
+      } else if (onglet === "etat-appreciatif") {
+        const data = await fetchEtatAppreciatif(annee)
+        if (!data) throw new Error("Impossible de charger l'état appréciatif depuis le serveur.")
+        setEtat(data)
+      } else if (
+        onglet === "inventaire" ||
+        onglet === "grand-livre" ||
+        onglet === "pv-recensement" ||
+        onglet === "cloture"
+      ) {
+        const inv = await fetchInventaire(annee)
+        if (!inv) throw new Error("Impossible de charger l'inventaire depuis le serveur.")
+        setInventaire(inv)
+
+        if (onglet === "grand-livre") {
+          const premier = inv.sections.flatMap((s) => s.articles)[0]
+          const cible = materielChoisi || premier?.materielId || ""
+          if (cible) {
+            const data = await fetchGrandLivre(cible, annee)
+            if (!data) throw new Error("Impossible de charger la fiche de stock depuis le serveur.")
+            setGrandLivre(data)
+            if (!materielChoisi) setMaterielChoisi(cible)
+          } else {
+            setGrandLivre(null)
+          }
+        } else if (onglet === "cloture") {
+          const data = await fetchBordereau(annee)
+          if (!data) throw new Error("Impossible de charger le bordereau depuis le serveur.")
+          setBordereau(data)
+        }
+      } else if (onglet === "bordereau") {
+        const data = await fetchBordereau(annee)
+        if (!data) throw new Error("Impossible de charger le bordereau depuis le serveur.")
+        setBordereau(data)
       }
-    } else if (onglet === "bordereau") {
-      const data = await fetchBordereau(annee)
-      setBordereau(data)
+    } catch (error) {
+      setErreur(
+        error instanceof Error
+          ? error.message
+          : "Une erreur est survenue pendant la communication avec le serveur."
+      )
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
-  }, [onglet, annee, materielChoisi, inventaire])
+  }, [onglet, annee, materielChoisi])
 
   useEffect(() => {
     charger()
@@ -152,7 +190,7 @@ export function RedditionSection({ user }: RedditionSectionProps) {
       : false
 
   return (
-    <div className="cm-panel cm-panel-solid rounded-lg">
+    <div id="reddition-section" className="cm-panel cm-panel-solid rounded-lg">
       {/* En-tête */}
       <div className="p-4 sm:p-6 border-b border-border">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
@@ -189,7 +227,10 @@ export function RedditionSection({ user }: RedditionSectionProps) {
           {ONGLETS.map((o) => (
             <button
               key={o.id}
-              onClick={() => setOnglet(o.id)}
+              onClick={() => {
+                setOnglet(o.id)
+                onTabChange?.(o.id)
+              }}
               className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${
                 onglet === o.id
                   ? "bg-primary text-primary-foreground border-primary"
@@ -208,6 +249,22 @@ export function RedditionSection({ user }: RedditionSectionProps) {
           <div className="flex items-center justify-center gap-3 py-10 text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />
             <span className="text-sm">Chargement des données…</span>
+          </div>
+        ) : erreur ? (
+          <div
+            role="alert"
+            className="text-center py-10 text-sm text-destructive"
+          >
+            <p>
+              {erreur} Vérifiez la connexion au backend et vos droits d'accès.
+            </p>
+            <button
+              type="button"
+              onClick={() => void charger()}
+              className="mt-3 rounded-lg border border-border px-3 py-1.5 text-foreground hover:bg-muted"
+            >
+              Réessayer
+            </button>
           </div>
         ) : donneesVides ? (
           <div className="text-center py-10 text-sm text-muted-foreground">

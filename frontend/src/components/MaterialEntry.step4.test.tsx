@@ -17,8 +17,9 @@ function donneesTest(): ReceptionData {
     articles: [
       {
         id: "ligne-1",
+        numero: "ART-001",
         designation: "Clavier AZERTY",
-        referenceNomenclature: "NOM-001",
+        nomenclature: "05",
         quantiteCommandee: 10,
         quantiteLivree: 10,
         prixUnitaire: 25000,

@@ -317,6 +317,7 @@ const UPLOAD_ACTIONS = [
 // via utils/rapportsGuard.js).
 // ---------------------------------------------------------------------------
 const RAPPORT_ACTIONS = [
+  'api::rapport.rapport.statistiques',
   'api::rapport.rapport.recapitulation',
   'api::rapport.rapport.recapitulations',
   'api::rapport.rapport.etatAppreciatif',

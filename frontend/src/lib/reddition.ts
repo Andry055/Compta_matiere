@@ -2,6 +2,7 @@
 // REDDITION DE COMPTE — client des rapports annuels
 //
 // Consomme les endpoints lecture seule du backend :
+//   GET /api/rapports/statistiques
 //   GET /api/rapports/recapitulation?annee=AAAA
 //   GET /api/rapports/recapitulations?depuis=AAAA&jusqu=AAAA
 //   GET /api/rapports/etat-appreciatif?annee=AAAA
@@ -144,6 +145,13 @@ export interface Bordereau {
   totalFactures: number;
 }
 
+export interface RapportStatistiques {
+  materiels: number;
+  entrees: number;
+  sorties: number;
+  directions: number;
+}
+
 /* ─────────────────────────── Appels API ─────────────────────────── */
 
 async function getRapport<T>(path: string, params: Record<string, string | number>): Promise<T | null> {
@@ -153,6 +161,10 @@ async function getRapport<T>(path: string, params: Record<string, string | numbe
   } catch {
     return null;
   }
+}
+
+export function fetchRapportStatistiques(): Promise<RapportStatistiques | null> {
+  return getRapport("/api/rapports/statistiques", {});
 }
 
 export function fetchRecapitulation(annee: number): Promise<Recapitulation | null> {

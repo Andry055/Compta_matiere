@@ -1,104 +1,8 @@
-import { useState } from "react"
-import { ArrowUpDown, ArrowUp, ArrowDown, Search, Filter, Calendar, Download } from "lucide-react"
-
-interface Movement {
-  id: number
-  equipment: string
-  equipmentId: number
-  serialNumber: string
-  type: 'Entrée' | 'Sortie'
-  quantity: number
-  department: string
-  agent: string
-  date: string
-  time: string
-  reason: string
-  status: 'Validé' | 'En attente' | 'Annulé'
-  approver?: string
-  notes?: string
-}
-
-const mockMovements: Movement[] = [
-  {
-    id: 1,
-    equipment: "Ordinateur portable HP EliteBook",
-    equipmentId: 1,
-    serialNumber: "HP240501A",
-    type: "Entrée",
-    quantity: 1,
-    department: "IT - Développement",
-    agent: "Marie Dubois",
-    date: "2025-01-20",
-    time: "14:30",
-    reason: "Nouvelle attribution",
-    status: "Validé",
-    approver: "Jean Directeur",
-    notes: "Attribution pour nouveau projet",
-  },
-  {
-    id: 2,
-    equipment: "Clavier mécanique Logitech",
-    equipmentId: 2,
-    serialNumber: "LG789456",
-    type: "Sortie",
-    quantity: 1,
-    department: "RH - Recrutement",
-    agent: "Pierre Martin",
-    date: "2025-01-20",
-    time: "10:15",
-    reason: "Transfert Direction",
-    status: "En attente",
-    notes: "Transfert vers service comptabilité",
-  },
-  {
-    id: 3,
-    equipment: 'Écran Dell UltraSharp 24"',
-    equipmentId: 3,
-    serialNumber: "DL987321",
-    type: "Sortie",
-    quantity: 1,
-    department: "Finance - Comptabilité",
-    agent: "Sophie Bernard",
-    date: "2025-01-19",
-    time: "16:45",
-    reason: "Maintenance",
-    status: "Validé",
-    approver: "Claire Manager",
-    notes: "Défaillance écran - réparation",
-  },
-  {
-    id: 4,
-    equipment: "Imprimante laser Canon",
-    equipmentId: 4,
-    serialNumber: "CN445678",
-    type: "Entrée",
-    quantity: 1,
-    department: "Finance - Comptabilité",
-    agent: "Antoine Rousseau",
-    date: "2025-01-19",
-    time: "09:20",
-    reason: "Retour maintenance",
-    status: "Validé",
-    approver: "Claire Manager",
-    notes: "Maintenance terminée - remise en service",
-  },
-  {
-    id: 5,
-    equipment: "Téléphone IP Cisco",
-    equipmentId: 5,
-    serialNumber: "CS789012",
-    type: "Entrée",
-    quantity: 1,
-    department: "Commercial - Ventes",
-    agent: "Lucie Moreau",
-    date: "2025-01-18",
-    time: "11:30",
-    reason: "Nouvel équipement",
-    status: "Validé",
-    approver: "Marc Superviseur",
-    notes: "Achat pour extension équipe",
-  },
-];
+import { useEffect, useState } from "react"
+import { createPortal } from "react-dom"
+import { ArrowUpDown, ArrowUp, ArrowDown, Search, Download, X } from "lucide-react"
+import { fetchMouvements, MouvementRecord } from "../lib/api"
+import { Message } from "./ui/message"
 
 export function Movements() {
   const [searchTerm, setSearchTerm] = useState("")
@@ -107,12 +11,40 @@ export function Movements() {
   const [dateFilter, setDateFilter] = useState("")
   const [showDetails, setShowDetails] = useState<number | null>(null)
 
-  const filteredMovements = mockMovements.filter(movement => {
-    const matchesSearch = movement.equipment.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         movement.serialNumber.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         movement.agent.toLowerCase().includes(searchTerm.toLowerCase())
+  // Données RÉELLES : traces lues en base (GET /api/mouvements). Aucune liste
+  // de démonstration n'est affichée — une panne du backend est signalée, pas
+  // masquée par des mouvements fictifs.
+  const [movements, setMovements] = useState<MouvementRecord[]>([])
+  const [chargement, setChargement] = useState(true)
+  const [erreur, setErreur] = useState(false)
+
+  useEffect(() => {
+    let annule = false
+    fetchMouvements().then((data) => {
+      if (annule) return
+      if (data) {
+        setMovements(data)
+        setErreur(false)
+      } else {
+        setMovements([])
+        setErreur(true)
+      }
+      setChargement(false)
+    })
+    return () => {
+      annule = true
+    }
+  }, [])
+
+  const filteredMovements = movements.filter((movement) => {
+    const matchesSearch =
+      movement.equipement.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      movement.agent.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      movement.reference.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      movement.action.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesType = typeFilter === "Tous" || movement.type === typeFilter
-    const matchesStatus = statusFilter === "Tous" || movement.status === statusFilter
+    const matchesStatus =
+      statusFilter === "Tous" || movement.statut === statusFilter
     const matchesDate = !dateFilter || movement.date === dateFilter
     return matchesSearch && matchesType && matchesStatus && matchesDate
   })
@@ -127,18 +59,18 @@ export function Movements() {
   }
 
   const getTypeIcon = (type: string) => {
-    return type === 'Entrée' ? ArrowUp : ArrowDown
+    return type === 'Arrivée matériel' ? ArrowUp : ArrowDown
   }
 
   const getTypeColor = (type: string) => {
-    return type === 'Entrée' 
+    return type === 'Arrivée matériel'
       ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400'
       : 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400'
   }
 
-  const totalEntries = mockMovements.filter(m => m.type === 'Entrée').length
-  const totalExits = mockMovements.filter(m => m.type === 'Sortie').length
-  const pendingCount = mockMovements.filter(m => m.status === 'En attente').length
+  const totalEntries = movements.filter(m => m.type === 'Arrivée matériel').length
+  const totalExits = movements.filter(m => m.type === 'Sortie').length
+  const pendingCount = movements.filter(m => m.statut === 'En attente').length
 
   return (
     <div className="p-6 space-y-6">
@@ -149,7 +81,8 @@ export function Movements() {
             Gestion des Mouvements
           </h1>
           <p className="text-muted-foreground">
-            Suivi des entrées et sorties d'équipements
+            Suivi des entrées et sorties d'équipements — traces enregistrées en
+            base
           </p>
         </div>
         <button className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
@@ -158,13 +91,23 @@ export function Movements() {
         </button>
       </div>
 
+      {erreur && (
+        <Message variant="danger" size="sm">
+          Mouvements illisibles : le backend n'a pas répondu (session expirée ou
+          serveur injoignable). Aucune trace n'est affichée pour éviter de
+          présenter des données qui ne viendraient pas de la base.
+        </Message>
+      )}
+
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
         <div className="cm-panel cm-panel-solid rounded-lg p-4">
           <div className="flex items-center gap-3">
             <ArrowUp className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
-              <div className="text-sm text-muted-foreground">Total Entrées</div>
+              <div className="text-sm text-muted-foreground">
+                Total Arrivées matériel
+              </div>
               <div className="text-xl text-card-foreground">{totalEntries}</div>
             </div>
           </div>
@@ -188,7 +131,7 @@ export function Movements() {
                 Total Mouvements
               </div>
               <div className="text-xl text-card-foreground">
-                {mockMovements.length}
+                {movements.length}
               </div>
             </div>
           </div>
@@ -227,7 +170,7 @@ export function Movements() {
               className="px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring"
             >
               <option value="Tous">Tous types</option>
-              <option value="Entrée">Entrées</option>
+              <option value="Arrivée matériel">Arrivée matériel</option>
               <option value="Sortie">Sorties</option>
             </select>
             <select
@@ -269,9 +212,6 @@ export function Movements() {
                     Équipement
                   </th>
                   <th className="text-left py-3 px-4 text-sm text-muted-foreground">
-                    N° Série
-                  </th>
-                  <th className="text-left py-3 px-4 text-sm text-muted-foreground">
                     Direction
                   </th>
                   <th className="text-left py-3 px-4 text-sm text-muted-foreground">
@@ -289,6 +229,22 @@ export function Movements() {
                 </tr>
               </thead>
               <tbody>
+                {filteredMovements.length === 0 && (
+                  <tr>
+                    <td
+                      colSpan={7}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      {chargement
+                        ? "Chargement des mouvements depuis le serveur..."
+                        : erreur
+                          ? "Mouvements indisponibles (backend injoignable)."
+                          : movements.length === 0
+                            ? "Aucun mouvement enregistré en base pour le moment."
+                            : "Aucun mouvement ne correspond aux critères."}
+                    </td>
+                  </tr>
+                )}
                 {filteredMovements.map((movement) => {
                   const TypeIcon = getTypeIcon(movement.type);
                   return (
@@ -309,13 +265,10 @@ export function Movements() {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-sm text-card-foreground max-w-[200px] truncate">
-                        {movement.equipment}
-                      </td>
-                      <td className="py-3 px-4 text-sm text-card-foreground font-mono">
-                        {movement.serialNumber}
+                        {movement.equipement}
                       </td>
                       <td className="py-3 px-4 text-sm text-card-foreground">
-                        {movement.department}
+                        {movement.direction || "—"}
                       </td>
                       <td className="py-3 px-4 text-sm text-card-foreground">
                         {movement.agent}
@@ -324,17 +277,17 @@ export function Movements() {
                         <div>
                           <div>{movement.date}</div>
                           <div className="text-xs text-muted-foreground">
-                            {movement.time}
+                            {movement.heure}
                           </div>
                         </div>
                       </td>
                       <td className="py-3 px-4">
                         <span
                           className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${getStatusColor(
-                            movement.status
+                            movement.statut
                           )}`}
                         >
-                          {movement.status}
+                          {movement.statut}
                         </span>
                       </td>
                       <td className="py-3 px-4">
@@ -346,7 +299,7 @@ export function Movements() {
                           }
                           className="text-xs text-primary hover:bg-primary/10 px-2 py-1 rounded transition-colors"
                         >
-                          {showDetails === movement.id ? "Masquer" : "Détails"}
+                          Détails
                         </button>
                       </td>
                     </tr>
@@ -356,58 +309,160 @@ export function Movements() {
             </table>
           </div>
 
-          {/* Movement Details */}
-          {showDetails && (
-            <div className="mt-6 p-4 bg-muted/30 rounded-lg border">
-              {filteredMovements
-                .filter((movement) => movement.id === showDetails)
-                .map((movement) => (
-                  <div key={movement.id}>
-                    <h4 className="text-lg mb-3 text-card-foreground">
-                      Détails du mouvement #{movement.id}
-                    </h4>
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <div className="text-sm text-muted-foreground mb-1">
-                          Raison
-                        </div>
-                        <div className="text-card-foreground">
-                          {movement.reason}
-                        </div>
-                      </div>
-                      <div>
-                        <div className="text-sm text-muted-foreground mb-1">
-                          Quantité
-                        </div>
-                        <div className="text-card-foreground">
-                          {movement.quantity}
-                        </div>
-                      </div>
-                      {movement.approver && (
-                        <div>
-                          <div className="text-sm text-muted-foreground mb-1">
-                            Approuvé par
-                          </div>
-                          <div className="text-card-foreground">
-                            {movement.approver}
-                          </div>
-                        </div>
-                      )}
-                      {movement.notes && (
-                        <div className="md:col-span-2">
-                          <div className="text-sm text-muted-foreground mb-1">
-                            Notes
-                          </div>
-                          <div className="text-card-foreground">
-                            {movement.notes}
-                          </div>
-                        </div>
-                      )}
+          {/* Détail de la trace + de la PIÈCE liée (arrivée matériel ou sortie) */}
+          {(() => {
+            const movement = movements.find((m) => m.id === showDetails)
+            if (!movement) return null
+            const piece = movement.piece
+            const estArrivee = movement.type === "Arrivée matériel"
+            // PORTAL : la modale est rendue sur `document.body`. Dans la carte
+            // `.cm-panel`, le `backdrop-filter` crée un bloc conteneur qui
+            // réduisait le `position: fixed` à la carte — la fiche s'ouvrait
+            // alors hors de vue (ou pas du tout à l'écran).
+            return createPortal(
+              <div className="fixed inset-0 bg-black/50 flex items-center justify-center p-4 z-50">
+                <div className="cm-modal border bg-popover w-full max-w-3xl max-h-[90vh] overflow-y-auto">
+                  <div className="flex items-start justify-between p-6 border-b border-border">
+                    <div>
+                      <h3 className="text-lg text-card-foreground flex items-center gap-2">
+                        <ArrowUpDown className="h-5 w-5 text-primary" />
+                        Détails — <span className="font-mono">{movement.reference}</span>
+                      </h3>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {estArrivee
+                          ? "Arrivée matériel — trace et pièce d'entrée"
+                          : "Sortie — trace et pièce de sortie"}
+                      </p>
                     </div>
+                    <button
+                      onClick={() => setShowDetails(null)}
+                      className="text-muted-foreground hover:text-foreground transition-colors"
+                      aria-label="Fermer"
+                    >
+                      <X className="h-5 w-5" />
+                    </button>
                   </div>
-                ))}
-            </div>
-          )}
+
+                  <div className="p-6 space-y-6">
+                    {/* Trace de traçabilité */}
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      {[
+                        { label: "Type", value: movement.type },
+                        { label: "Action", value: movement.action },
+                        { label: "Agent", value: movement.agent },
+                        {
+                          label: "Date / heure",
+                          value: `${movement.date}${movement.heure ? ` ${movement.heure}` : ""}`,
+                        },
+                        { label: "Statut", value: movement.statut },
+                        { label: "Matériel", value: movement.equipement },
+                        { label: "Quantité", value: String(movement.quantite) },
+                        { label: "Direction", value: movement.direction || "—" },
+                      ].map((champ) => (
+                        <div key={champ.label}>
+                          <div className="text-sm text-muted-foreground mb-1">
+                            {champ.label}
+                          </div>
+                          <div className="text-card-foreground">{champ.value}</div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {movement.observations && (
+                      <div>
+                        <div className="text-sm text-muted-foreground mb-1">
+                          Observations
+                        </div>
+                        <div className="text-card-foreground">
+                          {movement.observations}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Pièce liée */}
+                    {piece ? (
+                      <div className="border-t border-border pt-4">
+                        <h4 className="text-base text-card-foreground mb-3">
+                          {estArrivee ? "Arrivée matériel" : "Sortie"} —{" "}
+                          <span className="font-mono">{piece.reference}</span>
+                        </h4>
+                        <div className="grid gap-4 sm:grid-cols-2 mb-4">
+                          {(estArrivee
+                            ? [
+                                { label: "Fournisseur", value: piece.fournisseur || "—" },
+                                { label: "Bon de livraison", value: piece.bonLivraison || "—" },
+                                { label: "Direction", value: piece.direction },
+                                { label: "Service", value: piece.service },
+                              ]
+                            : [
+                                { label: "Détenteur", value: piece.detenteur || "—" },
+                                { label: "Fonction", value: piece.detenteurFonction || "—" },
+                                { label: "Direction", value: piece.direction },
+                                { label: "Service", value: piece.service },
+                              ]
+                          ).map((champ) => (
+                            <div key={champ.label}>
+                              <div className="text-sm text-muted-foreground mb-1">
+                                {champ.label}
+                              </div>
+                              <div className="text-card-foreground">{champ.value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {piece.lignes.length > 0 && (
+                          <div className="overflow-x-auto border border-border rounded-lg">
+                            <table className="w-full">
+                              <thead>
+                                <tr className="border-b border-border bg-muted/20">
+                                  <th className="text-left py-2 px-3 text-xs text-muted-foreground">
+                                    Désignation
+                                  </th>
+                                  <th className="text-right py-2 px-3 text-xs text-muted-foreground">
+                                    Qté
+                                  </th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {piece.lignes.map((ligne, index) => (
+                                  <tr
+                                    key={index}
+                                    className="border-b border-border last:border-b-0"
+                                  >
+                                    <td className="py-2 px-3 text-sm text-card-foreground">
+                                      {ligne.designation}
+                                    </td>
+                                    <td className="py-2 px-3 text-sm text-card-foreground text-right">
+                                      {ligne.quantite}
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="border-t border-border pt-4 text-sm text-muted-foreground">
+                        Pièce liée non disponible : elle n'est pas lisible par
+                        votre rôle ou n'est plus accessible.
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex justify-end p-6 border-t border-border sticky bottom-0 bg-card">
+                    <button
+                      onClick={() => setShowDetails(null)}
+                      className="px-4 py-2 text-sm border border-border rounded-lg hover:bg-muted transition-colors"
+                    >
+                      Fermer
+                    </button>
+                  </div>
+                </div>
+              </div>,
+              document.body
+            )
+          })()}
         </div>
       </div>
     </div>

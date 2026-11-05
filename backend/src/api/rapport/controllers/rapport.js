@@ -111,6 +111,26 @@ async function chargerFicheMateriel(strapi, documentId) {
 
 module.exports = createCoreController('api::rapport.rapport', ({ strapi: app }) => ({
   /**
+   * GET /api/rapports/statistiques
+   * Nombre d'enregistrements réels utilisés par les rapports.
+   */
+  async statistiques(ctx) {
+    const refuse = await assertCanReadRapports(app, ctx);
+    if (refuse) return refuse;
+
+    const [materiels, entrees, sorties, directions] = await Promise.all([
+      app.db.query(MATERIEL_UID).count(),
+      app.db.query('api::entree.entree').count(),
+      app.db.query('api::sortie.sortie').count(),
+      app.db.query('api::direction.direction').count(),
+    ]);
+
+    ctx.body = {
+      data: { materiels, entrees, sorties, directions },
+    };
+  },
+
+  /**
    * GET /api/rapports/recapitulation?annee=AAAA
    * Récapitulation annuelle par nomenclature + TOTAUX + montants en lettres.
    */

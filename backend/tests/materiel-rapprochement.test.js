@@ -98,6 +98,19 @@ test('create-complete rattache la ligne au matériel fourni à la saisie (materi
   );
 });
 
+test('create-complete stocke le numéro saisi sur chaque ligne et conserve la référence historique', () => {
+  const schema = JSON.parse(lire(SCHEMA_LIGNE));
+  const source = lire(CONTROLEUR_ENTREE);
+
+  assert.strictEqual(schema.attributes.numero.type, 'string');
+  assert.match(
+    source,
+    /numero:\s*typeof ligne\.numero === 'string' \? ligne\.numero\.trim\(\) \|\| null : null/,
+    'le numéro saisi est normalisé puis persisté sur entree-ligne'
+  );
+  assert.ok(schema.attributes.reference, 'le champ historique est conservé');
+});
+
 test("appliquerImpactStock (3ᵉ signature) reste inchangé : unique et garde-fou", () => {
   const source = lire(CONTROLEUR_ENTREE);
   const bloc = source.slice(

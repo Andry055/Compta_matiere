@@ -899,6 +899,9 @@ export function Dashboard({ user }: { user?: User }) {
       <AllEquipmentModal
         isOpen={showAllEquipmentModal}
         onClose={() => setShowAllEquipmentModal(false)}
+        materials={materiels}
+        isLoading={live.isLoading}
+        isInitialError={isInitialError}
       />
     </div>
   );

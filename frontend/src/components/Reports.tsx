@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import { BarChart3, Download, FileText, Calendar, Filter, Search, TrendingUp, Package, ArrowUpDown, Users, Clipboard, Eye, Printer, Inbox, ArrowDownToLine, X } from "lucide-react"
 import { User } from "../App"
 import {
@@ -16,16 +16,22 @@ import {
   getStatutEntreeAffiche,
   getReferenceDate,
 } from "../lib/movements"
-import { RedditionSection } from "./RedditionSection"
+import {
+  RedditionSection,
+  type RedditionOnglet,
+} from "./RedditionSection"
+import {
+  fetchRapportStatistiques,
+  type RapportStatistiques,
+} from "../lib/reddition"
 
 interface ReportData {
   id: string;
   name: string;
-  type: "Mouvements" | "Équipements" | "Utilisateurs" | "Directions";
+  type: "Mouvements" | "Équipements";
   description: string;
-  lastGenerated: string;
-  records: number;
-  format: string[];
+  count: (stats: RapportStatistiques) => number;
+  tab: RedditionOnglet;
 }
 
 const availableReports: ReportData[] = [
@@ -34,62 +40,70 @@ const availableReports: ReportData[] = [
     name: "Rapport des Mouvements",
     type: "Mouvements",
     description: "Liste complète des entrées et sorties d'équipements",
-    lastGenerated: "2025-01-20 14:30",
-    records: 156,
-    format: ["PDF", "Excel", "CSV"],
+    count: (stats) => stats.entrees + stats.sorties,
+    tab: "etat-appreciatif",
   },
   {
     id: "equipment",
     name: "Inventaire des Équipements",
     type: "Équipements",
     description: "Registre complet de tous les équipements avec statut",
-    lastGenerated: "2025-01-20 09:15",
-    records: 4156,
-    format: ["PDF", "Excel", "CSV"],
+    count: (stats) => stats.materiels,
+    tab: "inventaire",
   },
   {
-    id: "users",
-    name: "Rapport Utilisateurs",
-    type: "Utilisateurs",
-    description: "Liste des utilisateurs actifs et leurs permissions",
-    lastGenerated: "2025-01-19 16:45",
-    records: 156,
-    format: ["PDF", "Excel"],
-  },
-  {
-    id: "departments",
-    name: "Structure Organisationnelle",
-    type: "Directions",
-    description: "Organisation des directions et affectations",
-    lastGenerated: "2025-01-18 11:20",
-    records: 12,
-    format: ["PDF", "Excel"],
-  },
-  {
-    id: "movements-monthly",
-    name: "Mouvements Mensuels",
+    id: "recapitulation",
+    name: "Récapitulation annuelle",
     type: "Mouvements",
-    description: "Synthèse des mouvements par mois",
-    lastGenerated: "2025-01-01 08:00",
-    records: 847,
-    format: ["PDF", "Excel", "CSV"],
-  },
-  {
-    id: "equipment-value",
-    name: "Valorisation des Équipements",
-    type: "Équipements",
-    description: "Rapport de valorisation et amortissement",
-    lastGenerated: "2025-01-15 14:20",
-    records: 4156,
-    format: ["PDF", "Excel"],
+    description: "Synthèse des entrées, sorties et soldes annuels",
+    count: (stats) => stats.entrees + stats.sorties,
+    tab: "recapitulation",
   },
 ];
 
 export function Reports({ user }: { user?: User }) {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState("Tous")
-  const [dateRange, setDateRange] = useState("30")
-  const [selectedReport, setSelectedReport] = useState<string | null>(null)
+  const [requestedTab, setRequestedTab] =
+    useState<RedditionOnglet>("recapitulation")
+  const [statistiques, setStatistiques] =
+    useState<RapportStatistiques | null>(null)
+  const [statistiquesErreur, setStatistiquesErreur] = useState<string | null>(
+    null
+  )
+  const [statistiquesEnChargement, setStatistiquesEnChargement] =
+    useState(true)
+
+  useEffect(() => {
+    if (user?.role === "demandeur") return
+    let active = true
+    setStatistiquesEnChargement(true)
+    setStatistiquesErreur(null)
+    void fetchRapportStatistiques()
+      .then((data) => {
+        if (!active) return
+        if (!data) {
+          setStatistiquesErreur(
+            "Les statistiques n'ont pas pu être chargées depuis le backend."
+          )
+          return
+        }
+        setStatistiques(data)
+      })
+      .catch(() => {
+        if (active) {
+          setStatistiquesErreur(
+            "Erreur de connexion au backend pendant le chargement des rapports."
+          )
+        }
+      })
+      .finally(() => {
+        if (active) setStatistiquesEnChargement(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [user?.role])
 
   // Espace Demandeur : rapports autorisés par le rôle
   if (user?.role === "demandeur") {
@@ -109,10 +123,6 @@ export function Reports({ user }: { user?: User }) {
         return ArrowUpDown;
       case "Équipements":
         return Package;
-      case "Utilisateurs":
-        return Users;
-      case "Directions":
-        return BarChart3;
       default:
         return FileText;
     }
@@ -124,29 +134,17 @@ export function Reports({ user }: { user?: User }) {
         return "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400";
       case "Équipements":
         return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-      case "Utilisateurs":
-        return "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400";
-      case "Directions":
-        return "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400";
       default:
         return "bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-400";
     }
   }
 
-  const handleExport = (reportId: string, format: string) => {
-    // Les exports réels (PDF/Excel) sont générés dans la section
-    // « Reddition de compte » ; ici, on ouvre l'aperçu du rapport demandé.
-    setSelectedReport(reportId)
+  const ouvrirRapport = (tab: RedditionOnglet) => {
+    setRequestedTab(tab)
+    document
+      .getElementById("reddition-section")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" })
   }
-
-  const totalReports = availableReports.length
-  const recentReports = availableReports.filter(r => {
-    const lastGen = new Date(r.lastGenerated)
-    const today = new Date()
-    const diffTime = Math.abs(today.getTime() - lastGen.getTime())
-    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-    return diffDays <= 7
-  }).length
 
   return (
     <div className="p-6 space-y-6">
@@ -160,14 +158,31 @@ export function Reports({ user }: { user?: User }) {
             Génération et export des rapports système
           </p>
         </div>
-        <button className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors">
+        <button
+          onClick={() => ouvrirRapport("recapitulation")}
+          className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition-colors"
+        >
           <FileText className="h-4 w-4" />
-          Rapport Personnalisé
+          Ouvrir les rapports officiels
         </button>
       </div>
 
       {/* Reddition de compte (dépositaire, comptable, logistique) */}
-      <RedditionSection user={user} />
+      <RedditionSection
+        user={user}
+        requestedTab={requestedTab}
+        onTabChange={setRequestedTab}
+      />
+
+      {statistiquesErreur && (
+        <div
+          role="alert"
+          className="rounded-lg border border-destructive/40 bg-destructive/5 p-4 text-sm text-destructive"
+        >
+          {statistiquesErreur} Vérifiez la connexion au backend et vos droits
+          d'accès aux rapports.
+        </div>
+      )}
 
       {/* Statistics Cards */}
       <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -176,9 +191,13 @@ export function Reports({ user }: { user?: User }) {
             <FileText className="h-8 w-8 p-2 bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400" />
             <div>
               <div className="text-sm text-muted-foreground">
-                Rapports Disponibles
+                Matériels en base
               </div>
-              <div className="text-xl text-card-foreground">{totalReports}</div>
+              <div className="text-xl text-card-foreground">
+                {statistiquesEnChargement
+                  ? "…"
+                  : (statistiques?.materiels.toLocaleString("fr-FR") ?? "—")}
+              </div>
             </div>
           </div>
         </div>
@@ -188,10 +207,12 @@ export function Reports({ user }: { user?: User }) {
             <Calendar className="h-8 w-8 p-2 bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400" />
             <div>
               <div className="text-sm text-muted-foreground">
-                Générés cette semaine
+                Entrées en base
               </div>
               <div className="text-xl text-card-foreground">
-                {recentReports}
+                {statistiquesEnChargement
+                  ? "…"
+                  : (statistiques?.entrees.toLocaleString("fr-FR") ?? "—")}
               </div>
             </div>
           </div>
@@ -202,12 +223,12 @@ export function Reports({ user }: { user?: User }) {
             <TrendingUp className="h-8 w-8 p-2 bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400" />
             <div>
               <div className="text-sm text-muted-foreground">
-                Total Enregistrements
+                Sorties en base
               </div>
               <div className="text-xl text-card-foreground">
-                {availableReports
-                  .reduce((sum, report) => sum + report.records, 0)
-                  .toLocaleString()}
+                {statistiquesEnChargement
+                  ? "…"
+                  : (statistiques?.sorties.toLocaleString("fr-FR") ?? "—")}
               </div>
             </div>
           </div>
@@ -218,9 +239,13 @@ export function Reports({ user }: { user?: User }) {
             <Download className="h-8 w-8 p-2 bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400" />
             <div>
               <div className="text-sm text-muted-foreground">
-                Exports ce mois
+                Directions en base
               </div>
-              <div className="text-xl text-card-foreground">47</div>
+              <div className="text-xl text-card-foreground">
+                {statistiquesEnChargement
+                  ? "…"
+                  : (statistiques?.directions.toLocaleString("fr-FR") ?? "—")}
+              </div>
             </div>
           </div>
         </div>
@@ -229,9 +254,9 @@ export function Reports({ user }: { user?: User }) {
       {/* Quick Actions */}
       <div className="cm-panel cm-panel-solid rounded-lg p-6">
         <h3 className="text-lg text-card-foreground mb-4">Actions Rapides</h3>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-2">
           <button
-            onClick={() => handleExport("movements", "PDF")}
+            onClick={() => ouvrirRapport("etat-appreciatif")}
             className="flex items-center gap-3 p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg hover:bg-blue-100 dark:hover:bg-blue-900/30 transition-colors"
           >
             <ArrowUpDown className="h-5 w-5 text-blue-600 dark:text-blue-400" />
@@ -240,13 +265,13 @@ export function Reports({ user }: { user?: User }) {
                 Mouvements Aujourd'hui
               </div>
               <div className="text-xs text-blue-600 dark:text-blue-400">
-                Export PDF
+                Consulter et exporter depuis la base
               </div>
             </div>
           </button>
 
           <button
-            onClick={() => handleExport("equipment", "Excel")}
+            onClick={() => ouvrirRapport("inventaire")}
             className="flex items-center gap-3 p-4 bg-green-50 dark:bg-green-900/20 rounded-lg hover:bg-green-100 dark:hover:bg-green-900/30 transition-colors"
           >
             <Package className="h-5 w-5 text-green-600 dark:text-green-400" />
@@ -255,37 +280,7 @@ export function Reports({ user }: { user?: User }) {
                 Inventaire Complet
               </div>
               <div className="text-xs text-green-600 dark:text-green-400">
-                Export Excel
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleExport("users", "PDF")}
-            className="flex items-center gap-3 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg hover:bg-purple-100 dark:hover:bg-purple-900/30 transition-colors"
-          >
-            <Users className="h-5 w-5 text-purple-600 dark:text-purple-400" />
-            <div className="text-left">
-              <div className="text-sm text-purple-900 dark:text-purple-100">
-                Liste Utilisateurs
-              </div>
-              <div className="text-xs text-purple-600 dark:text-purple-400">
-                Export PDF
-              </div>
-            </div>
-          </button>
-
-          <button
-            onClick={() => handleExport("departments", "Excel")}
-            className="flex items-center gap-3 p-4 bg-orange-50 dark:bg-orange-900/20 rounded-lg hover:bg-orange-100 dark:hover:bg-orange-900/30 transition-colors"
-          >
-            <BarChart3 className="h-5 w-5 text-orange-600 dark:text-orange-400" />
-            <div className="text-left">
-              <div className="text-sm text-orange-900 dark:text-orange-100">
-                Organigramme
-              </div>
-              <div className="text-xs text-orange-600 dark:text-orange-400">
-                Export Excel
+                Consulter et exporter depuis la base
               </div>
             </div>
           </button>
@@ -314,18 +309,6 @@ export function Reports({ user }: { user?: User }) {
               <option value="Tous">Tous les types</option>
               <option value="Mouvements">Mouvements</option>
               <option value="Équipements">Équipements</option>
-              <option value="Utilisateurs">Utilisateurs</option>
-              <option value="Directions">Directions</option>
-            </select>
-            <select
-              value={dateRange}
-              onChange={(e) => setDateRange(e.target.value)}
-              className="px-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring"
-            >
-              <option value="7">7 derniers jours</option>
-              <option value="30">30 derniers jours</option>
-              <option value="90">90 derniers jours</option>
-              <option value="365">Cette année</option>
             </select>
           </div>
         </div>
@@ -368,25 +351,23 @@ export function Reports({ user }: { user?: User }) {
                       {report.type}
                     </span>
                     <span className="text-xs text-muted-foreground">
-                      {report.records.toLocaleString()} enregistrements
+                      {statistiquesEnChargement
+                        ? "Chargement…"
+                        : statistiquesErreur
+                        ? "Données indisponibles"
+                        : statistiques
+                        ? `${report.count(statistiques).toLocaleString("fr-FR")} enregistrements en base`
+                        : "Données indisponibles"}
                     </span>
                   </div>
 
-                  <div className="text-xs text-muted-foreground mb-3">
-                    Dernière génération: {report.lastGenerated}
-                  </div>
-
                   <div className="flex items-center gap-2">
-                    {report.format.map((format) => (
-                      <button
-                        key={format}
-                        onClick={() => handleExport(report.id, format)}
-                        className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
-                      >
-                        <Download className="h-3 w-3" />
-                        {format}
-                      </button>
-                    ))}
+                    <button
+                      onClick={() => ouvrirRapport(report.tab)}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
+                    >
+                      Consulter et exporter
+                    </button>
                   </div>
                 </div>
               );
@@ -623,19 +604,19 @@ function DemandeurReports({ user }: { user?: User }) {
   );
 
   const categories = useMemo(
-    ["Toutes", ...Array.from(new Set(baseRows.map((r) => r.categorie)))],
+    () => ["Toutes", ...Array.from(new Set(baseRows.map((r) => r.categorie)))],
     [baseRows]
   );
   const statuts = useMemo(
-    ["Tous", ...Array.from(new Set(baseRows.map((r) => r.statut)))],
+    () => ["Tous", ...Array.from(new Set(baseRows.map((r) => r.statut)))],
     [baseRows]
   );
   const directions = useMemo(
-    ["Toutes", ...Array.from(new Set(baseRows.map((r) => r.direction)))],
+    () => ["Toutes", ...Array.from(new Set(baseRows.map((r) => r.direction)))],
     [baseRows]
   );
   const services = useMemo(
-    ["Tous", ...Array.from(new Set(baseRows.map((r) => r.service)))],
+    () => ["Tous", ...Array.from(new Set(baseRows.map((r) => r.service)))],
     [baseRows]
   );
 

@@ -1,4 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react"
+import { toast } from "sonner";
 import {
   LayoutDashboard,
   ArrowDown,
@@ -29,7 +30,21 @@ import {
   clesAttendues,
   TransfertRecord,
 } from "../lib/transferts"
-import { fetchTransferts } from "../lib/api"
+import { fetchEntrees, fetchTransferts } from "../lib/api"
+import { compterNotifications } from "../lib/notificationEtapes"
+
+/** Rôles du circuit « Arrivée Matériel » : eux seuls reçoivent des pièces. */
+const ROLES_ARRIVEE_MATERIEL: AppRole[] = [
+  "magasinier",
+  "logistique",
+  "depositaire",
+]
+/** Libellé du rôle attendu, pour le pop-up. */
+const ACTION_ARRIVEE: Record<string, string> = {
+  magasinier: "à contrôler",
+  logistique: "à signer (chef de service 2)",
+  depositaire: "à valider (signature finale)",
+}
 
 const navItems = [
   {
@@ -80,12 +95,7 @@ const navItems = [
     key: "exits",
     description: "Suivi des sorties de matériels"
   },
-  {
-    title: "Réception physique",
-    icon: PackageCheck,
-    key: "reception",
-    description: "Réceptionner les matériels sortis"
-  },
+,
   {
     title: "Distribution",
     icon: Truck,
@@ -139,56 +149,29 @@ interface SimpleSidebarProps {
 }
 
 export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile = false, onClose }: SimpleSidebarProps) {
+  const [transfertsEnAttente, setTransfertsEnAttente] = useState(0)
+  // Pièces « Arrivée Matériel » qui attendent UNE ACTION de ce rôle (contrôle
+  // magasinier, signature logistique, validation dépositaire). Indicateur
+  // d'ÉTAT dérivé du serveur, comme le compteur de transferts : il ne se
+  // marque pas « lu », il se solde en traitant la pièce.
+  const [arriveesEnAttente, setArriveesEnAttente] = useState(0)
+  // Dernier compte connu, pour ne déclencher le pop-up que sur une NOUVELLE
+  // pièce (le compteur augmente), jamais à chaque rafraîchissement.
+  const dernierCompteArrivees = useRef<number | null>(null)
+
   // Fonctionnalité : filtrer les rubriques selon le rôle métier
   const userRole = (user?.role || 'depositaire') as AppRole
   const allowedPages = user?.role === 'admin'
     ? navItems.map((item) => item.key)
     : (ROLES_CONFIG[userRole]?.pages || navItems.map((item) => item.key))
-  // Choix explicite : les entrées « Distribution » et « Demandes » sont
-  // retirées DU SEUL menu de l'admin. Les rôles métier (magasinier,
-  // logistique, dépositaire…) gardent leur entrée et leurs libellés dédiés ;
-  // rien d'autre n'est modifié.
+  // La rubrique Distribution est retirée du menu de tous les rôles.
   const visibleItems = navItems.filter(
     (item) =>
       allowedPages.includes(item.key) &&
-      !(user?.role === 'admin' && (item.key === 'distribution' || item.key === 'requests'))
+      item.key !== 'distribution'
   )
 
   const roleLabel = ROLES_CONFIG[userRole]?.label || (user?.role === 'admin' ? 'Administrateur Système' : 'Personnel')
-
-  // Badge « Distribution » : total SERVEUR filtré (en_preparation +
-  // signature 1 absente), lu dans le store partagé — le SEUL sondage de
-  // l'app. Aucun intervalle local, aucun chargement du détail des ordres :
-  // le menu tourne donc aussi quand l'onglet Distribution est fermé.
-  const [sortiesCount, setSortiesCount] = useState(0)
-  const [isLoadingCount, setIsLoadingCount] = useState(false)
-  // Badge « Distribution » du CHEF LOGISTIQUE : total SERVEUR filtré
-  // (signatures 1 et 2 posées, 3 absente) — requête dédiée du sondage partagé,
-  // déclenchée uniquement quand ce rôle est monté.
-  const [countAAutoriser, setCountAAutoriser] = useState<number | null>(null)
-  const estLogistique = userRole === "logistique"
-  // Badge « Transferts » : nombre de transferts en attente de MA validation
-  // (dépositaire / logistique) — recalculé à chaque navigation de section.
-  const [transfertsEnAttente, setTransfertsEnAttente] = useState(0)
-
-  useEffect(() => {
-    if (!user) {
-      setSortiesCount(0)
-      setIsLoadingCount(false)
-      setCountAAutoriser(null)
-      return
-    }
-    const unsubscribe = sortiesActionsStore.subscribe((state) => {
-      setSortiesCount(state.totalEnPreparation ?? 0)
-      setIsLoadingCount(state.totalEnPreparation === null && !state.error)
-      setCountAAutoriser(state.totalAAutoriser)
-    })
-    const libererSon = sortiesActionsStore.acquire({ autorisation: estLogistique })
-    return () => {
-      unsubscribe()
-      libererSon()
-    }
-  }, [user, estLogistique])
 
   useEffect(() => {
     const role = user?.role
@@ -226,6 +209,53 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
     window.addEventListener("storage", onStorage)
     return () => window.removeEventListener("storage", onStorage)
   }, [user, activeSection])
+
+  // Badge « Arrivée Matériel » : nombre de pièces que CE rôle doit traiter.
+  //
+  // Le compteur est DÉRIVÉ des entrées serveur (mêmes règles de routage que le
+  // contrôleur : magasinier = pas encore contrôlée, logistique = contrôlée mais
+  // pas signée, dépositaire = les deux signatures posées mais pas la sienne).
+  // Il se met à jour à la navigation, au retour sur la fenêtre et par sondage :
+  // les signatures des autres rôles n'émettent pas d'événement SSE.
+  useEffect(() => {
+    const role = user?.role as AppRole | undefined
+    if (!user || !role || !ROLES_ARRIVEE_MATERIEL.includes(role)) {
+      setArriveesEnAttente(0)
+      dernierCompteArrivees.current = null
+      return
+    }
+    let annule = false
+
+    const recharger = async () => {
+      const entrees = await fetchEntrees()
+      // Backend injoignable : on garde le dernier compte connu plutôt que
+      // d'afficher « 0 », qui serait un faux rassurant.
+      if (annule || !entrees) return
+      const nombre = compterNotifications(role, entrees)
+      const precedent = dernierCompteArrivees.current
+      if (precedent !== null && nombre > precedent) {
+        toast.info(
+          `${nombre} pièce(s) ${ACTION_ARRIVEE[role]} — Arrivée Matériel`,
+          {
+            id: "arrivee-materiel",
+            description:
+              "Une nouvelle pièce vient d'entrer dans votre file de traitement.",
+          }
+        )
+      }
+      dernierCompteArrivees.current = nombre
+      setArriveesEnAttente(nombre)
+    }
+
+    recharger()
+    const minuteur = window.setInterval(recharger, 30000)
+    window.addEventListener("focus", recharger)
+    return () => {
+      annule = true
+      window.clearInterval(minuteur)
+      window.removeEventListener("focus", recharger)
+    }
+  }, [user?.id, user?.role, activeSection])
 
   return (
     <div className="cm-sidebar w-full flex flex-col h-full">
@@ -298,6 +328,13 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
                         {transfertsEnAttente}
                       </span>
                     )}
+                    {/* Badge « Arrivée Matériel » : pièces qui attendent MON action
+                        (contrôle magasinier, signature logistique, validation dépositaire). */}
+                    {item.key === "arrivee" && arriveesEnAttente > 0 && (
+                      <span className="flex-shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs text-white">
+                        {arriveesEnAttente}
+                      </span>
+                    )}
                   </div>
                   {item.description && (
                     <div className="text-xs text-sidebar-foreground/50 mt-0.5 truncate hidden sm:block">
@@ -307,20 +344,6 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
                           ? "Réceptions de votre direction"
                           : item.description}
                     </div>
-                  )}
-                  {/* Badge for Distribution menu item */}
-                  {item.key === "distribution" && (
-                    <span className="flex-shrink-0 rounded-full bg-red-500 px-2 py-0.5 text-xs text-white ms-2">
-                      {estLogistique ? (
-                        countAAutoriser !== null && countAAutoriser > 0 ? (
-                          countAAutoriser
-                        ) : null
-                      ) : isLoadingCount ? (
-                        <span className="animate-pulse">…</span>
-                      ) : sortiesCount > 0 ? (
-                        sortiesCount
-                      ) : null}
-                    </span>
                   )}
                 </div>
               </button>

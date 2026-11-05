@@ -147,6 +147,33 @@ function normaliser(texte) {
     .trim();
 }
 
+/**
+ * Champ texte OPTIONNEL du DÉTENTEUR (nom, fonction, IM, port).
+ *
+ * `null` quand l'écran n'envoie rien (ou une chaîne vide) : le champ n'est
+ * jamais obligatoire. Une valeur trop longue est REFUSÉE (400) plutôt que
+ * tronquée en silence.
+ *
+ * @returns {{ valeur: string|null, erreur: string|null }}
+ */
+function texteDetenteur(valeur, label, max) {
+  if (valeur === undefined || valeur === null || valeur === '') {
+    return { valeur: null, erreur: null };
+  }
+  if (typeof valeur !== 'string') {
+    return { valeur: null, erreur: `${label} doit être un texte.` };
+  }
+  const texte = valeur.trim();
+  if (!texte) return { valeur: null, erreur: null };
+  if (texte.length > max) {
+    return {
+      valeur: null,
+      erreur: `${label} limité à ${max} caractères maximum.`,
+    };
+  }
+  return { valeur: texte, erreur: null };
+}
+
 /** Date de demande : AAAA-MM-JJ, ou aujourd'hui si l'écran n'en envoie pas. */
 function dateValide(valeur) {
   if (typeof valeur === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(valeur.trim())) {
@@ -503,6 +530,22 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
     // 3. Direction et service : déduits du COMPTE, jamais de l'écran.
     const organigramme = await resoudreOrganigramme(app, user.department);
 
+    // 3 bis. Détenteur (nom, fonction, IM, port) : saisi par le demandeur,
+    // facultatif, borné en longueur.
+    const champsDetenteur = {
+      detenteur_nom: texteDetenteur(body.detenteur_nom, 'detenteur_nom', 150),
+      detenteur_fonction: texteDetenteur(
+        body.detenteur_fonction,
+        'detenteur_fonction',
+        150
+      ),
+      detenteur_im: texteDetenteur(body.detenteur_im, 'detenteur_im', 50),
+      detenteur_port: texteDetenteur(body.detenteur_port, 'detenteur_port', 50),
+    };
+    for (const champ of Object.values(champsDetenteur)) {
+      if (champ.erreur) return badRequest(ctx, champ.erreur);
+    }
+
     // 4. Charge utile en LISTE BLANCHE.
     const totalQuantite = lignes.reduce((somme, ligne) => somme + ligne.quantite, 0);
     const designations = lignes.map((ligne) => ligne.designation).filter(Boolean);
@@ -523,6 +566,11 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
       // ORGANIGRAMME : toujours celui du compte.
       direction: organigramme.direction ? organigramme.direction.documentId : null,
       service: organigramme.service ? organigramme.service.documentId : null,
+      // DÉTENTEUR : identité de la personne qui reçoit le matériel.
+      detenteur_nom: champsDetenteur.detenteur_nom.valeur,
+      detenteur_fonction: champsDetenteur.detenteur_fonction.valeur,
+      detenteur_im: champsDetenteur.detenteur_im.valeur,
+      detenteur_port: champsDetenteur.detenteur_port.valeur,
       // LIGNES : matériel du stock réel, quantité et motif.
       lignes: lignes.map((ligne) => ({ __component: 'demande.ligne', ...ligne })),
     };

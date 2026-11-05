@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   Package,
   Search,
@@ -24,11 +24,11 @@ import {
   Archive,
 } from "lucide-react";
 import { EquipmentActions } from "./EquipmentActions";
-import { User as UserType } from "../App";
+import { MaterialOption } from "../lib/api";
 
 interface EquipmentItem {
   [x: string]: any;
-  id: number;
+  id: number | string;
   name: string;
   serialNumber: string;
   category: string;
@@ -186,25 +186,53 @@ type SortDirection = "asc" | "desc";
 interface AllEquipmentModalProps {
   isOpen: boolean;
   onClose: () => void;
+  materials: MaterialOption[];
+  isLoading?: boolean;
+  isInitialError?: boolean;
 }
 
-// Mock current user - in real app this would come from props
-const mockCurrentUser: UserType = {
-  id: "1",
-  name: "Admin User",
-  email: "admin@comptamatiere.com",
-  role: "admin",
-  department: "IT",
-  permissions: [
-    "equipment.view",
-    "equipment.edit",
-    "equipment.delete",
-    "equipment.create",
-  ],
+const viewOnlyUser = {
+  id: "inventory-view",
+  name: "Consultation inventaire",
+  email: "",
+  role: "demandeur",
+  department: "",
+  permissions: [],
 };
 
-export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
-  const [equipment, setEquipment] = useState<EquipmentItem[]>(mockEquipment);
+function mapMaterialToEquipment(material: MaterialOption): EquipmentItem {
+  const status =
+    material.statut === "distribue"
+      ? "Attribué"
+      : material.statut === "maintenance"
+        ? "Maintenance"
+        : material.statut === "reforme" || material.statut === "sortie"
+          ? "Retiré"
+          : "Disponible";
+  const photo = material.photos?.[0] || material.photoDeLigne || "";
+
+  return {
+    id: material.documentId,
+    name: material.designation,
+    serialNumber: material.nomenclature || material.documentId,
+    category: material.categorie || "Non classé",
+    status,
+    department: "—",
+    purchaseDate: material.dateCreation?.slice(0, 10) || "—",
+    value: material.valeurUnitaire ?? 0,
+    image: photo,
+    photo,
+    quantity: material.quantiteStock ?? 0,
+  };
+}
+
+export function AllEquipmentModal({
+  isOpen,
+  onClose,
+  materials = [],
+  isLoading = false,
+  isInitialError = false,
+}: AllEquipmentModalProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("Tous");
   const [categoryFilter, setCategoryFilter] = useState("Toutes");
@@ -218,6 +246,11 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
   const [showFilters, setShowFilters] = useState(false);
   const [viewingEquipment, setViewingEquipment] =
     useState<EquipmentItem | null>(null);
+
+  const equipment = useMemo(
+    () => materials.map(mapMaterialToEquipment),
+    [materials]
+  );
 
   if (!isOpen) return null;
 
@@ -328,24 +361,6 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
     alert(`Édition de ${equipment.name} - ${equipment.serialNumber}`);
   };
 
-  const handleDeleteEquipment = (equipmentId: number) => {
-    setEquipment((prev) => prev.filter((item) => item.id !== equipmentId));
-    console.log("Équipement supprimé:", equipmentId);
-  };
-
-  const handleDuplicateEquipment = (equipment: EquipmentItem) => {
-    const newEquipment = {
-      ...equipment,
-      id: Math.max(...equipment.map((e) => e.id)) + 1,
-      name: `${equipment.name} (Copie)`,
-      serialNumber: `${equipment.serialNumber}-COPY`,
-      status: "Disponible" as const,
-      assignedTo: undefined,
-    };
-    setEquipment((prev) => [...prev, newEquipment]);
-    console.log("Équipement dupliqué:", newEquipment);
-  };
-
   const handleExportEquipment = (equipment: EquipmentItem) => {
     console.log("Export individuel:", equipment);
     alert(`Export des données de ${equipment.name}`);
@@ -354,17 +369,6 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
   const handleShareEquipment = (equipment: EquipmentItem) => {
     console.log("Partage équipement:", equipment);
     alert(`Partage des informations de ${equipment.name}`);
-  };
-
-  const handleArchiveEquipment = (equipment: EquipmentItem) => {
-    setEquipment((prev) =>
-      prev.map((item) =>
-        item.id === equipment.id
-          ? { ...item, status: "Retiré" as const, assignedTo: undefined }
-          : item
-      )
-    );
-    console.log("Équipement archivé:", equipment);
   };
 
   const handleViewHistory = (equipment: EquipmentItem) => {
@@ -392,6 +396,12 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
             <X className="h-5 w-5" />
           </button>
         </div>
+
+        {isInitialError && (
+          <div role="alert" className="px-6 py-3 text-sm text-destructive">
+            Impossible de charger les équipements depuis la base de données.
+          </div>
+        )}
 
         {/* Stats Summary */}
         <div className="grid grid-cols-4 gap-4 p-6 border-b border-border bg-muted/20">
@@ -565,7 +575,11 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
 
         {/* Equipment List */}
         <div className="flex-1 overflow-auto">
-          {viewMode === "table" ? (
+          {isLoading ? (
+            <div className="p-8 text-center text-sm text-muted-foreground">
+              Chargement des équipements depuis la base de données…
+            </div>
+          ) : isInitialError ? null : viewMode === "table" ? (
             <div className="p-6">
               <table className="w-full">
                 <thead className="sticky top-0 bg-card border-b border-border">
@@ -686,11 +700,20 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
                       </td>
                       <td className="py-3 px-4">
                         <div className="flex items-center gap-3">
-                          <img
-                            src={item.image}
-                            alt={item.name}
-                            className="w-10 h-10 rounded-md object-cover"
-                          />
+                          {item.image ? (
+                            <img
+                              src={item.image}
+                              alt={item.name}
+                              className="w-10 h-10 rounded-md object-cover"
+                            />
+                          ) : (
+                            <div
+                              aria-label="Sans photo"
+                              className="w-10 h-10 rounded-md bg-muted flex items-center justify-center"
+                            >
+                              <Package className="h-5 w-5 text-muted-foreground" />
+                            </div>
+                          )}
                           <div>
                             <div className="text-sm text-card-foreground max-w-[200px] truncate">
                               {item.name}
@@ -728,14 +751,12 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
                       <td className="py-3 px-4">
                         <EquipmentActions
                           equipment={item}
-                          currentUser={mockCurrentUser}
+                          currentUser={viewOnlyUser}
                           onView={handleViewEquipment}
-                          onEdit={handleEditEquipment}
-                          onDelete={handleDeleteEquipment}
-                          onDuplicate={handleDuplicateEquipment}
+                          onEdit={() => {}}
+                          onDelete={() => {}}
                           onExport={handleExportEquipment}
                           onShare={handleShareEquipment}
-                          onArchive={handleArchiveEquipment}
                           onViewHistory={handleViewHistory}
                         />
                       </td>
@@ -769,11 +790,20 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
                     </span>
                   </div>
                   <div className="flex items-center gap-3">
-                    <img
-                      src={item.image}
-                      alt={item.name}
-                      className="w-12 h-12 rounded-md object-cover flex-shrink-0"
-                    />
+                    {item.image ? (
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="w-12 h-12 rounded-md object-cover flex-shrink-0"
+                      />
+                    ) : (
+                      <div
+                        aria-label="Sans photo"
+                        className="w-12 h-12 rounded-md bg-muted flex items-center justify-center"
+                      >
+                        <Package className="h-5 w-5 text-muted-foreground" />
+                      </div>
+                    )}
                     <div className="flex-1 min-w-0">
                       <div className="text-sm text-card-foreground truncate">
                         {item.name}
@@ -815,14 +845,12 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
                     </div>
                     <EquipmentActions
                       equipment={item}
-                      currentUser={mockCurrentUser}
+                      currentUser={viewOnlyUser}
                       onView={handleViewEquipment}
-                      onEdit={handleEditEquipment}
-                      onDelete={handleDeleteEquipment}
-                      onDuplicate={handleDuplicateEquipment}
+                      onEdit={() => {}}
+                      onDelete={() => {}}
                       onExport={handleExportEquipment}
                       onShare={handleShareEquipment}
-                      onArchive={handleArchiveEquipment}
                       onViewHistory={handleViewHistory}
                     />
                   </div>
@@ -831,7 +859,7 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
             </div>
           )}
 
-          {sortedEquipment.length === 0 && (
+          {!isLoading && !isInitialError && sortedEquipment.length === 0 && (
             <div className="p-8 text-center">
               <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h4 className="text-sm text-muted-foreground mb-2">
@@ -862,11 +890,20 @@ export function AllEquipmentModal({ isOpen, onClose }: AllEquipmentModalProps) {
             </div>
             <div className="space-y-4">
               <div className="flex items-center gap-3">
-                <img
-                  src={viewingEquipment.image}
-                  alt={viewingEquipment.name}
-                  className="w-16 h-16 rounded-md object-cover"
-                />
+                {viewingEquipment.image ? (
+                  <img
+                    src={viewingEquipment.image}
+                    alt={viewingEquipment.name}
+                    className="w-16 h-16 rounded-md object-cover"
+                  />
+                ) : (
+                  <div
+                    aria-label="Sans photo"
+                    className="w-16 h-16 rounded-md bg-muted flex items-center justify-center"
+                  >
+                    <Package className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                )}
                 <div>
                   <div className="text-card-foreground">
                     {viewingEquipment.name}

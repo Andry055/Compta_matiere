@@ -299,6 +299,7 @@ interface StrapiEntity {
     id: number;
     documentId?: string | null;
     numero_ordre?: number | null;
+    numero?: string | null;
     reference?: string | null;
     designation?: string | null;
     espece?: string | null;
@@ -434,6 +435,7 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
       .map((p) => urlMediaAffichable(p?.url))
       .filter((u): u is string => !!u),
     reference: l.reference || "",
+    numero: l.numero || l.reference || "",
     designation: l.designation || l.materiel?.designation || "—",
     espece: l.espece || l.materiel?.categorie?.nom || "—",
     unite: l.unite || "unité",
@@ -707,6 +709,7 @@ export interface NouvelleEntreePayload {
   affectation_chef_service_2?: string;
   lignes: Array<{
     numero_ordre?: number;
+    numero?: string;
     designation: string;
     reference?: string;
     espece?: string;
@@ -1059,7 +1062,6 @@ export async function uploadPhotosMateriel(
 export async function creerMateriel(payload: {
   designation: string;
   nomenclature?: string;
-  numero_serie?: string;
   valeur_unitaire?: number;
 }): Promise<MaterialOption> {
   const { data } = await api.post("/api/materials", { data: payload });
@@ -1283,6 +1285,7 @@ export async function signerTransfertServeur(
 
 export interface RefOption {
   documentId: string;
+  id?: number;
   nom: string;
   /** Abréviation de la direction (ex. « DAF ») — pour le rapprochement stable avec le département utilisateur. */
   abbreviation?: string;
@@ -1307,7 +1310,6 @@ export interface MaterialOption {
   quantiteStock?: number;
   valeurUnitaire?: number;
   /** Champs complémentaires (écran Équipements / tableau de bord). */
-  numeroSerie?: string;
   nomenclature?: string;
   /** Statut serveur : en_stock / distribue / maintenance / reforme / sortie. */
   statut?: string;
@@ -1341,27 +1343,32 @@ export async function fetchFournisseurs(): Promise<RefOption[]> {
 /** Liste des directions (pour le formulaire « Nouvelle entrée »). */
 export async function fetchDirections(): Promise<RefOption[]> {
   try {
-    const { data } = await api.get("/api/directions", {
-      params: { "pagination[pageSize]": 100, sort: "nom_direction:asc" },
-      timeout: 5000,
-    });
-    return (data?.data ?? []).map(
-      (row: {
-        documentId?: string;
-        id: number;
-        nom_direction?: string;
-        abreviation?: string;
-        directeur?: string;
-      }) => ({
-        documentId: row.documentId || String(row.id),
-        nom: row.nom_direction || `Direction #${row.id}`,
-        abbreviation: row.abreviation || undefined,
-        directeur: row.directeur || undefined,
-      })
-    );
+    return await fetchDirectionsOrThrow();
   } catch {
     return [];
   }
+}
+
+export async function fetchDirectionsOrThrow(): Promise<RefOption[]> {
+  const { data } = await api.get("/api/directions", {
+    params: { "pagination[pageSize]": 100, sort: "nom_direction:asc" },
+    timeout: 5000,
+  });
+  return (data?.data ?? []).map(
+    (row: {
+      documentId?: string;
+      id: number;
+      nom_direction?: string;
+      abreviation?: string;
+      directeur?: string;
+    }) => ({
+      documentId: row.documentId || String(row.id),
+      id: row.id,
+      nom: row.nom_direction || `Direction #${row.id}`,
+      abbreviation: row.abreviation || undefined,
+      directeur: row.directeur || undefined,
+    })
+  );
 }
 
 /** Liste des services (pour le formulaire « Nouvelle entrée »).
@@ -1370,41 +1377,46 @@ export async function fetchDirections(): Promise<RefOption[]> {
  *  filtre automatiquement les services de la direction sélectionnée. */
 export async function fetchServices(): Promise<RefOption[]> {
   try {
-    const { data } = await api.get("/api/services", {
-      params: {
-        "pagination[pageSize]": 100,
-        sort: "nom_service:asc",
-        populate: "direction",
-      },
-      timeout: 5000,
-    });
-    return (data?.data ?? []).map(
-      (row: {
-        documentId?: string;
-        id: number;
-        nom_service?: string;
-        responsable?: string;
-        depositaire?: string;
-        chef_service_1?: string;
-        chef_service_2?: string;
-        direction?: {
-          documentId?: string;
-          id: number;
-          nom_direction?: string;
-        } | null;
-      }) => ({
-        documentId: row.documentId || String(row.id),
-        nom: row.nom_service || `Service #${row.id}`,
-        directionId: row.direction?.documentId || undefined,
-        responsable: row.responsable || undefined,
-        depositaire: row.depositaire || undefined,
-        chefService1: row.chef_service_1 || undefined,
-        chefService2: row.chef_service_2 || undefined,
-      })
-    );
+    return await fetchServicesOrThrow();
   } catch {
     return [];
   }
+}
+
+export async function fetchServicesOrThrow(): Promise<RefOption[]> {
+  const { data } = await api.get("/api/services", {
+    params: {
+      "pagination[pageSize]": 100,
+      sort: "nom_service:asc",
+      populate: "direction",
+    },
+    timeout: 5000,
+  });
+  return (data?.data ?? []).map(
+    (row: {
+      documentId?: string;
+      id: number;
+      nom_service?: string;
+      responsable?: string;
+      depositaire?: string;
+      chef_service_1?: string;
+      chef_service_2?: string;
+      direction?: {
+        documentId?: string;
+        id: number;
+        nom_direction?: string;
+      } | null;
+    }) => ({
+      documentId: row.documentId || String(row.id),
+      id: row.id,
+      nom: row.nom_service || `Service #${row.id}`,
+      directionId: row.direction?.documentId || undefined,
+      responsable: row.responsable || undefined,
+      depositaire: row.depositaire || undefined,
+      chefService1: row.chef_service_1 || undefined,
+      chefService2: row.chef_service_2 || undefined,
+    })
+  );
 }
 
 /** Liste des matériaux existants (pré-remplissage du formulaire + écran
@@ -1423,7 +1435,6 @@ interface StrapiLigneMateriel {
   documentId?: string;
   id: number;
   designation?: string;
-  numero_serie?: string | null;
   nomenclature?: string | null;
   statut?: string | null;
   quantite_stock?: number | null;
@@ -1447,7 +1458,6 @@ function mapMateriel(row: StrapiLigneMateriel): MaterialOption {
     categorie: row.categorie?.nom || undefined,
     quantiteStock: row.quantite_stock ?? undefined,
     valeurUnitaire: row.valeur_unitaire ?? undefined,
-    numeroSerie: row.numero_serie || undefined,
     nomenclature: row.nomenclature || undefined,
     statut: row.statut || undefined,
     dateCreation: row.createdAt || undefined,
@@ -2185,4 +2195,235 @@ export async function fetchOrganisation(): Promise<OrgDirection[]> {
       })),
     })),
   }));
+}
+// ---------------------------------------------------------------------------
+// MOUVEMENTS — traces de traçabilité lues en base (GET /api/mouvements)
+//
+// Le contrôleur serveur expose la route en LECTURE SEULE (aucune écriture :
+// les mouvements sont créés par les circuits entrée / sortie). Chaque trace
+// porte sa référence (ENT-AAAA-NNN ou SOR-AAAA-NNN), son type, son auteur,
+// son action, le matériel et la quantité.
+//
+// La DIRECTION et le N° DE SÉRIE ne sont pas stockés sur le mouvement : ils
+// viennent de la pièce liée (`entree` / `sortie`) que l'on peuple ici. Une
+// relation non lisible pour le rôle connecté revient vide : les colonnes
+// affichent alors « — », jamais une valeur inventée.
+// ---------------------------------------------------------------------------
+
+/** Ligne serveur `api::mouvement.mouvement` (relations peuplées). */
+interface RowMouvement {
+  id?: number;
+  documentId?: string;
+  reference?: string | null;
+  type?: string | null;
+  date_mouvement?: string | null;
+  createdAt?: string | null;
+  utilisateur?: string | null;
+  action?: string | null;
+  materiel?: string | null;
+  quantite?: number | null;
+  statut?: string | null;
+  observations?: string | null;
+  entree?: {
+    documentId?: string;
+    reference?: string | null;
+    bon_livraison?: string | null;
+    fournisseur?: { nom?: string | null } | null;
+    service?: { nom_service?: string | null } | null;
+    direction?: { nom_direction?: string | null; abreviation?: string | null } | null;
+    lignes?: Array<{
+      designation?: string | null;
+      quantite?: number | null;
+      materiel?: { designation?: string | null } | null;
+    }> | null;
+  } | null;
+  sortie?: {
+    documentId?: string;
+    reference?: string | null;
+    detenteur_nom?: string | null;
+    detenteur_fonction?: string | null;
+    service?: { nom_service?: string | null } | null;
+    direction?: { nom_direction?: string | null; abreviation?: string | null } | null;
+    lignes?: Array<{
+      designation?: string | null;
+      quantite?: number | null;
+      materiel?: { designation?: string | null } | null;
+    }> | null;
+  } | null;
+}
+
+/** Une ligne de la pièce liée (entrée ou sortie). */
+export interface MouvementLigne {
+  designation: string;
+  quantite: number;
+}
+
+/** Pièce liée au mouvement : l'ARRIVÉE MATÉRIEL ou la SORTIE concernée. */
+export interface MouvementPiece {
+  documentId?: string;
+  reference: string;
+  direction: string;
+  service: string;
+  /** Arrivée matériel uniquement. */
+  fournisseur?: string;
+  bonLivraison?: string;
+  /** Sortie uniquement : détenteur du matériel. */
+  detenteur?: string;
+  detenteurFonction?: string;
+  lignes: MouvementLigne[];
+}
+
+/** Un mouvement tel que l'affiche l'écran « Mouvements ». */
+export interface MouvementRecord {
+  /** Id numérique Strapi (clé React stable). */
+  id: number;
+  documentId?: string;
+  /** Référence de la pièce d'origine : ENT-AAAA-NNN ou SOR-AAAA-NNN. */
+  reference: string;
+  /** Libellé métier : le type `entree` correspond au module « Arrivée Matériel ». */
+  type: "Arrivée matériel" | "Sortie";
+  equipement: string;
+  direction: string;
+  agent: string;
+  /** AAAA-MM-JJ */
+  date: string;
+  /** HH:MM — heure de création de la trace (vide si inconnue). */
+  heure: string;
+  statut: "Validé" | "En attente" | "Annulé";
+  action: string;
+  quantite: number;
+  observations: string;
+  /** Détail de la pièce liée (arrivée matériel ou sortie), pour l'écran
+   *  « Détails ». Absent si la relation n'est pas lisible par le rôle. */
+  piece?: MouvementPiece;
+}
+
+/** Statuts serveur → libellés de l'écran (3 états seulement). */
+const STATUTS_MOUVEMENT: Record<string, MouvementRecord["statut"]> = {
+  validee: "Validé",
+  sortie_effectuee: "Validé",
+  rejetee: "Annulé",
+  annulee: "Annulé",
+};
+
+function nomDirectionMouvement(
+  relation?: { nom_direction?: string | null; abreviation?: string | null } | null
+): string {
+  if (!relation) return "";
+  return relation.nom_direction || relation.abreviation || "";
+}
+
+/** N° de série : référence de la 1ʳᵉ ligne d'entrée, sinon série de la fiche
+ *  matériel de la ligne (entrée ou sortie). */
+/** Pièce liée : l'entrée (arrivée matériel) sinon la sortie. */
+function pieceDuMouvement(row: RowMouvement): MouvementPiece | undefined {
+  const entree = row.entree;
+  if (entree) {
+    return {
+      documentId: entree.documentId,
+      reference: entree.reference || "—",
+      direction: nomDirectionMouvement(entree.direction) || "—",
+      service: entree.service?.nom_service || "—",
+      fournisseur: entree.fournisseur?.nom || "—",
+      bonLivraison: entree.bon_livraison || "—",
+      lignes: (entree.lignes ?? []).map((l) => ({
+        designation: l.designation || l.materiel?.designation || "—",
+        quantite: Number(l.quantite) || 0,
+      })),
+    };
+  }
+  const sortie = row.sortie;
+  if (sortie) {
+    return {
+      documentId: sortie.documentId,
+      reference: sortie.reference || "—",
+      direction: nomDirectionMouvement(sortie.direction) || "—",
+      service: sortie.service?.nom_service || "—",
+      detenteur: sortie.detenteur_nom || "",
+      detenteurFonction: sortie.detenteur_fonction || "",
+      lignes: (sortie.lignes ?? []).map((l) => ({
+        designation: l.designation || l.materiel?.designation || "—",
+        quantite: Number(l.quantite) || 0,
+      })),
+    };
+  }
+  return undefined;
+}
+
+/** Ligne serveur → MouvementRecord (aucune donnée inventée). */
+export function mapMouvement(row: RowMouvement): MouvementRecord {
+  const date = (row.date_mouvement || row.createdAt || "").slice(0, 10);
+  const heure = row.createdAt
+    ? new Date(row.createdAt).toLocaleTimeString("fr-FR", {
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "";
+  const statutServeur = (row.statut || "").toLowerCase();
+  return {
+    id: Number(row.id) || 0,
+    documentId: row.documentId,
+    reference: row.reference || "—",
+    type: (row.type || "").toLowerCase() === "entree" ? "Arrivée matériel" : "Sortie",
+    equipement: row.materiel || "—",
+    direction:
+      nomDirectionMouvement(row.entree?.direction) ||
+      nomDirectionMouvement(row.sortie?.direction),
+    agent: row.utilisateur || "—",
+    date: date || "—",
+    heure,
+    statut: STATUTS_MOUVEMENT[statutServeur] ?? "En attente",
+    action: row.action || "—",
+    quantite: Number(row.quantite) || 0,
+    observations: row.observations || "",
+    piece: pieceDuMouvement(row),
+  };
+}
+
+const PARAMS_MOUVEMENTS = {
+  sort: "createdAt:desc",
+  "pagination[pageSize]": 200,
+} as const;
+
+/**
+ * Liste des mouvements en base, du plus récent au plus ancien.
+ *
+ * `null` = backend injoignable / session absente : l'écran le dit et n'affiche
+ * pas de liste vide trompeuse. Le premier appel peuple les relations
+ * (direction, lignes, matériel) ; si l'API refuse un populate (permission d'un
+ * rôle), un second appel SANS populate garde la liste utilisable.
+ */
+export async function fetchMouvements(): Promise<MouvementRecord[] | null> {
+  try {
+    const { data } = await api.get("/api/mouvements", {
+      params: {
+        ...PARAMS_MOUVEMENTS,
+        populate: {
+          entree: {
+            populate: {
+              direction: true,
+              service: true,
+              fournisseur: true,
+              lignes: { populate: { materiel: true } },
+            },
+          },
+          sortie: {
+            populate: {
+              direction: true,
+              service: true,
+              lignes: { populate: { materiel: true } },
+            },
+          },
+        },
+      },
+    });
+    return (data?.data ?? []).map(mapMouvement);
+  } catch {
+    try {
+      const { data } = await api.get("/api/mouvements", { params: PARAMS_MOUVEMENTS });
+      return (data?.data ?? []).map(mapMouvement);
+    } catch {
+      return null;
+    }
+  }
 }

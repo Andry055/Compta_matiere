@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   Users as UsersIcon,
   User,
@@ -15,6 +15,7 @@ import {
   Briefcase,
 } from "lucide-react";
 import { UserModal } from "./UserModal";
+import { fetchDirectionsOrThrow, fetchServicesOrThrow } from "../lib/api";
 
 interface Employee {
   id: number;
@@ -309,6 +310,9 @@ const mockUsers: UserAccount[] = [
 ];
 
 export function Users() {
+  const [directions, setDirections] = useState<Direction[]>([]);
+  const [directionsLoading, setDirectionsLoading] = useState(true);
+  const [directionsLoadError, setDirectionsLoadError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("Tous");
   const [statusFilter, setStatusFilter] = useState("Tous");
@@ -319,6 +323,53 @@ export function Users() {
   const [showDetailModal, setShowDetailModal] = useState(false);
   const [selectedUserForDetail, setSelectedUserForDetail] =
     useState<UserAccount | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([fetchDirectionsOrThrow(), fetchServicesOrThrow()])
+      .then(([directionOptions, serviceOptions]) => {
+        if (!active) return;
+
+        setDirections(
+          directionOptions.map((direction) => ({
+            id: direction.id ?? Number(direction.documentId),
+            name: direction.nom,
+            director: direction.directeur ?? "",
+            directorEmail: "",
+            description: "",
+            services: serviceOptions
+              .filter((service) => service.directionId === direction.documentId)
+              .map((service) => ({
+                id: service.id ?? Number(service.documentId),
+                name: service.nom,
+                manager: service.responsable ?? "",
+                managerEmail: "",
+                description: "",
+                employees: [],
+                location: "",
+              })),
+            location: "",
+          }))
+        );
+        setDirectionsLoadError("");
+      })
+      .catch((error: unknown) => {
+        if (!active) return;
+        console.error("[utilisateurs] Impossible de charger directions et services :", error);
+        setDirections([]);
+        setDirectionsLoadError(
+          "Impossible de charger les directions depuis le serveur. Vérifiez la connexion puis réessayez."
+        );
+      })
+      .finally(() => {
+        if (active) setDirectionsLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const handleCreateUser = () => {
     setSelectedUser(null);
@@ -421,6 +472,11 @@ export function Users() {
           <p className="text-muted-foreground">
             Administration des comptes utilisateurs et permissions
           </p>
+          {directionsLoadError && (
+            <p role="alert" className="mt-2 text-sm text-destructive">
+              {directionsLoadError}
+            </p>
+          )}
         </div>
         <button
           onClick={handleCreateUser}
@@ -665,7 +721,8 @@ export function Users() {
         onSave={handleSaveUser}
         user={selectedUser}
         mode={modalMode}
-        directions={mockDirections}
+        directions={directions}
+        directionsLoading={directionsLoading}
       />
 
       {/* User Details Modal */}

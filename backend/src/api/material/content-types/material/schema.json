@@ -15,9 +15,6 @@
       "type": "string",
       "required": true
     },
-    "numero_serie": {
-      "type": "string"
-    },
     "nomenclature": {
       "type": "string"
     },

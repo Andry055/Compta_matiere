@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import {
   Step1BonLivraison,
@@ -41,8 +42,8 @@ function donnees(article: Partial<BonLivraisonArticle> = {}): ReceptionData {
     articles: [
       {
         id: "art-1",
+        numero: "",
         designation: "",
-        referenceNomenclature: "",
         nomenclature: "",
         quantiteCommandee: 1,
         quantiteLivree: 1,
@@ -281,8 +282,7 @@ describe("Saisie étape 1 — rapprochement fiable de la désignation", () => {
     expect(derniereDonnees.articles[0].nomenclature).toBe("10");
     const lignes = lignesPayloadDepuisArticles(derniereDonnees.articles);
     expect(lignes[0].nomenclature).toBe("10");
-    // « Référence » reste indépendante : un texte libre ne devient pas une
-    // nomenclature.
+    // La référence libre n'est plus saisie ni envoyée par ce formulaire.
     expect(lignes[0].reference).toBeUndefined();
     // Aucun appel réseau : la liste est une constante du code.
     expect(getSpy).not.toHaveBeenCalled();
@@ -314,7 +314,6 @@ describe("Saisie étape 1 — rapprochement fiable de la désignation", () => {
         initial={
           donnees({
             designation: "Chaise de bureau ergonomique",
-            referenceNomenclature: "",
             nomenclature: "",
           })
         }
@@ -343,5 +342,35 @@ describe("Saisie étape 1 — rapprochement fiable de la désignation", () => {
       },
     });
     expect(String(chemin)).not.toContain("upload");
+  });
+
+  it("affiche les colonnes dans l'ordre demandé sans champ Référence", () => {
+    render(<Saisie materiels={[]} initial={donnees()} />);
+
+    const table = screen.getAllByRole("table")[0];
+    const entetes = within(table)
+      .getAllByRole("columnheader")
+      .map((cellule) => cellule.getAttribute("aria-label") || cellule.textContent?.trim());
+
+    expect(entetes).toEqual([
+      "Nomenclature",
+      "Désignation",
+      "Numéro",
+      "QTE CMD",
+      "QTE Livrée",
+      "Prix Unitaire",
+      "Total",
+      "Actions",
+    ]);
+    expect(screen.queryByPlaceholderText("NOM-XXX-000")).toBeNull();
+
+    fireEvent.change(
+      premier(screen.getAllByLabelText<HTMLInputElement>("Numéro de l'article 1")),
+      { target: { value: "ART-01" } }
+    );
+    expect(derniereDonnees.articles[0].numero).toBe("ART-01");
+    expect(lignesPayloadDepuisArticles(derniereDonnees.articles)[0].numero).toBe(
+      "ART-01"
+    );
   });
 });

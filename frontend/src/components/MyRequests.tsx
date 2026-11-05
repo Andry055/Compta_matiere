@@ -120,6 +120,14 @@ export function MyRequests({
   const [lignes, setLignes] = useState<DemandeLigne[]>([{ ...EMPTY_LIGNE }]);
   const [priorite, setPriorite] = useState<PrioriteDemande>("Normal");
   const [observation, setObservation] = useState("");
+  // Détenteur du matériel : nom, fonction, IM et port (facultatifs, saisis
+  // dans le formulaire et enregistrés sur la demande).
+  const [detenteur, setDetenteur] = useState({
+    nom: "",
+    fonction: "",
+    im: "",
+    port: "",
+  });
   const [formError, setFormError] = useState<string | null>(null);
   const [formWarning, setFormWarning] = useState<string | null>(null);
 
@@ -244,6 +252,7 @@ export function MyRequests({
     setLignes([{ ...EMPTY_LIGNE }]);
     setPriorite("Normal");
     setObservation("");
+    setDetenteur({ nom: "", fonction: "", im: "", port: "" });
     setFormError(null);
     setFormWarning(null);
     setFormStep("form");
@@ -330,6 +339,10 @@ export function MyRequests({
       service: orga.service,
       demandeur: user?.name || "Demandeur",
       fonction: "Fonction non renseignée",
+      detenteurNom: detenteur.nom.trim() || undefined,
+      detenteurFonction: detenteur.fonction.trim() || undefined,
+      detenteurIm: detenteur.im.trim() || undefined,
+      detenteurPort: detenteur.port.trim() || undefined,
     };
 
     setFormError(null);
@@ -350,6 +363,11 @@ export function MyRequests({
           date_demande: today,
           date_envoi: statut === "En attente" ? today : undefined,
           motif: observation.trim() || undefined,
+          // Détenteur du matériel : saisi par le demandeur (facultatif).
+          detenteur_nom: detenteur.nom.trim() || undefined,
+          detenteur_fonction: detenteur.fonction.trim() || undefined,
+          detenteur_im: detenteur.im.trim() || undefined,
+          detenteur_port: detenteur.port.trim() || undefined,
           // Lignes : le matériel du STOCK RÉEL (documentId), la quantité, le
           // motif. C'est le SEUL contenu propre à la demande.
           lignes: lignesValidées.map((ligne) => ({
@@ -600,37 +618,54 @@ export function MyRequests({
         </div>
         <div className="p-4 sm:p-6">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full table-fixed">
+              {/* Largeurs fixes : le tableau tient dans la page (texte long tronqué). */}
+              <colgroup>
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "9%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "4%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "10%" }} />
+                <col style={{ width: "11%" }} />
+                <col style={{ width: "8%" }} />
+                <col style={{ width: "12%" }} />
+                <col style={{ width: "7%" }} />
+                <col style={{ width: "7%" }} />
+              </colgroup>
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Référence
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Date
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Matériel
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
-                    Quantité
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
+                    Qté
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Direction
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Service
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
+                    Détenteur
+                  </th>
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Priorité
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Statut
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
-                    Sortie associée
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
+                    Sortie
                   </th>
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">
+                  <th className="text-left py-2 px-2 text-xs text-muted-foreground">
                     Actions
                   </th>
                 </tr>
@@ -639,7 +674,7 @@ export function MyRequests({
                 {filtered.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       <div className="flex flex-col items-center gap-3">
@@ -676,25 +711,28 @@ export function MyRequests({
                         key={demande.id}
                         className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
                       >
-                        <td className="py-3 px-3 text-sm font-mono text-card-foreground">
+                        <td className="py-2 px-2 text-xs font-mono text-card-foreground truncate">
                           {demande.reference}
                         </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground whitespace-nowrap">
+                        <td className="py-2 px-2 text-sm text-card-foreground whitespace-nowrap">
                           {formatDateCourt(demande.date)}
                         </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[220px] truncate">
+                        <td className="py-2 px-2 text-sm text-card-foreground truncate">
                           {materielsDemande(demande)}
                         </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground">
+                        <td className="py-2 px-2 text-sm text-card-foreground">
                           {quantiteDemande(demande)}
                         </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground">
+                        <td className="py-2 px-2 text-sm text-card-foreground truncate">
                           {demande.direction}
                         </td>
-                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[160px] truncate">
+                        <td className="py-2 px-2 text-sm text-card-foreground truncate">
                           {demande.service}
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="py-2 px-2 text-sm text-card-foreground truncate">
+                          {demande.detenteurNom || "—"}
+                        </td>
+                        <td className="py-2 px-2">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${prioriteDemandeBadge(
                               demande.priorite
@@ -703,7 +741,7 @@ export function MyRequests({
                             {demande.priorite}
                           </span>
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="py-2 px-2">
                           <span
                             className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${statutDemandeBadge(
                               demande.statut
@@ -712,10 +750,10 @@ export function MyRequests({
                             {demande.statut}
                           </span>
                         </td>
-                        <td className="py-3 px-3 text-sm">
+                        <td className="py-2 px-2 text-sm truncate">
                           {sortie ? (
-                            <span className="inline-flex items-center gap-1 font-mono text-card-foreground">
-                              <Package className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="inline-flex min-w-0 max-w-full items-center gap-1 truncate font-mono text-card-foreground">
+                              <Package className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                               {sortie.reference !== "—"
                                 ? sortie.reference
                                 : sortie.id}
@@ -724,7 +762,7 @@ export function MyRequests({
                             <span className="text-muted-foreground">—</span>
                           )}
                         </td>
-                        <td className="py-3 px-3">
+                        <td className="py-2 px-2">
                           <div className="flex items-center gap-1">
                             <button
                               title="Voir le suivi"
@@ -821,6 +859,67 @@ export function MyRequests({
                 <p className="text-xs text-muted-foreground mt-2">
                   Récupérées automatiquement depuis votre profil connecté.
                 </p>
+
+                {formStep === "form" && (
+                  <div className="mt-4 pt-4 border-t border-border">
+                    <h5 className="text-xs text-card-foreground mb-3">
+                      Détenteur du matériel
+                    </h5>
+                    <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                      {[
+                        {
+                          key: "nom" as const,
+                          label: "Nom du détenteur",
+                          placeholder: "Ex. RAKOTO Jean",
+                          maxLength: 150,
+                        },
+                        {
+                          key: "fonction" as const,
+                          label: "Fonction",
+                          placeholder: "Ex. Chef de service",
+                          maxLength: 150,
+                        },
+                        {
+                          key: "im" as const,
+                          label: "IM",
+                          placeholder: "Ex. MIN.001",
+                          maxLength: 50,
+                        },
+                        {
+                          key: "port" as const,
+                          label: "Port",
+                          placeholder: "Ex. +261 34 12 345 67",
+                          maxLength: 50,
+                        },
+                      ].map((champ) => (
+                        <div key={champ.key}>
+                          <label
+                            htmlFor={`detenteur-${champ.key}`}
+                            className="block text-xs text-muted-foreground mb-1"
+                          >
+                            {champ.label}
+                          </label>
+                          <input
+                            id={`detenteur-${champ.key}`}
+                            value={detenteur[champ.key]}
+                            maxLength={champ.maxLength}
+                            onChange={(e) =>
+                              setDetenteur((prev) => ({
+                                ...prev,
+                                [champ.key]: e.target.value,
+                              }))
+                            }
+                            placeholder={champ.placeholder}
+                            className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring"
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Facultatif : personne qui recevra le matériel.
+                    </p>
+                  </div>
+                )}
               </div>
 
               {formStep === "form" ? (
@@ -1003,6 +1102,24 @@ export function MyRequests({
                         value: `${orgaProfil.direction} / ${orgaProfil.service}`,
                       },
                       { label: "Fonction", value: "Fonction non renseignée" },
+                      ...(detenteur.nom.trim()
+                        ? [
+                            {
+                              label: "Détenteur",
+                              value:
+                                detenteur.nom.trim() +
+                                (detenteur.fonction.trim()
+                                  ? ` — ${detenteur.fonction.trim()}`
+                                  : ""),
+                            },
+                          ]
+                        : []),
+                      ...(detenteur.im.trim()
+                        ? [{ label: "IM", value: detenteur.im.trim() }]
+                        : []),
+                      ...(detenteur.port.trim()
+                        ? [{ label: "Port", value: detenteur.port.trim() }]
+                        : []),
                       { label: "Priorité", value: priorite },
                       {
                         label: "Nombre de matériels",

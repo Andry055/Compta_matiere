@@ -411,7 +411,8 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
             <table className="w-full min-w-[980px]">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Référence</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Nomenclature</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Numéro</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction d'origine</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service d'origine</th>
                   <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction destinataire</th>
@@ -427,7 +428,7 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                 {visibleRows.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={10}
+                      colSpan={11}
                       className="py-10 text-center text-sm text-muted-foreground"
                     >
                       {records.length === 0
@@ -445,6 +446,9 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
                         key={a.reference}
                         className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
                       >
+                        <td className="py-3 px-3 text-sm font-mono text-card-foreground">
+                          {a.materielReference || "—"}
+                        </td>
                         <td className="py-3 px-3 text-sm font-mono text-card-foreground">
                           {a.reference}
                         </td>

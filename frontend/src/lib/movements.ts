@@ -74,6 +74,8 @@ export interface EntreeLigne {
   photos?: string[];
   /** Référence du bien (ex. MAT-2026-001) */
   reference?: string;
+  /** Numéro saisi sur la ligne du bon de livraison. */
+  numero?: string;
   designation: string;
   espece: string;
   unite: string;

@@ -16,6 +16,11 @@ module.exports = {
   routes: [
     {
       method: 'GET',
+      path: '/rapports/statistiques',
+      handler: 'rapport.statistiques',
+    },
+    {
+      method: 'GET',
       path: '/rapports/recapitulation',
       handler: 'rapport.recapitulation',
     },

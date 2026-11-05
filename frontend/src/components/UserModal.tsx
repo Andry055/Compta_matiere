@@ -55,6 +55,7 @@ interface UserModalProps {
   user?: UserAccount | null
   mode: "create" | "edit"
   directions: Direction[]
+  directionsLoading: boolean
 }
 
 const rolePermissions = {
@@ -64,7 +65,15 @@ const rolePermissions = {
   'Lecture Seule': ["Consultation"]
 }
 
-export function UserModal({ isOpen, onClose, onSave, user, mode, directions }: UserModalProps) {
+export function UserModal({
+  isOpen,
+  onClose,
+  onSave,
+  user,
+  mode,
+  directions,
+  directionsLoading,
+}: UserModalProps) {
   const [formData, setFormData] = useState<UserAccount>({
     name: "",
     email: "",
@@ -323,19 +332,27 @@ export function UserModal({ isOpen, onClose, onSave, user, mode, directions }: U
             
             <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-sm text-muted-foreground mb-2">
+                <label htmlFor="user-direction-select" className="block text-sm text-muted-foreground mb-2">
                   Direction *
                 </label>
                 <div className="relative">
                   <Building2 className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
                   <select
+                    id="user-direction-select"
                     value={formData.directionId}
                     onChange={(e) => handleDirectionChange(Number(e.target.value))}
+                    disabled={directionsLoading || directions.length === 0}
                     className={`w-full pl-10 pr-3 py-2 border rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent ${
                       errors.direction ? 'border-red-500' : 'border-border'
                     }`}
                   >
-                    <option value={0}>Sélectionner une direction...</option>
+                    <option value={0}>
+                      {directionsLoading
+                        ? "Chargement des directions..."
+                        : directions.length === 0
+                          ? "Aucune direction disponible"
+                          : "Sélectionner une direction..."}
+                    </option>
                     {directions.map(direction => (
                       <option key={direction.id} value={direction.id}>
                         {direction.name}

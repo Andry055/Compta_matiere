@@ -63,6 +63,18 @@
     "fonction": {
       "type": "string"
     },
+    "detenteur_nom": {
+      "type": "string"
+    },
+    "detenteur_fonction": {
+      "type": "string"
+    },
+    "detenteur_im": {
+      "type": "string"
+    },
+    "detenteur_port": {
+      "type": "string"
+    },
     "observation": {
       "type": "text"
     },

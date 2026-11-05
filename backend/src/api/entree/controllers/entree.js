@@ -477,6 +477,7 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
             entree: entree.documentId,
             materiel: materielId,
             numero_ordre: ligne.numero_ordre || i + 1,
+            numero: typeof ligne.numero === 'string' ? ligne.numero.trim() || null : null,
             designation: ligne.designation || null,
             reference: ligne.reference || null,
             espece: ligne.espece || null,

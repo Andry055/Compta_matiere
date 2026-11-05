@@ -159,7 +159,7 @@ export interface SortieMateriel {
 // --- Types pour le Workflow d'Entrée Matériel (Réception en 4 étapes) ---
 // Répartition des responsabilités :
 //   Étape 1 — Dépositaire comptable : saisie du bon de livraison et des
-//             articles (désignation, référence, quantités, prix).
+//             articles (nomenclature, désignation, quantités, prix).
 //   Étape 2 — Magasinier : BL et articles en lecture seule ; il vérifie
 //             lui-même l'état et la conformité de chaque article puis
 //             certifie la réception physique.
@@ -171,8 +171,8 @@ export type EtatConstate = 'neuf' | 'bon' | 'moyen' | 'defaillant';
 
 export interface BonLivraisonArticle {
   id: string;
+  numero: string;
   designation: string;
-  referenceNomenclature: string;
   quantiteCommandee: number;
   quantiteLivree: number;
   prixUnitaire: number;

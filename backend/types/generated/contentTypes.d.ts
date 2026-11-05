@@ -550,6 +550,10 @@ export interface ApiDemandeDemande extends Struct.CollectionTypeSchema {
       'plugin::users-permissions.user'
     >;
     designation_materiel: Schema.Attribute.String & Schema.Attribute.Required;
+    detenteur_fonction: Schema.Attribute.String;
+    detenteur_im: Schema.Attribute.String;
+    detenteur_nom: Schema.Attribute.String;
+    detenteur_port: Schema.Attribute.String;
     direction: Schema.Attribute.Relation<
       'manyToOne',
       'api::direction.direction'
@@ -706,6 +710,7 @@ export interface ApiEntreeLigneEntreeLigne extends Struct.CollectionTypeSchema {
     materiel: Schema.Attribute.Relation<'manyToOne', 'api::material.material'>;
     montant: Schema.Attribute.Decimal;
     nomenclature: Schema.Attribute.String;
+    numero: Schema.Attribute.String;
     numero_ordre: Schema.Attribute.Integer;
     observations: Schema.Attribute.String;
     photos: Schema.Attribute.Media<'images', true>;
@@ -932,7 +937,6 @@ export interface ApiMaterialMaterial extends Struct.CollectionTypeSchema {
     > &
       Schema.Attribute.Private;
     nomenclature: Schema.Attribute.String;
-    numero_serie: Schema.Attribute.String;
     observations: Schema.Attribute.Text;
     photos: Schema.Attribute.Media<'images', true>;
     publishedAt: Schema.Attribute.DateTime;

@@ -90,6 +90,11 @@ export interface DemandeRecord {
   service: string;
   demandeur: string;
   fonction?: string;
+  /** Détenteur du matériel : identité saisie dans le formulaire de demande. */
+  detenteurNom?: string;
+  detenteurFonction?: string;
+  detenteurIm?: string;
+  detenteurPort?: string;
   validePar?: string;
   /** Sortie associée (SORT-AAAA-NNN) une fois la demande traitée */
   sortieReference?: string;
@@ -668,6 +673,10 @@ interface StrapiDemandeRow {
   motif?: string | null;
   observation?: string | null;
   fonction?: string | null;
+  detenteur_nom?: string | null;
+  detenteur_fonction?: string | null;
+  detenteur_im?: string | null;
+  detenteur_port?: string | null;
   priorite?: string | null;
   statut?: string | null;
   date_demande?: string | null;
@@ -772,6 +781,10 @@ function mapStrapiDemande(row: StrapiDemandeRow): DemandeRecord {
     service: row.service?.nom_service || "—",
     demandeur: row.demandeur?.username || "—",
     fonction: row.fonction || undefined,
+    detenteurNom: row.detenteur_nom || undefined,
+    detenteurFonction: row.detenteur_fonction || undefined,
+    detenteurIm: row.detenteur_im || undefined,
+    detenteurPort: row.detenteur_port || undefined,
     validePar: row.valide_par || undefined,
     // Ordre de sortie rattaché (étape 3) : le serveur n'en autorise qu'UN.
     sortieReference: row.sorties?.[0]?.reference || undefined,

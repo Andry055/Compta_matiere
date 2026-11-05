@@ -1,0 +1,1335 @@
+================================================================================
+DICTIONNAIRE DES DONNEES — ANALYSE DU BACKEND
+Projet : Compta-main — Gestion digitalisee de la comptabilite matieres
+Date de l'analyse : 4 novembre 2026
+Périmètre : backend/ uniquement (Strapi 5.53.0 + SQLite)
+================================================================================
+
+Ce document est une ANALYSE factuelle du backend, destinée à construire le
+dictionnaire des données d'un mémoire de licence. Il décrit :
+  - toutes les collections (content-types) et le composant du backend ;
+  - tous leurs champs, avec type, taille, obligation, unicité, valeur par
+    défaut et utilité ;
+  - les relations entre collections ;
+  - les champs automatiques (système ou générés par le code) ;
+  - les incohérences constatées entre le schéma et le code.
+
+Aucun fichier du projet n'a été modifié : ce document est le seul fichier créé.
+
+
+================================================================================
+1. SOURCES ANALYSEES ET METHODE
+================================================================================
+
+L'analyse s'appuie sur quatre sources complémentaires :
+
+1) Les schémas de content-types Strapi
+   backend/src/api/<api>/content-types/<nom>/schema.json  (25 fichiers)
+   backend/src/components/demande/ligne.json               (1 composant)
+   backend/src/extensions/users-permissions/content-types/user/schema.json
+   -> définissent les champs, types logiques, obligations, unicité, valeurs
+      par défaut et relations.
+
+2) Le code applicatif
+   - config/database.js, config/plugins.js, config/api.js, config/server.js,
+     config/cron.js
+   - src/index.js (bootstrap : rôles, permissions, jeu de données)
+   - src/api/*/controllers/*.js et src/api/*/services/*.js
+   - src/utils/*.js (roleGuard, horloge, creationSortie, directionUtilisateur,
+     destinatairesNotifications, etc.)
+   -> précisent l'usage réel des champs, les champs générés par le serveur et
+      les règles métier.
+
+3) La base de données réellement créée (SQLite)
+   backend/.tmp/data.db, lue en LECTURE SEULE via PRAGMA table_info,
+   foreign_key_list et index_list.
+   -> donne les noms physiques des tables et colonnes, les types SQL réels,
+      les clés primaires, les clés étrangères et les index réellement créés.
+   Configuration : DATABASE_CLIENT=sqlite, DATABASE_FILENAME=.tmp/data.db
+   (voir backend/.env et config/database.js).
+
+4) Les scripts SQL de référence
+   backend/database/sql/001_create_notification_outbox.sql
+   backend/src/api/notification-outbox/migrations/add-lastAttemptAt.js
+   -> décrivent l'évolution de la table notification_outboxes.
+
+AVERTISSEMENT IMPORTANT SUR backend/database/database.sql :
+ce fichier est un export binaire pg_dump d'une base PostgreSQL nommée « ms »
+(tables a_la_une, actu, contacts, d_info, visiteurs, users1, etc.). Il ne
+correspond PAS au schéma de l'application Compta et ne doit pas servir de
+source pour ce dictionnaire. C'est un fichier historique/étranger au projet.
+
+Méthode : chaque table physique de la base a été confrontée à son schéma
+Strapi et au code qui l'écrit. Les informations déduites du code sont
+signalées comme telles ; ce qui n'est pas déterminable est explicitement
+marqué « non déterminé ».
+
+
+================================================================================
+2. CONVENTIONS DE LECTURE
+================================================================================
+
+• Type logique : type déclaré dans le schéma Strapi.
+• Type physique : type de colonne réellement observé dans SQLite.
+• Taille : taille physique observée. Strapi utilise varchar(255) par défaut
+  pour les chaînes ; les champs « text » n'ont pas de taille déclarée.
+• Obligatoire : « oui (app.) » signifie que Strapi refuse la création sans
+  ce champ. IMPORTANT : SQLite ne porte PAS de contrainte NOT NULL sur ces
+  colonnes (vérifié par PRAGMA) ; l'obligation est donc applicative.
+• Unique : « oui (app.) » signifie que le schéma déclare unique. Aucun index
+  UNIQUE n'a été observé en SQLite sur les champs métier (références,
+  qr_token, cleUnicite) : l'unicité n'est garantie que par le contrôle
+  applicatif (et par des vérifications manuelles dans les contrôleurs).
+• Les liens manyToOne / oneToMany de Strapi 5 ne créent PAS de colonne de
+  clé étrangère dans la table porteuse : ils sont stockés dans une TABLE DE
+  LIAISON dédiée (une par relation). C'est un point essentiel pour le modèle
+  conceptuel : par exemple `sorties.demande` n'existe pas comme colonne de
+  `sorties`, mais dans la table `sorties_demande_lnk`.
+• Les énumérations sont stockées en varchar(255) ; leurs valeurs sont
+  contrôlées par l'application, pas par la base.
+• Les dates métier (`date`) sont stockées au format AAAA-MM-JJ.
+• Les horodatages (`datetime`) sont stockés au format ISO (date + heure).
+• Les décimaux sont stockés en float (SQLite REAL) ; aucune précision n'est
+  déclarée dans les schémas.
+• Le fuseau métier utilisé par le code pour calculer « aujourd'hui » est
+  Indian/Antananarivo (UTC+3), voir src/utils/horloge.js : les dates
+  enregistrées sont des jours calendaires malgaches, pas des jours UTC.
+
+Champs système présents dans TOUTES les tables de content-types (voir §17) :
+id, document_id, created_at, updated_at, published_at, created_by_id,
+updated_by_id, locale. Ils ne sont pas répétés dans chaque tableau de champs
+pour rester lisible, mais ils existent physiquement partout.
+
+
+================================================================================
+3. INVENTAIRE GENERAL
+================================================================================
+
+3.1 Content-types applicatifs (25)
+
+Domaine                | Content-type (uid)                    | Table physique
+-----------------------|---------------------------------------|-----------------------
+Organisation           | api::direction.direction              | directions
+                       | api::service.service                  | services
+                       | api::employee.employee                | employees
+Référentiel matériel   | api::category.category                | categories
+                       | api::material.material                | materials
+                       | api::fournisseur.fournisseur          | fournisseurs
+Utilisateurs           | plugin::users-permissions.user        | up_users
+Entrées                | api::entree.entree                    | entrees
+                       | api::entree-ligne.entree-ligne        | entree_lignes
+Demandes               | api::demande.demande                  | demandes
+Sorties                | api::sortie.sortie                    | sorties
+                       | api::sortie-ligne.sortie-ligne        | sortie_lignes
+Réception (circuit)    | api::reception.reception              | receptions
+                       | api::reception-ligne.reception-ligne  | reception-lignes
+Réception (variante)   | api::reception-physique.*             | receptions_physiques
+Remise au détenteur    | api::remise-detenteur.*               | remises_detenteurs
+                       | api::remise-detenteur-ligne.*         | remise_detenteur_lignes
+Affectation            | api::affectation.affectation          | affectations
+Anomalies              | api::anomalie.anomalie                | anomalies
+                       | api::journal-action.journal-action    | journal-actions
+Traçabilité            | api::mouvement.mouvement              | mouvements
+Notifications          | api::notification.notification        | notifications
+                       | api::notification-outbox.*            | notification_outboxes
+Reddition de compte    | api::ouverture-exercice.*             | ouverture_exercices
+                       | api::rapport.rapport (singleType)     | rapport
+Technique              | api::session-role.session-role        | session_roles
+
+(*) uids complets :
+  api::reception-physique.reception-physique
+  api::remise-detenteur.remise-detenteur
+  api::remise-detenteur-ligne.remise-detenteur-ligne
+  api::notification-outbox.notification-outbox
+  api::ouverture-exercice.ouverture-exercice
+
+3.2 Composant
+
+  demande.ligne  -> table components_demande_lignes
+
+3.3 Tables de liaison (41)
+  Voir §19. Elles matérialisent toutes les relations Strapi.
+
+3.4 Tables du plugin upload (médias)
+  files, files_folder_lnk, files_related_mph, upload_folders,
+  upload_folders_parent_lnk.
+
+3.5 Tables du plugin users-permissions
+  up_users, up_roles, up_permissions, up_permissions_role_lnk,
+  up_users_role_lnk, up_users_direction_lnk.
+
+3.6 Tables système Strapi (gérées par le framework, non métier)
+  admin_users, admin_roles, admin_permissions, admin_users_roles_lnk,
+  admin_permissions_role_lnk, admin_permissions_api_token_lnk,
+  strapi_api_tokens, strapi_api_token_permissions,
+  strapi_api_token_permissions_token_lnk,
+  strapi_api_tokens_admin_user_owner_lnk,
+  strapi_core_store_settings, strapi_database_schema,
+  strapi_history_versions, strapi_migrations, strapi_migrations_internal,
+  strapi_releases, strapi_release_actions,
+  strapi_release_actions_release_lnk, strapi_sessions,
+  strapi_transfer_tokens, strapi_transfer_token_permissions,
+  strapi_transfer_token_permissions_token_lnk, strapi_webhooks,
+  strapi_workflows, strapi_workflows_stages,
+  strapi_workflows_stages_permissions_lnk,
+  strapi_workflows_stages_workflow_lnk,
+  strapi_workflows_stage_required_to_publish_lnk,
+  strapi_ai_localization_jobs, strapi_ai_metadata_jobs,
+  i18n_locale.
+  Ces tables ne font pas partie du domaine métier ; elles ne sont pas
+  détaillées champ par champ (voir §16.3 pour les médias et §6 pour les
+  utilisateurs).
+
+
+================================================================================
+4. DICTIONNAIRE DETAILLE — ORGANISATION
+================================================================================
+
+4.1 TABLE `directions`  (api::direction.direction)
+    Type : collectionType — draftAndPublish : OUI (published_at utilisé)
+
+Champ             | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+------------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------------------
+nom_direction     | string       | varchar(255)  | 255    | oui app. | non    | —      | Nom officiel de la direction (ex. « Direction Logistique »). Clé métier utilisée pour rattacher services et utilisateurs.
+abreviation       | string       | varchar(255)  | 255    | non      | non    | —      | Sigle de la direction (ex. DLOG, DRH, DAF). Utilisé par le code pour retrouver une direction à partir du département de l'utilisateur (recherche insensible à la casse).
+description       | string       | varchar(255)  | 255    | non      | non    | —      | Description libre de la direction.
+directeur         | string       | varchar(255)  | 255    | non      | non    | —      | Nom du directeur (texte, pas de lien vers un utilisateur).
+directeur_email   | email        | varchar(255)  | 255    | non      | non    | —      | Adresse électronique du directeur.
+localisation      | string       | varchar(255)  | 255    | non      | non    | —      | Localisation physique (étage, bâtiment).
+(services)        | relation 1-N | table de lien | —      | non      | non    | —      | Relation inverse vers `services` (voir §18).
+
+Remarques :
+- Unicité du nom non déclarée, mais le code fait des recherches par nom ou
+  abréviation (égalité insensible à la casse) pour rattacher un utilisateur.
+  Des doublons de nom rendraient cette résolution ambiguë.
+- Table de liaison : services_direction_lnk (côté service).
+
+
+4.2 TABLE `services`  (api::service.service)
+    Type : collectionType — draftAndPublish : OUI
+
+Champ             | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+------------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------------------
+nom_service       | string       | varchar(255)  | 255    | oui app. | non    | —      | Nom du service (ex. « Service Comptabilité Matière »).
+description       | string       | varchar(255)  | 255    | non      | non    | —      | Description libre.
+responsable       | string       | varchar(255)  | 255    | non      | non    | —      | Nom du responsable du service (texte).
+depositaire       | string       | varchar(255)  | 255    | non      | non    | —      | Nom du dépositaire du service (texte).
+chef_service_1    | string       | varchar(255)  | 255    | non      | non    | —      | Nom du chef de service 1 (signataire d'entrée).
+chef_service_2    | string       | varchar(255)  | 255    | non      | non    | —      | Nom du chef de service 2 (signataire d'entrée).
+responsable_email | email        | varchar(255)  | 255    | non      | non    | —      | Courriel du responsable.
+localisation      | string       | varchar(255)  | 255    | non      | non    | —      | Localisation (bureau).
+(direction)       | relation N-1 | table de lien | —      | non      | non    | —      | Direction de rattachement (services_direction_lnk).
+(employees)       | relation 1-N | table de lien | —      | non      | non    | —      | Agents rattachés (employees_service_lnk).
+
+
+4.3 TABLE `employees`  (api::employee.employee)
+    Type : collectionType — draftAndPublish : OUI
+
+Champ             | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+------------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------------------
+im                | string       | varchar(255)  | 255    | oui app. | non    | —      | Identifiant/matricule de l'agent (ex. MIN.001). Aucune unicité déclarée.
+CIN               | string       | varchar(255)  | 255    | non      | non    | —      | Numéro de carte d'identité nationale. ATTENTION : le champ est déclaré `CIN` mais la colonne physique est `cin` (minuscules).
+nom               | string       | varchar(255)  | 255    | non      | non    | —      | Nom de famille.
+prenom            | string       | varchar(255)  | 255    | non      | non    | —      | Prénom.
+sexe              | enumeration  | varchar(255)  | 255    | non      | non    | —      | Valeurs : masculin | féminin.
+corps             | string       | varchar(255)  | 255    | non      | non    | —      | Corps d'appartenance (fonction publique). Signification détaillée non précisée dans le code.
+fonction          | string       | varchar(255)  | 255    | non      | non    | —      | Fonction occupée.
+phone             | string       | varchar(255)  | 255    | non      | non    | —      | Téléphone.
+email             | email        | varchar(255)  | 255    | oui app. | non    | —      | Courriel professionnel.
+photo             | media multiple | table files_related_mph + files | — | non | non | — | Photos/pièces jointes (images, fichiers, vidéos, audio autorisés).
+statut            | enumeration  | varchar(255)  | 255    | non      | non    | —      | Valeurs : actif | inactif | congé.
+(service)         | relation N-1 | table de lien | —      | non      | non    | —      | Service de rattachement (employees_service_lnk).
+
+
+================================================================================
+5. DICTIONNAIRE DETAILLE — REFERENTIEL MATERIEL
+================================================================================
+
+5.1 TABLE `categories`  (api::category.category)
+    Type : collectionType — draftAndPublish : NON
+
+Champ       | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+------------|--------------|---------------|--------|----------|--------|--------|-----------------------------------------------------
+nom         | string       | varchar(255)  | 255    | oui app. | non    | —      | Libellé de la catégorie de matériel.
+code        | string       | varchar(255)  | 255    | non      | non    | —      | Code interne de la catégorie. Aucune unicité déclarée.
+description | string       | varchar(255)  | 255    | non      | non    | —      | Description libre.
+(materiaux) | relation 1-N | table de lien | —      | non      | non    | —      | Matériels de la catégorie (materials_categorie_lnk).
+
+
+5.2 TABLE `materials`  (api::material.material)
+    Type : collectionType — draftAndPublish : NON
+    Rôle : fiche article du stock (référentiel + quantité disponible).
+
+Champ           | Type logique   | Type physique | Taille | Obl.     | Unique | Défaut    | Description / utilité
+----------------|----------------|---------------|--------|----------|--------|-----------|-------------------------------------------------------
+designation     | string         | varchar(255)  | 255    | oui app. | non    | —         | Désignation du matériel/ article.
+numero_serie    | string         | varchar(255)  | 255    | non      | non    | —         | Numéro de série (matériel sérialisé).
+nomenclature    | string         | varchar(255)  | 255    | non      | non    | —         | Code de nomenclature budgétaire/comptable. Sert de clé de regroupement dans les rapports de reddition (ouverture_exercices.nomenclature, entree_lignes.nomenclature).
+categorie       | relation N-1   | table de lien | —      | non      | non    | —         | Catégorie (materials_categorie_lnk).
+quantite_stock  | integer        | INTEGER       | —      | non      | non    | 0 (app.)  | Quantité disponible en stock. Décrémentée de façon atomique à la 3e signature d'une sortie (UPDATE ... WHERE quantite_stock >= X) ; incrémentée à la validation d'une entrée (impact stock).
+valeur_unitaire | decimal        | float         | —      | non      | non    | —         | Valeur unitaire de référence ; recopiée dans les lignes d'entrée/sortie.
+statut          | enumeration    | varchar(255)  | 255    | non      | non    | en_stock  | Valeurs : en_stock | distribue | maintenance | reforme | sortie. Le code considère certains statuts comme indisponibles pour une demande (liste MATERIEL_INDISPONIBLE dans le contrôleur de demande).
+observations    | text           | TEXT          | illim. | non      | non    | —         | Observations libres.
+(lignes_entree) | relation 1-N   | table de lien | —      | non      | non    | —         | Lignes d'entrée référençant ce matériel (entree_lignes_materiel_lnk).
+(lignes_sortie) | relation 1-N   | table de lien | —      | non      | non    | —         | Lignes de sortie référençant ce matériel (sortie_lignes_materiel_lnk).
+photos          | media multiple | files_related_mph + files | — | non | non | — | Photos du matériel (images uniquement).
+
+Remarque : aucune contrainte d'unicité sur designation + numero_serie ; le
+référentiel peut donc contenir plusieurs fiches portant la même désignation.
+
+
+5.3 TABLE `fournisseurs`  (api::fournisseur.fournisseur)
+    Type : collectionType — draftAndPublish : NON
+
+Champ     | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+----------|--------------|---------------|--------|----------|--------|--------|-------------------------------------------
+nom       | string       | varchar(255)  | 255    | oui app. | non    | —      | Raison sociale du fournisseur.
+contact   | string       | varchar(255)  | 255    | non      | non    | —      | Personne de contact.
+email     | email        | varchar(255)  | 255    | non      | non    | —      | Courriel.
+telephone | string       | varchar(255)  | 255    | non      | non    | —      | Téléphone.
+adresse   | string       | varchar(255)  | 255    | non      | non    | —      | Adresse postale.
+(entrees) | relation 1-N | table de lien | —      | non      | non    | —      | Entrées fournies (entrees_fournisseur_lnk).
+
+Remarque : le contrôleur d'entrée fait un « find-or-create » sur le nom du
+fournisseur (comparaison insensible à la casse et aux espaces) : le nom sert
+donc de clé fonctionnelle, sans contrainte d'unicité en base.
+
+================================================================================
+6. DICTIONNAIRE DETAILLE — UTILISATEURS ET SECURITE
+================================================================================
+
+6.1 TABLE `up_users`  (plugin::users-permissions.user)
+    Type : collectionType du plugin — extension projet :
+    backend/src/extensions/users-permissions/content-types/user/schema.json
+
+Champ              | Type logique | Type physique | Taille | Obl.     | Unique      | Défaut | Description / utilité
+-------------------|--------------|---------------|--------|----------|-------------|--------|------------------------------------------------------
+username           | string       | varchar(255)  | 255    | oui app. | oui (app.)  | —      | Nom d'affichage / identifiant de connexion. minLength = 3.
+email              | email        | varchar(255)  | 255    | oui app. | oui (app.)  | —      | Courriel de connexion. minLength = 6.
+provider           | string       | varchar(255)  | 255    | non      | non         | —      | Fournisseur d'authentification (local par défaut côté plugin).
+password           | password     | varchar(255)  | 255    | non      | non         | —      | Mot de passe HACHÉ (jamais en clair). minLength = 6 ; privé et non recherchable.
+resetPasswordToken | string       | varchar(255)  | 255    | non      | non         | —      | Jeton technique de réinitialisation (privé, non recherchable).
+confirmationToken  | string       | varchar(255)  | 255    | non      | non         | —      | Jeton technique de confirmation de compte (privé, non recherchable).
+confirmed          | boolean      | boolean       | —      | non      | non         | false  | Compte confirmé.
+blocked            | boolean      | boolean       | —      | non      | non         | false  | Compte bloqué (interdiction de connexion).
+department         | string       | varchar(255)  | 255    | non      | non         | —      | Libellé du département/service, au format « DIRECTION - Service » (ex. « DRH - Service Gestion Personnel »). Sert au rattachement fonctionnel aux directions/services.
+fonction           | string       | varchar(255)  | 255    | non      | non         | —      | Fonction de l'utilisateur (texte libre).
+(role)             | relation N-1 | up_users_role_lnk | —  | non      | non         | —      | Rôle Strapi (up_roles) : demandeur, depositaire, magasinier, logistique, comptable, admin, authenticated.
+(direction)        | relation N-1 | up_users_direction_lnk | — | non | non      | —      | Direction de rattachement (directions).
+
+Champs système de up_users : id, document_id, created_at, updated_at,
+published_at, created_by_id, updated_by_id, locale.
+
+Remarques importantes pour le mémoire :
+- L'utilisateur métier est un utilisateur du plugin users-permissions, pas un
+  utilisateur de l'administration Strapi (admin_users).
+- Le rattachement à une direction existe de deux façons : la relation
+  `direction` (table de liaison) et le préfixe du champ texte `department`.
+  Le code utilise les deux selon les contrôleurs.
+- Les rôles portent le code métier dans `up_roles.type` (le code lit
+  `role.code || role.type`). Rôles créés/métier : demandeur, depositaire,
+  magasinier, logistique, comptable, admin, plus authenticated/public du
+  plugin.
+
+6.2 TABLE `up_roles`
+Champ       | Type logique | Type physique | Taille | Description
+------------|--------------|---------------|--------|-----------------------------------------
+name        | string       | varchar(255)  | 255    | Libellé du rôle (ex. « Dépositaire par service »).
+description | string       | varchar(255)  | 255    | Description du périmètre.
+type        | string       | varchar(255)  | 255    | Code technique du rôle, utilisé par le code métier (demandeur, depositaire, etc.).
++ champs système.
+
+6.3 TABLE `up_permissions`
+Champ  | Type logique | Type physique | Taille | Description
+-------|--------------|---------------|--------|---------------------------------------------
+action | string       | varchar(255)  | 255    | Action autorisée, au format `api::<api>.<content-type>.<action>` ou `plugin::<plugin>.<contrôleur>.<action>`.
++ champs système. Liaison aux rôles : up_permissions_role_lnk.
+
+6.4 TABLE `session_roles` (api::session-role.session-role)
+    Type : collectionType — AUCUN attribut métier.
+    Cette table est un support technique permettant d'enregistrer la route
+    GET /api/session/role. Elle ne stocke AUCUNE donnée (table vide par
+    construction, comme indiqué dans la description du schéma).
+    Champs : uniquement les champs système (id, document_id, created_at,
+    updated_at, published_at, created_by_id, updated_by_id, locale).
+
+
+================================================================================
+7. DICTIONNAIRE DETAILLE — ENTREES
+================================================================================
+
+7.1 TABLE `entrees`  (api::entree.entree)
+    Type : collectionType — draftAndPublish : NON
+    Rôle : dossier d'arrivée de matériel, validé par 3 signatures.
+
+Champ                       | Type logique | Type physique | Taille | Obl.     | Unique     | Défaut      | Description / utilité
+----------------------------|--------------|---------------|--------|----------|------------|-------------|--------------------------------------------------
+reference                   | string       | varchar(255)  | 255    | oui app. | oui (app.) | —           | Référence du dossier, générée par le serveur au format ENT-AAAA-NNN (ex. ENT-2026-001) si absente du corps.
+date_entree                 | date         | date          | 10     | oui app. | non        | —           | Date d'entrée (AAAA-MM-JJ). Sert aussi à calculer l'année de la référence.
+numero_facture              | string       | varchar(255)  | 255    | non      | non        | —           | Numéro de facture du fournisseur.
+(fournisseur)               | relation N-1 | entrees_fournisseur_lnk | — | non | non     | —           | Fournisseur (résolu par nom si absent : find-or-create).
+(direction)                 | relation N-1 | entrees_direction_lnk | —   | non      | non        | —           | Direction destinataire.
+(service)                   | relation N-1 | entrees_service_lnk | —     | non      | non        | —           | Service destinataire.
+responsable                 | string       | varchar(255)  | 255    | non      | non        | —           | Nom du responsable de l'entrée (texte).
+(demandeur)                 | relation N-1 | entrees_demandeur_lnk | —   | non      | non        | —           | Utilisateur ayant enregistré l'entrée, déduit de la session (jamais du corps). Sert à isoler les lectures du profil Demandeur.
+statut                      | enumeration  | varchar(255)  | 255    | non      | non        | en_attente  | Valeurs : brouillon | en_attente | verifiee | validee | rejetee.
+affectation_depositaire     | string       | varchar(255)  | 255    | non      | non        | —           | Nom du dépositaire affecté (1re signature).
+affectation_chef_service_1  | string       | varchar(255)  | 255    | non      | non        | —           | Nom du chef de service 1 affecté (2e signature).
+affectation_chef_service_2  | string       | varchar(255)  | 255    | non      | non        | —           | Nom du chef de service 2 affecté (3e signature).
+qr_token                    | string       | varchar(255)  | 255    | non      | oui (app.) | —           | Jeton unique de QR code, généré par le serveur : « ENT-<base36 horodatage>-<aléatoire> » en majuscules.
+depositaire_signed          | boolean      | boolean       | —      | non      | non        | false       | Signature 1/3 (dépositaire) apposée.
+chef_service_1_signed       | boolean      | boolean       | —      | non      | non        | false       | Signature 2/3 (chef de service 1) apposée.
+chef_service_2_signed       | boolean      | boolean       | —      | non      | non        | false       | Signature 3/3 (chef de service 2) apposée ; déclenche le statut validee et l'impact stock.
+date_signature_depositaire  | string       | varchar(255)  | 255    | non      | non        | —           | Horodatage ISO de la signature 1.
+date_signature_chef_service_1| string      | varchar(255)  | 255    | non      | non        | —           | Horodatage ISO de la signature 2.
+date_signature_chef_service_2| string      | varchar(255)  | 255    | non      | non        | —           | Horodatage ISO de la signature 3.
+signataire_depositaire      | string       | varchar(255)  | 255    | non      | non        | —           | Nom/identité du signataire 1 (texte figé pour l'audit).
+signataire_chef_service_1   | string       | varchar(255)  | 255    | non      | non        | —           | Nom/identité du signataire 2.
+signataire_chef_service_2   | string       | varchar(255)  | 255    | non      | non        | —           | Nom/identité du signataire 3.
+notes                       | text         | TEXT          | illim. | non      | non        | —           | Notes libres.
+total                       | decimal      | float         | —      | non      | non        | 0 (app.)    | Total du dossier, recalculé par le serveur : somme des montants des lignes.
+numero_chapitre             | string       | varchar(255)  | 255    | non      | non        | —           | Numéro de chapitre budgétaire (champ de formulaire, signification détaillée non documentée dans le code).
+libelle_chapitre            | string       | varchar(255)  | 255    | non      | non        | —           | Libellé du chapitre.
+subdivision_chapitre        | string       | varchar(255)  | 255    | non      | non        | —           | Subdivision budgétaire.
+numero_ordre_journal        | string       | varchar(255)  | 255    | non      | non        | —           | Numéro d'ordre au journal de comptabilité matière.
+budget_general              | string       | varchar(255)  | 255    | non      | non        | —           | Référence budgétaire générale. Signification métier précise non explicitée dans le code.
+soa                         | string       | varchar(255)  | 255    | non      | non        | —           | Champ de formulaire transmis tel quel. Signification métier NON DETERMINEE dans le code source.
+type_operation              | enumeration  | varchar(255)  | 255    | non      | non        | —           | Valeurs : materiel_en_approvisionnement | materiel_en_service.
+adresse_fournisseur         | string       | varchar(255)  | 255    | non      | non        | —           | Adresse du fournisseur recopiée sur le dossier.
+date_facture                | date         | date          | 10     | non      | non        | —           | Date de la facture.
+bon_livraison               | string       | varchar(255)  | 255    | non      | non        | —           | Numéro de bon de livraison.
+date_bon_livraison          | date         | date          | 10     | non      | non        | —           | Date du bon de livraison.
+motif_entree                | string       | varchar(255)  | 255    | non      | non        | —           | Motif de l'entrée (achat, dotation, etc.).
+reference_marche            | string       | varchar(255)  | 255    | non      | non        | —           | Référence du marché public.
+piece_justificative         | string       | varchar(255)  | 255    | non      | non        | —           | Référence/pièce justificative.
+declaration_nom             | string       | varchar(255)  | 255    | non      | non        | —           | Nom déclaré sur la déclaration d'entrée.
+declaration_fonction        | string       | varchar(255)  | 255    | non      | non        | —           | Fonction déclarée.
+declaration_date            | date         | date          | 10     | non      | non        | —           | Date de la déclaration.
+declaration_signature       | string       | varchar(255)  | 255    | non      | non        | —           | Signature/mention de la déclaration.
+stock_impacte               | boolean      | boolean       | —      | non      | non        | false       | Verrou d'idempotence : passe à true quand l'entrée a déjà incrémenté le stock, pour éviter un double impact.
+(lignes)                    | relation 1-N | entree_lignes_entree_lnk | — | non     | non        | —           | Lignes d'articles de l'entrée.
+(mouvements)                | relation 1-N | mouvements_entree_lnk | —    | non      | non        | —           | Mouvements tracés pour cette entrée.
+
+
+7.2 TABLE `entree_lignes`  (api::entree-ligne.entree-ligne)
+    Type : collectionType — draftAndPublish : NON
+
+Champ              | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+-------------------|--------------|---------------|--------|----------|--------|--------|-------------------------------------------------
+(entree)           | relation N-1 | entree_lignes_entree_lnk | — | non    | non    | —      | Entrée porteuse de la ligne.
+(materiel)         | relation N-1 | entree_lignes_materiel_lnk | — | non  | non    | —      | Fiche matériel référencée (facultative : une ligne peut décrire un article non encore fiché).
+numero_ordre       | integer      | INTEGER       | —      | non      | non    | —      | Ordre d'affichage de la ligne.
+designation        | string       | varchar(255)  | 255    | non      | non    | —      | Désignation recopiée (utile si le matériel n'est pas fiché).
+reference          | string       | varchar(255)  | 255    | non      | non    | —      | Référence article/fournisseur.
+espece             | string       | varchar(255)  | 255    | non      | non    | —      | Espèce/nature de l'article.
+unite              | string       | varchar(255)  | 255    | non      | non    | —      | Unité de mesure.
+quantite           | integer      | INTEGER       | —      | oui app. | non    | 1      | Quantité reçue.
+valeur_unitaire    | decimal      | float         | —      | non      | non    | —      | Valeur unitaire.
+montant            | decimal      | float         | —      | non      | non    | —      | Montant de la ligne, recalculé par le serveur (quantité × valeur unitaire, arrondi au centime).
+nomenclature       | string       | varchar(255)  | 255    | non      | non    | —      | Code nomenclature de l'article.
+piece_justificative| string       | varchar(255)  | 255    | non      | non    | —      | Pièce justificative de la ligne.
+observations       | string       | varchar(255)  | 255    | non      | non    | —      | Observations.
+etat               | enumeration  | varchar(255)  | 255    | non      | non    | —      | Valeurs : neuf | bon | moyen | defaillant.
+conforme           | boolean      | boolean       | —      | non      | non    | —      | Contrôle de conformité de la ligne.
+photos             | media multiple | files_related_mph + files | — | non | non | — | Photos de la ligne (images uniquement).
+
+
+================================================================================
+8. DICTIONNAIRE DETAILLE — DEMANDES
+================================================================================
+
+8.1 TABLE `demandes`  (api::demande.demande)
+    Type : collectionType — draftAndPublish : NON
+
+Champ                | Type logique  | Type physique | Taille | Obl.     | Unique     | Défaut     | Description / utilité
+---------------------|---------------|---------------|--------|----------|------------|------------|-----------------------------------------------
+reference            | string        | varchar(255)  | 255    | non      | oui (app.) | —          | Référence générée par le service au format DEM-AAAA-NNN (comptage des références de l'année).
+type                 | enumeration   | varchar(255)  | 255    | oui app. | non        | sortie     | Valeurs : entree | sortie.
+designation_materiel | string        | varchar(255)  | 255    | oui app. | non        | —          | Désignation du matériel demandé (niveau en-tête).
+quantite             | integer       | INTEGER       | —      | oui app. | non        | 1          | Quantité demandée (niveau en-tête).
+motif                | text          | TEXT          | illim. | non      | non        | —          | Motif de la demande.
+(lignes)             | component répétable | demandes_cmps + components_demande_lignes | — | non | non | — | Lignes détaillées de la demande (voir §8.2).
+priorite             | enumeration   | varchar(255)  | 255    | non      | non        | normal     | Valeurs : normal | urgent | critique.
+statut               | enumeration   | varchar(255)  | 255    | non      | non        | en_attente | Valeurs : brouillon | en_attente | en_cours | approuvee | rejetee | preparation | annulee | sortie_effectuee.
+groupe               | string        | varchar(255)  | 255    | non      | non        | —          | Groupe de demandes. Si absent, le service le fixe égal à la référence.
+fonction             | string        | varchar(255)  | 255    | non      | non        | —          | Fonction du demandeur recopiée.
+observation          | text          | TEXT          | illim. | non      | non        | —          | Observation libre.
+motif_rejet          | text          | TEXT          | illim. | non      | non        | —          | Motif du rejet (obligatoire côté contrôleur lors du rejet).
+date_demande         | date          | date          | 10     | oui app. | non        | —          | Date de la demande.
+date_envoi           | date          | date          | 10     | non      | non        | —          | Date d'envoi / de soumission.
+valide_par           | string        | varchar(255)  | 255    | non      | non        | —          | Nom du validateur (texte, posé par le serveur lors de l'approbation).
+date_validation      | date          | date          | 10     | non      | non        | —          | Date de la décision.
+(demandeur)          | relation N-1  | demandes_demandeur_lnk | — | non    | non        | —          | Utilisateur auteur de la demande, forcé depuis la session (jamais choisi par le client).
+(direction)          | relation N-1  | demandes_direction_lnk | — | non    | non        | —          | Direction du demandeur.
+(service)            | relation N-1  | demandes_service_lnk | —   | non      | non        | —          | Service du demandeur.
+(sorties)            | relation 1-N  | sorties_demande_lnk | —     | non      | non        | —          | Ordres de sortie issus de la demande (une seule sortie autorisée par le code).
+(mouvements)         | relation 1-N  | mouvements_demande_lnk | —  | non      | non        | —          | Mouvements rattachés à la demande.
+
+Règles métier observées :
+- Un profil Demandeur ne peut fixer que les statuts brouillon, en_attente ou
+  annulee (garde-fou roleGuard.js).
+- L'approbation et le rejet passent par des routes dédiées, réservées au rôle
+  depositaire (et admin), avec contrôle du statut « en_attente » et
+  revérification du stock.
+- Le code interdit la création d'un second ordre de sortie pour une même
+  demande (409).
+
+8.2 TABLE `components_demande_lignes` (composant demande.ligne)
+    Le composant est stocké dans sa propre table, reliée aux demandes par
+    demandes_cmps (entity_id, cmp_id, component_type, field, order).
+
+Champ             | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+------------------|--------------|---------------|--------|----------|--------|--------|-------------------------------------------------
+(materiel)        | relation N-1 | components_demande_lignes_materiel_lnk | — | non | non | — | Fiche matériel demandée.
+designation       | string       | varchar(255)  | 255    | non      | non    | —      | Désignation recopiée.
+quantite          | integer      | INTEGER       | —      | oui app. | non    | 1      | Quantité demandée. min = 1.
+quantite_demandee | integer      | INTEGER       | —      | non      | non    | —      | Quantité demandée (variante). La différence avec `quantite` n'est PAS explicitée dans le code : information non déterminée.
+motif             | text         | TEXT          | illim. | non      | non    | —      | Motif propre à la ligne.
+
+Remarque : le composant n'a PAS de champ de prix ni de lien vers une sortie ; il
+représente la demande de stock réel, la ligne de sortie étant créée ensuite.
+
+
+================================================================================
+9. DICTIONNAIRE DETAILLE — SORTIES
+================================================================================
+
+9.1 TABLE `sorties`  (api::sortie.sortie)
+    Type : collectionType — draftAndPublish : NON
+    Rôle : ordre de sortie de matériel, validé par 3 signatures, qui débit le stock.
+
+Champ                          | Type logique | Type physique | Taille | Obl.     | Unique     | Défaut    | Description / utilité
+-------------------------------|--------------|---------------|--------|----------|------------|-----------|-----------------------------------------------
+reference                      | string       | varchar(255)  | 255    | non      | oui (app.) | —         | Référence générée par le serveur : SOR-AAAA-NNN.
+date_sortie                    | date         | date          | 10     | oui app. | non        | —         | Date de l'ordre de sortie.
+statut                         | enumeration  | varchar(255)  | 255    | non      | non        | demandee  | Valeurs : demandee | en_preparation | validee | sortie_effectuee | annulee. À la création par le circuit : en_preparation ; après la 3e signature : validee ; après la remise au détenteur : sortie_effectuee ; rejet : annulee.
+(direction)                    | relation N-1 | sorties_direction_lnk | —   | non      | non        | —         | Direction destinataire.
+(service)                      | relation N-1 | sorties_service_lnk | —     | non      | non        | —         | Service destinataire.
+(demande)                      | relation N-1 | sorties_demande_lnk | —     | non      | non        | —         | Demande d'origine (facultative).
+beneficiaire                   | string       | varchar(255)  | 255    | non      | non        | —         | Bénéficiaire (nom).
+responsable                    | string       | varchar(255)  | 255    | non      | non        | —         | Responsable de la sortie (nom).
+justificatif                   | string       | varchar(255)  | 255    | non      | non        | —         | Justificatif de la sortie (le code exige un justificatif non vide à la création).
+observations                   | text         | TEXT          | illim. | non      | non        | —         | Observations.
+(lignes)                       | relation 1-N | sortie_lignes_sortie_lnk | —  | non      | non        | —         | Lignes d'articles.
+(mouvements)                   | relation 1-N | mouvements_sortie_lnk | —     | non      | non        | —         | Mouvements de traçabilité.
+magasinier_signed              | boolean      | boolean       | —      | non      | non        | false     | Signature 1/3 (magasinier).
+depositaire_signed             | boolean      | boolean       | —      | non      | non        | false     | Signature 2/3 (dépositaire comptable).
+logistique_signed              | boolean      | boolean       | —      | non      | non        | false     | Signature 3/3 (chef logistique) : validation finale + débit atomique du stock.
+signataire_magasinier          | text         | TEXT          | illim. | non      | non        | —         | Identité du signataire 1 (texte figé).
+signataire_depositaire         | text         | TEXT          | illim. | non      | non        | —         | Identité du signataire 2.
+signataire_logistique          | text         | TEXT          | illim. | non      | non        | —         | Identité du signataire 3.
+date_signature_magasinier      | text         | TEXT          | illim. | non      | non        | —         | Horodatage ISO de la signature 1.
+date_signature_depositaire     | text         | TEXT          | illim. | non      | non        | —         | Horodatage ISO de la signature 2.
+date_signature_logistique      | text         | TEXT          | illim. | non      | non        | —         | Horodatage ISO de la signature 3 (sert de borne inférieure à la réception).
+stock_impacte                  | boolean      | boolean       | —      | non      | non        | false     | Verrou d'idempotence : true si le stock a déjà été débité (mise à jour conditionnelle atomique pour éviter le double débit).
+motif_rejet                    | text         | TEXT          | illim. | non      | non        | —         | Motif du rejet de la sortie.
+detenteur_nom                  | text         | TEXT          | illim. | non      | non        | —         | Nom du détenteur final du matériel.
+detenteur_fonction             | text         | TEXT          | illim. | non      | non        | —         | Fonction du détenteur final.
+date_remise                    | text         | TEXT          | illim. | non      | non        | —         | Date (AAAA-MM-JJ) de la remise au détenteur.
+mandataire_nom                 | text         | TEXT          | illim. | non      | non        | —         | Nom d'un éventuel mandataire.
+notifications_validee_envoyees | boolean      | boolean       | —      | non      | non        | false     | Empêche le renvoi des notifications SSE de validation après une première émission réussie.
+remise_detenteur_cloturee      | boolean      | boolean       | —      | non      | non        | false     | Verrou anti-double : une seule remise au détenteur par dossier. Passé à true à l'enregistrement de la remise.
+remise_detenteur_date          | text         | TEXT          | illim. | non      | non        | —         | Date (AAAA-MM-JJ) de la remise, recopiée sur le dossier de sortie.
+
+
+9.2 TABLE `sortie_lignes`  (api::sortie-ligne.sortie-ligne)
+    Type : collectionType — draftAndPublish : NON
+
+Champ            | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+-----------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------
+(sortie)         | relation N-1 | sortie_lignes_sortie_lnk | — | non     | non    | —      | Sortie porteuse.
+(materiel)       | relation N-1 | sortie_lignes_materiel_lnk | — | non   | non    | —      | Matériel sorti.
+quantite         | integer      | INTEGER       | —      | oui app. | non    | 1      | Quantité sortie.
+valeur_unitaire  | decimal      | float         | —      | non      | non    | —      | Valeur unitaire recopiée de la fiche matériel.
+montant          | decimal      | float         | —      | non      | non    | —      | Montant recalculé (quantité × valeur unitaire).
+observations     | string       | varchar(255)  | 255    | non      | non    | —      | Observations.
+etat             | enumeration  | varchar(255)  | 255    | non      | non    | —      | Valeurs : neuf | bon | moyen | defaillant.
+numero_logistique| text         | TEXT          | illim. | non      | non    | —      | Numéro logistique saisi au moment de la 3e signature, enregistré tel quel.
+
+INCOHERENCE SIGNALEE : le code de creationSortie.js envoie un champ
+`designation` sur la ligne de sortie, mais ce champ N'EST PAS déclaré dans le
+schéma et N'EXISTE PAS dans la table. Il est donc ignoré ou rejeté selon le
+mode d'écriture Strapi. À vérifier avant de le documenter comme existant.
+
+
+================================================================================
+10. DICTIONNAIRE DETAILLE — RECEPTIONS
+================================================================================
+
+Deux modèles de réception coexistent dans le backend :
+  - `reception` + `reception-ligne` : modèle détaillé (en-tête, numéro, version,
+    lignes, reliquats, anomalies) ;
+  - `reception-physique` : modèle simplifié (une ligne de quantités par
+    réception, sans lignes détaillées).
+Les deux ont des contrôleurs et des routes actifs (voir §23, point 8).
+
+10.1 TABLE `receptions`  (api::reception.reception)
+     Type : collectionType — draftAndPublish : NON
+
+Champ                 | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+----------------------|--------------|---------------|--------|----------|--------|--------|----------------------------------------------
+(sortie)              | relation N-1 | receptions_sortie_lnk | — | oui app. | non    | —      | Sortie contrôlée à la réception. Le contrôleur exige le statut « validee ».
+numero                | integer      | INTEGER       | —      | oui app. | non    | —      | Numéro de la réception. ATTENTION : le schéma le déclare integer, mais le contrôleur exige une CHAÎNE non vide (typeof body.numero !== 'string') — incohérence à vérifier.
+date_reception        | date         | date          | 10     | oui app. | non    | —      | Date de réception ; doit être >= date_signature_logistique de la sortie.
+statut                | enumeration  | varchar(255)  | 255    | oui app. | non    | —      | Valeurs : en_cours | partielle | complete | annulee. Calculé à partir des reliquats cumulés des lignes.
+version               | integer      | INTEGER       | —      | oui app. | non    | 1      | Verrou optimiste : incrémenté à chaque mise à jour (sinon 409).
+depositaire_nom       | text         | TEXT          | illim. | oui app. | non    | —      | Nom du dépositaire qui réceptionne.
+depositaire_fonction  | text         | TEXT          | illim. | oui app. | non    | —      | Fonction du dépositaire.
+(direction)           | relation N-1 | receptions_direction_lnk | — | oui app. | non   | —      | Direction de la sortie / du réceptionnaire.
+observations          | text         | TEXT          | illim. | non      | non    | —      | Observations.
+(createdBy)           | relation N-1 | receptions_createdby_lnk ? | — | non   | non    | —      | Utilisateur créateur. Le schéma déclare la relation, MAIS aucune table de liaison `receptions_createdby_lnk` n'existe : le champ est en réalité porté par la colonne système created_by_id (admin_users) — voir §23, point 6.
+(updatedBy)           | relation N-1 | idem          | —      | non      | non    | —      | Même remarque pour updatedBy / updated_by_id.
+
+10.2 TABLE `reception-lignes`  (api::reception-ligne.reception-ligne)
+     Type : collectionType — draftAndPublish : NON
+     ATTENTION : le nom physique contient un trait d'union (`reception-lignes`).
+
+Champ              | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+-------------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------
+(reception)        | relation N-1 | reception_lignes_reception_lnk | — | oui app. | non | — | Réception porteuse.
+(sortie_ligne)     | relation N-1 | reception_lignes_sortie_ligne_lnk | — | oui app. | non | — | Ligne de sortie contrôlée (doit appartenir à la sortie).
+(materiel)         | relation N-1 | reception_lignes_materiel_lnk | — | oui app. | non | — | Matériel réceptionné.
+quantite_commandee | integer      | INTEGER       | —      | oui app. | non    | —      | Quantité attendue d'après la sortie.
+quantite_recue     | integer      | INTEGER       | —      | oui app. | non    | —      | Quantité effectivement reçue ; <= quantite_commandee (contrôle applicatif).
+quantite_reliquat  | integer      | INTEGER       | —      | non      | non    | —      | Reliquat = quantite_commandee - quantite_recue, calculé par le serveur.
+etat               | enumeration  | varchar(255)  | 255    | non      | non    | neuf   | Valeurs : neuf | bon | moyen | defaillant (valeur par défaut posée dans le contrôleur).
+observations       | text         | TEXT          | illim. | non      | non    | —      | Observations.
+
+10.3 TABLE `receptions_physiques`  (api::reception-physique.reception-physique)
+     Type : collectionType — draftAndPublish : NON
+
+Champ                | Type logique | Type physique | Taille | Obl.     | Unique | Défaut   | Description / utilité
+---------------------|--------------|---------------|--------|----------|--------|----------|----------------------------------------------
+(sortie)             | relation N-1 | receptions_physiques_sortie_lnk | — | oui app. | non | — | Sortie contrôlée. Le contrôleur exige le statut « sortie_effectuee ».
+date_reception       | date         | date          | 10     | oui app. | non    | —        | Date de la réception physique.
+statut               | enumeration  | varchar(255)  | 255    | non      | non    | conforme | Valeurs : conforme | anomalie.
+type_anomalie        | enumeration  | varchar(255)  | 255    | non      | non    | —        | Valeurs : manquant | endommage | incorrect.
+description_anomalie | text         | TEXT          | illim. | non      | non    | —        | Description de l'anomalie constatée.
+quantite_prevue      | integer      | INTEGER       | —      | oui app. | non    | —        | Quantité attendue.
+quantite_recue       | integer      | INTEGER       | —      | oui app. | non    | —        | Quantité reçue ; la remise au détenteur exige au moins une réception avec quantite_recue > 0.
+utilisateur          | string       | varchar(255)  | 255    | oui app. | non    | —        | Identité du réceptionnaire (texte, pas de relation vers up_users).
+
+================================================================================
+11. DICTIONNAIRE DETAILLE — REMISE AU DETENTEUR
+================================================================================
+
+11.1 TABLE `remises_detenteurs`  (api::remise-detenteur.remise-detenteur)
+     Type : collectionType — draftAndPublish : NON
+
+Champ                | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+---------------------|--------------|---------------|--------|----------|--------|--------|----------------------------------------------
+(sortie)             | relation N-1 | remises_detenteurs_sortie_lnk | — | oui app. | non | — | Dossier de sortie concerné ; une seule remise par dossier (verrou sur sorties.remise_detenteur_cloturee).
+reference            | string       | varchar(255)  | 255    | non      | non    | —      | Référence du dossier de sortie recopiée pour l'historique (ex. SOR-2026-001).
+direction            | string       | varchar(255)  | 255    | non      | non    | —      | Libellé de la direction destinataire, recopié.
+date_reception       | text         | TEXT          | illim. | non      | non    | —      | Date (AAAA-MM-JJ) de la réception physique qui a précédé la remise.
+date_remise          | text         | TEXT          | illim. | non      | non    | —      | Date (AAAA-MM-JJ) de la remise au détenteur.
+(demandeur)          | relation N-1 | remises_detenteurs_demandeur_lnk | — | non | non | — | Utilisateur responsable de la remise.
+demandeur_nom        | string       | varchar(255)  | 255    | non      | non    | —      | Nom du demandeur recopié pour l'historique.
+attestation          | boolean      | boolean       | —      | non      | non    | true   | Attestation de remise physique effective ; le contrôleur refuse `false` si le champ est fourni.
+date_enregistrement  | text         | TEXT          | illim. | non      | non    | —      | Horodatage ISO posé par le serveur à l'enregistrement (affichage/tri).
+(lignes)             | relation 1-N | remise_detenteur_lignes_remise_lnk | — | non | non | — | Matériels remis, avec leur détenteur.
+
+11.2 TABLE `remise_detenteur_lignes`  (api::remise-detenteur-ligne.*)
+     Type : collectionType — draftAndPublish : NON
+
+Champ             | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+------------------|--------------|---------------|--------|----------|--------|--------|----------------------------------------------
+(remise)          | relation N-1 | remise_detenteur_lignes_remise_lnk | — | oui app. | non | — | Remise porteuse.
+(sortie_ligne)    | relation N-1 | remise_detenteur_lignes_sortie_ligne_lnk | — | non | non | — | Ligne de sortie à laquelle le matériel est rattaché.
+designation       | string       | varchar(255)  | 255    | oui app. | non    | —      | Désignation du matériel, recalculée par le serveur depuis la ligne de sortie.
+quantite          | integer      | INTEGER       | —      | non      | non    | 1      | Quantité remise, recalculée par le serveur.
+detenteur_nom     | text         | TEXT          | illim. | oui app. | non    | —      | Nom de la personne physique devenue responsable du matériel (2 à 150 caractères, lettres/espaces/apostrophes/tirets/points).
+detenteur_fonction| text         | TEXT          | illim. | non      | non    | —      | Fonction du détenteur (max 150 caractères).
+observation       | text         | TEXT          | illim. | non      | non    | —      | Observation propre au matériel remis (max 500 caractères).
+
+Règles métier observées :
+- Création réservée aux rôles demandeur, depositaire et admin ; en outre la
+  sortie doit appartenir à la direction de l'utilisateur (sauf admin).
+- La sortie doit être au statut `sortie_effectuee`.
+- Une réception physique avec quantite_recue > 0 doit exister.
+- date_remise ne peut pas être antérieure à la réception ni postérieure à
+  aujourd'hui (fuseau Madagascar).
+- La remise écrit un mouvement de traçabilité et passe la sortie à
+  sortie_effectuee (déjà le cas) et remise_detenteur_cloturee à true.
+
+
+================================================================================
+12. DICTIONNAIRE DETAILLE — AFFECTATIONS
+================================================================================
+
+12.1 TABLE `affectations`  (api::affectation.affectation)
+     Type : collectionType — draftAndPublish : NON
+     PARTICULARITE MAJEURE : AUCUNE relation Strapi. Direction, services,
+     matériel, signataires et dates de signature sont des chaînes de texte
+     (dénormalisation volontaire).
+
+Champ                            | Type logique | Type physique | Taille | Obl.     | Unique     | Défaut     | Description / utilité
+---------------------------------|--------------|---------------|--------|----------|------------|------------|---------------------------------------------
+reference                        | string       | varchar(255)  | 255    | oui app. | oui (app.) | —          | Référence générée par le serveur : AFF-AAAA-NNN.
+date                             | date         | date          | 10     | oui app. | non        | —          | Date de l'affectation.
+direction                        | string       | varchar(255)  | 255    | non      | non        | —          | Libellé de la direction (texte, pas de FK).
+service_source                   | string       | varchar(255)  | 255    | non      | non        | —          | Service d'origine (texte). Le contrôleur exige qu'il diffère du service destinataire.
+service_destinataire             | string       | varchar(255)  | 255    | non      | non        | —          | Service destinataire (texte).
+materiel                         | string       | varchar(255)  | 255    | non      | non        | —          | Désignation du matériel affecté (texte).
+materiel_reference               | string       | varchar(255)  | 255    | non      | non        | —          | Référence du matériel.
+quantite                         | integer      | INTEGER       | —      | non      | non        | 1 (app.)   | Quantité affectée (> 0 exigée).
+motif                            | string       | varchar(255)  | 255    | non      | non        | —          | Motif du transfert.
+observation                      | text         | TEXT          | illim. | non      | non        | —          | Observation libre.
+createur                         | string       | varchar(255)  | 255    | non      | non        | —          | Nom du créateur (déduit de la session si possible).
+createur_email                   | string       | varchar(255)  | 255    | non      | non        | —          | Courriel du créateur.
+responsable_transfert            | string       | varchar(255)  | 255    | non      | non        | —          | Nom du responsable du transfert (1/4).
+depositaire                      | string       | varchar(255)  | 255    | non      | non        | —          | Nom du dépositaire (2/4).
+chef_service_1                   | string       | varchar(255)  | 255    | non      | non        | —          | Nom du chef de service 1 (3/4).
+chef_service_2                   | string       | varchar(255)  | 255    | non      | non        | —          | Nom du chef de service 2 (4/4).
+responsable_transfert_signed     | boolean      | boolean       | —      | non      | non        | false      | Signature 1/4 apposée.
+depositaire_signed               | boolean      | boolean      | —      | non      | non        | false      | Signature 2/4 apposée.
+chef_service_1_signed            | boolean      | boolean       | —      | non      | non        | false      | Signature 3/4 apposée.
+chef_service_2_signed            | boolean      | boolean       | —      | non      | non        | false      | Signature 4/4 apposée ; déclenche le statut validee.
+date_signature_responsable_transfert | string   | varchar(255)  | 255    | non      | non        | —          | Date ISO de la signature 1.
+date_signature_depositaire       | string       | varchar(255)  | 255    | non      | non        | —          | Date ISO de la signature 2.
+date_signature_chef_service_1    | string       | varchar(255)  | 255    | non      | non        | —          | Date ISO de la signature 3.
+date_signature_chef_service_2    | string       | varchar(255)  | 255    | non      | non        | —          | Date ISO de la signature 4.
+signataire_responsable_transfert | string       | varchar(255)  | 255    | non      | non        | —          | Identité du signataire 1.
+signataire_depositaire           | string       | varchar(255)  | 255    | non      | non        | —          | Identité du signataire 2.
+signataire_chef_service_1        | string       | varchar(255)  | 255    | non      | non        | —          | Identité du signataire 3.
+signataire_chef_service_2        | string       | varchar(255)  | 255    | non      | non        | —          | Identité du signataire 4.
+statut                           | enumeration  | varchar(255)  | 255    | non      | non        | en_attente | Valeurs : en_attente | validee.
+historique                       | json         | json          | —      | non      | non        | —          | Journal interne de l'affectation : tableau d'objets { date, libelle }, initialisé à la création.
+qr_token                         | string       | varchar(255)  | 255    | non      | oui (app.) | —          | Jeton unique de QR code : « AFF-<base36 horodatage>-<aléatoire> ».
+
+Remarque pour le modèle conceptuel : une affectation ne référence NI un
+utilisateur, NI un service, NI un matériel par clé : tout est texte. Elle ne
+déplace pas non plus de stock (aucune écriture sur materials/quantite_stock).
+
+
+================================================================================
+13. DICTIONNAIRE DETAILLE — ANOMALIES ET JOURNAL
+================================================================================
+
+13.1 TABLE `anomalies`  (api::anomalie.anomalie)
+     Type : collectionType — draftAndPublish : NON
+
+Champ           | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+----------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------
+(reception)     | relation N-1 | anomalies_reception_lnk | — | oui app. | non | — | Réception concernée.
+(reception_ligne)| relation N-1 | anomalies_reception_ligne_lnk | — | non | non | — | Ligne de réception concernée (facultative).
+type_anomalie   | enumeration  | varchar(255)  | 255    | oui app. | non    | —      | Valeurs : manquant | endommage | non_conforme | autre.
+description     | text         | TEXT          | illim. | oui app. | non    | —      | Description de l'anomalie.
+statut          | enumeration  | varchar(255)  | 255    | oui app. | non    | —      | Valeurs : ouverte | en_cours | resolue | rejetee.
+version         | integer      | INTEGER       | —      | oui app. | non    | 1      | Version de l'anomalie (incrémentée lors des changements d'état).
+date_ouverture  | date         | date          | 10     | oui app. | non    | —      | Date d'ouverture.
+date_resolution | date         | date          | 10     | non      | non    | —      | Date de résolution.
+(responsable)   | relation N-1 | anomalies_responsable_lnk | — | non | non | — | Utilisateur responsable du traitement.
+
+13.2 TABLE `journal-actions`  (api::journal-action.journal-action)
+     Type : collectionType — draftAndPublish : NON
+     ATTENTION : nom physique avec trait d'union.
+
+Champ           | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+----------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------
+(anomalie)      | relation N-1 | journal_actions_anomalie_lnk | — | oui app. | non | — | Anomalie suivie.
+action          | enumeration  | varchar(255)  | 255    | oui app. | non    | —      | Valeurs : ouverte | prise_en_charge | resolue | rejetee.
+(auteur)        | relation N-1 | journal_actions_auteur_lnk | — | oui app. | non | — | Utilisateur auteur de l'action.
+date            | date         | date          | 10     | oui app. | non    | —      | Date de l'action.
+ancien_statut   | enumeration  | varchar(255)  | 255    | non      | non    | —      | Valeurs : ouverte | en_cours | resolue | rejetee.
+nouveau_statut  | enumeration  | varchar(255)  | 255    | oui app. | non    | —      | Valeurs : ouverte | en_cours | resolue | rejetee.
+commentaire     | text         | TEXT          | illim. | non      | non    | —      | Commentaire libre.
+
+
+================================================================================
+14. DICTIONNAIRE DETAILLE — TRACABILITE (MOUVEMENTS)
+================================================================================
+
+14.1 TABLE `mouvements`  (api::mouvement.mouvement)
+     Type : collectionType — draftAndPublish : NON
+     Rôle : journal de traçabilité (créé par les contrôleurs, non modifiable
+     par un profil Demandeur).
+
+Champ          | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+---------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------
+reference      | string       | varchar(255)  | 255    | oui app. | non    | —      | Référence du dossier concerné (copiée de l'entrée/sortie/demande). NON unique : plusieurs mouvements partagent la même référence.
+type           | enumeration  | varchar(255)  | 255    | oui app. | non    | —      | Valeurs : entree | sortie | demande.
+date_mouvement | date         | date          | 10     | oui app. | non    | —      | Date du mouvement.
+utilisateur    | string       | varchar(255)  | 255    | non      | non    | —      | Nom de l'utilisateur (texte, pas de FK).
+action         | string       | varchar(255)  | 255    | oui app. | non    | —      | Libellé de l'action (ex. « Réception physique », « Remise au détenteur », « Sortie validée, stock débité »).
+materiel       | string       | varchar(255)  | 255    | non      | non    | —      | Désignation(s) du matériel (texte concaténé, PAS une relation).
+quantite       | integer      | INTEGER       | —      | non      | non    | —      | Quantité concernée.
+statut         | string       | varchar(255)  | 255    | non      | non    | —      | Statut du dossier au moment du mouvement (texte, pas d'énumération).
+(entree)       | relation N-1 | mouvements_entree_lnk | — | non | non | — | Entrée d'origine.
+(sortie)       | relation N-1 | mouvements_sortie_lnk | — | non | non | — | Sortie d'origine.
+(demande)      | relation N-1 | mouvements_demande_lnk | — | non | non | — | Demande d'origine.
+observations   | text         | TEXT          | illim. | non      | non    | —      | Observations (ex. détenteur, quantités).
+
+
+================================================================================
+15. DICTIONNAIRE DETAILLE — NOTIFICATIONS
+================================================================================
+
+15.1 TABLE `notifications`  (api::notification.notification)
+     Type : collectionType — draftAndPublish : NON
+     Content-type FACTICE : il n'existe que pour enregistrer la route SSE
+     GET /api/notifications/stream. Il ne sert pas à stocker des données.
+
+Champ  | Type logique | Type physique | Taille | Obl. | Unique | Défaut | Description
+-------|--------------|---------------|--------|------|--------|--------|-----------------------------------------
+titre  | string       | varchar(255)  | 255    | non  | non    | —      | Champ unique, non utilisé par le flux SSE.
+
+15.2 TABLE `notification_outboxes`  (api::notification-outbox.*)
+     Type : collectionType — draftAndPublish : NON
+     Rôle : file d'attente persistante (outbox pattern) des notifications SSE,
+     avec idempotence et reprise après échec.
+
+Champ          | Type logique | Type physique | Taille | Obl.     | Unique     | Défaut   | Description / utilité
+---------------|--------------|---------------|--------|----------|------------|----------|---------------------------------------------
+(sortie)       | relation N-1 | notification_outboxes_sortie_lnk | — | non | non | — | Sortie à l'origine de l'événement.
+(demande)      | relation N-1 | notification_outboxes_demande_lnk | — | non | non | — | Demande à l'origine de l'événement.
+eventType      | enumeration  | varchar(255)  | 255    | oui app. | non        | —        | Valeurs : ordre_pret_distribution | ordre_sortie_autorise | demande_aboutie | nouvelle_demande | preparation_terminee | preparation_rejetee.
+recipientId    | integer      | INTEGER       | —      | non      | non        | —        | Identifiant numérique de l'utilisateur destinataire (PAS une relation).
+recipientRole  | string       | varchar(255)  | 255    | non      | non        | —        | Rôle métier du destinataire (demandeur, depositaire, magasinier...).
+cleUnicite     | string       | varchar(255)  | 255    | non      | oui (app.) | —        | Clé d'idempotence, format `<eventType>:<documentId>:<recipientId>`.
+payload        | json         | json          | —      | oui app. | non        | —        | Charge utile JSON envoyée en SSE (référence, statut, message, etc.).
+status         | enumeration  | varchar(255)  | 255    | oui app. | non        | pending  | Valeurs : pending | processing | sent | failed.
+attempts       | integer      | INTEGER       | —      | oui app. | non        | 0        | Nombre de tentatives d'envoi (max 5 dans le service).
+lastAttemptAt  | datetime     | DATETIME      | —      | non      | non        | —        | Date/heure de la dernière tentative. Colonne ajoutée par migration.
+lastError      | text         | TEXT          | illim. | non      | non        | —        | Dernière erreur d'envoi.
+(createdAt)    | datetime     | datetime      | —      | non      | non        | —        | Déclaré explicitement dans le schéma (doublon avec le champ système created_at).
+(updatedAt)    | datetime     | datetime      | —      | non      | non        | —        | Déclaré explicitement dans le schéma (doublon avec updated_at).
+
+COLONNES PHYSIQUES SUPPLÉMENTAIRES observées (héritage du script SQL
+PostgreSQL 001_create_notification_outbox.sql) :
+  - sortie_document_id  VARCHAR(255)  : ancienne FK vers sorties.document_id ;
+  - demande_document_id VARCHAR(255)  : ancienne FK vers demandes.document_id ;
+  - cle_unicite         varchar(255)  : ancienne colonne (le schéma utilise
+    maintenant cleUnicite, également présente) ;
+  - last_attempt_at     datetime      : ancienne colonne (le schéma et la
+    migration utilisent lastAttemptAt).
+Le code actuel utilise les TABLES DE LIAISON (sortie/demande) et les colonnes
+`cleUnicite` / `lastAttemptAt`. Les colonnes historiques ne sont plus
+renseignées par le code ; elles restent présentes physiquement.
+
+
+================================================================================
+16. DICTIONNAIRE DETAILLE — REDDITION DE COMPTE
+================================================================================
+
+16.1 TABLE `ouverture_exercices`  (api::ouverture-exercice.*)
+     Type : collectionType — draftAndPublish : NON
+
+Champ             | Type logique | Type physique | Taille | Obl.     | Unique | Défaut | Description / utilité
+------------------|--------------|---------------|--------|----------|--------|--------|---------------------------------------------
+annee             | integer      | INTEGER       | —      | oui app. | non    | —      | Exercice comptable. min = 2000, max = 2100.
+nomenclature      | string       | varchar(255)  | 255    | oui app. | non    | —      | Code de nomenclature (regroupement des articles).
+montant_existant  | decimal      | float         | —      | oui app. | non    | 0      | Stock d'ouverture au 1er janvier de l'exercice, pour cette nomenclature.
+observations      | text         | TEXT          | illim. | non      | non    | —      | Observations.
+
+Remarque : aucun couple (annee, nomenclature) unique déclaré ; le code des
+rapports additionne/regroupe par nomenclature, des doublons produiraient des
+cumuls. À vérifier dans les contrôles du service de rapport.
+
+16.2 TABLE `rapport`  (api::rapport.rapport)
+     Type : singleType — draftAndPublish : NON — AUCUN attribut métier.
+     Cette table ne contient que les champs système. Les rapports
+     (récapitulation, état appréciatif, inventaire, grand-livre, bordereau)
+     sont CALCULÉS à la volée par src/api/rapport/services/redition-calculs.js
+     et ne sont pas stockés.
+
+
+16.3 TABLES DES MEDIAS (plugin upload)
+
+16.3.1 TABLE `files`
+Champ              | Type physique | Taille | Description
+-------------------|---------------|--------|---------------------------------------------
+id                 | INTEGER       | —      | Clé primaire.
+document_id        | varchar(255)  | 255    | Identifiant public Strapi.
+name               | varchar(255)  | 255    | Nom du fichier.
+alternative_text   | TEXT          | illim. | Texte alternatif (accessibilité).
+caption            | TEXT          | illim. | Légende.
+focal_point        | json          | —      | Point focal de recadrage.
+width / height     | INTEGER       | —      | Dimensions (images).
+formats            | json          | —      | Variantes générées (miniatures).
+hash               | varchar(255)  | 255    | Nom de stockage haché.
+ext                | varchar(255)  | 255    | Extension.
+mime               | varchar(255)  | 255    | Type MIME.
+size               | float         | —      | Taille en Ko.
+url                | TEXT          | illim. | URL publique du fichier.
+preview_url        | TEXT          | illim. | URL d'aperçu.
+provider           | varchar(255)  | 255    | Fournisseur de stockage (local par défaut).
+provider_metadata  | json          | —      | Métadonnées du fournisseur.
+folder_path        | varchar(255)  | 255    | Chemin logique du dossier.
++ champs système (created_at, updated_at, published_at, created_by_id,
+  updated_by_id, locale).
+
+16.3.2 TABLE `files_related_mph` (liaison polymorphe média <-> contenu)
+Champ        | Type physique | Description
+-------------|---------------|-------------------------------------------------
+id           | INTEGER       | Clé primaire.
+file_id      | INTEGER       | FK vers files.id.
+related_id   | INTEGER       | Identifiant numérique de l'entité porteuse (ex. materials.id).
+related_type | varchar(255)  | Nom de la table porteuse (ex. materials, employees, entree_lignes).
+field        | varchar(255)  | Nom du champ média (ex. photos, photo).
+order        | float         | Ordre d'affichage dans la liste des médias.
+
+16.3.3 TABLE `files_folder_lnk` : id, file_id (FK files.id), folder_id
+(FK upload_folders.id), file_ord (float).
+
+16.3.4 TABLE `upload_folders` : id, document_id, name, path_id, path,
+created_at, updated_at, published_at, created_by_id, updated_by_id, locale.
+Contraintes UNIQUE observées sur path et path_id.
+
+16.3.5 TABLE `upload_folders_parent_lnk` : id, folder_id, inv_folder_id,
+folder_ord (relation hiérarchique des dossiers).
+
+
+================================================================================
+17. CHAMPS SYSTEME (présents dans toutes les tables de content-types)
+================================================================================
+
+Champ          | Type physique | Taille | Rôle
+---------------|---------------|--------|-------------------------------------------------
+id             | INTEGER       | —      | Clé primaire technique, auto-incrémentée.
+document_id    | varchar(255)  | 255    | Identifiant public Strapi 5 utilisé dans les URL et les appels `documents(...)`. Généré par Strapi.
+created_at     | datetime      | —      | Date/heure de création (système).
+updated_at     | datetime      | —      | Date/heure de dernière modification (système).
+published_at   | datetime      | —      | Date de publication (uniquement significatif pour directions, services, employees qui ont draftAndPublish=true ; null ailleurs).
+created_by_id  | INTEGER       | —      | FK vers admin_users.id (utilisateur de l'ADMINISTRATION Strapi, pas un utilisateur métier). Index présent.
+updated_by_id  | INTEGER       | —      | FK vers admin_users.id. Index présent.
+locale         | varchar(255)  | 255    | Colonne prévue pour l'internationalisation ; le plugin i18n n'est pas configuré (config/plugins.js vide), donc non utilisée.
+
+Points essentiels :
+- `created_by_id` / `updated_by_id` ne référencent PAS up_users : les
+  contrôleurs qui veulent attribuer une action à un utilisateur métier
+  écrivent son nom dans un champ texte ou une relation dédiée (demandeur,
+  responsable, etc.).
+- Les clés primaires sont des entiers ; les URL exposent `document_id`.
+- Toutes les tables de liaison possèdent aussi un `id` entier auto-incrémenté
+  (clé primaire technique).
+
+
+================================================================================
+18. RELATIONS ENTRE COLLECTIONS
+================================================================================
+
+18.1 Relations déclarées dans les schémas
+
+Source                     | Champ           | Cible                          | Cardinalité | Table de liaison
+---------------------------|-----------------|--------------------------------|-------------|-----------------------------------------
+directions                 | services        | services                       | 1-N         | services_direction_lnk
+services                   | direction       | directions                     | N-1         | services_direction_lnk
+services                   | employees       | employees                      | 1-N         | employees_service_lnk
+employees                  | service         | services                       | N-1         | employees_service_lnk
+categories                 | materiaux       | materials                      | 1-N         | materials_categorie_lnk
+materials                  | categorie       | categories                     | N-1         | materials_categorie_lnk
+fournisseurs               | entrees         | entrees                        | 1-N         | entrees_fournisseur_lnk
+entrees                    | fournisseur     | fournisseurs                   | N-1         | entrees_fournisseur_lnk
+entrees                    | lignes          | entree_lignes                  | 1-N         | entree_lignes_entree_lnk
+entree_lignes              | entree          | entrees                        | N-1         | entree_lignes_entree_lnk
+materials                  | lignes_entree   | entree_lignes                  | 1-N         | entree_lignes_materiel_lnk
+entree_lignes              | materiel        | materials                      | N-1         | entree_lignes_materiel_lnk
+entrees                    | demandeur       | up_users                       | N-1         | entrees_demandeur_lnk
+entrees                    | direction       | directions                     | N-1         | entrees_direction_lnk
+entrees                    | service         | services                       | N-1         | entrees_service_lnk
+entrees                    | mouvements      | mouvements                     | 1-N         | mouvements_entree_lnk
+demandes                   | demandeur       | up_users                       | N-1         | demandes_demandeur_lnk
+demandes                   | direction       | directions                     | N-1         | demandes_direction_lnk
+demandes                   | service         | services                       | N-1         | demandes_service_lnk
+demandes                   | sorties         | sorties                        | 1-N         | sorties_demande_lnk
+sorties                    | demande         | demandes                       | N-1         | sorties_demande_lnk
+demandes                   | mouvements      | mouvements                     | 1-N         | mouvements_demande_lnk
+mouvements                 | demande         | demandes                       | N-1         | mouvements_demande_lnk
+sorties                    | lignes          | sortie_lignes                  | 1-N         | sortie_lignes_sortie_lnk
+sortie_lignes              | sortie          | sorties                        | N-1         | sortie_lignes_sortie_lnk
+materials                  | lignes_sortie   | sortie_lignes                  | 1-N         | sortie_lignes_materiel_lnk
+sortie_lignes              | materiel        | materials                      | N-1         | sortie_lignes_materiel_lnk
+sorties                    | direction       | directions                     | N-1         | sorties_direction_lnk
+sorties                    | service         | services                       | N-1         | sorties_service_lnk
+sorties                    | mouvements      | mouvements                     | 1-N         | mouvements_sortie_lnk
+mouvements                 | sortie          | sorties                        | N-1         | mouvements_sortie_lnk
+mouvements                 | entree          | entrees                        | N-1         | mouvements_entree_lnk
+receptions                 | sortie          | sorties                        | N-1         | receptions_sortie_lnk
+receptions                 | direction       | directions                     | N-1         | receptions_direction_lnk
+receptions                 | createdBy       | up_users                       | N-1         | (relation déclarée mais PAS de table dédiée ; voir §23, point 6)
+receptions                 | updatedBy       | up_users                       | N-1         | (idem)
+reception_lignes           | reception       | receptions                     | N-1         | reception_lignes_reception_lnk
+reception_lignes           | sortie_ligne    | sortie_lignes                  | N-1         | reception_lignes_sortie_ligne_lnk
+reception_lignes           | materiel        | materials                      | N-1         | reception_lignes_materiel_lnk
+anomalies                  | reception       | receptions                     | N-1         | anomalies_reception_lnk
+anomalies                  | reception_ligne | reception_lignes               | N-1         | anomalies_reception_ligne_lnk
+anomalies                  | responsable     | up_users                       | N-1         | anomalies_responsable_lnk
+journal-actions            | anomalie        | anomalies                      | N-1         | journal_actions_anomalie_lnk
+journal-actions            | auteur          | up_users                       | N-1         | journal_actions_auteur_lnk
+remises_detenteurs         | sortie          | sorties                        | N-1         | remises_detenteurs_sortie_lnk
+remises_detenteurs         | demandeur       | up_users                       | N-1         | remises_detenteurs_demandeur_lnk
+remise_detenteur_lignes    | remise          | remises_detenteurs             | N-1         | remise_detenteur_lignes_remise_lnk
+remise_detenteur_lignes    | sortie_ligne    | sortie_lignes                  | N-1         | remise_detenteur_lignes_sortie_ligne_lnk
+receptions_physiques       | sortie          | sorties                        | N-1         | receptions_physiques_sortie_lnk
+notification_outboxes      | sortie          | sorties                        | N-1         | notification_outboxes_sortie_lnk
+notification_outboxes      | demande         | demandes                       | N-1         | notification_outboxes_demande_lnk
+up_users                   | role            | up_roles                       | N-1         | up_users_role_lnk
+up_users                   | direction       | directions                     | N-1         | up_users_direction_lnk
+demandes (composant)       | lignes          | components_demande_lignes      | 1-N         | demandes_cmps
+components_demande_lignes  | materiel        | materials                      | N-1         | components_demande_lignes_materiel_lnk
+
+18.2 Relations ABSENTES (données dénormalisées en texte)
+
+  - affectations : direction, service_source, service_destinataire, materiel,
+    materiel_reference, createur, createur_email, responsable_transfert,
+    depositaire, chef_service_1, chef_service_2, signataires, dates de
+    signature -> AUCUNE clé étrangère. Il est impossible de joindre une
+    affectation à un service ou à un matériel par SQL.
+  - mouvements.materiel : texte concaténé, pas de FK vers materials.
+  - mouvements.utilisateur : texte, pas de FK vers up_users.
+  - entrees : les 3 signataires et leurs dates sont du texte.
+  - sorties : les 3 signataires, leurs dates, detenteur_nom, mandataire_nom
+    sont du texte.
+  - receptions_physiques.utilisateur : texte.
+  - remises_detenteurs.direction / demandeur_nom : texte (le demandeur existe
+    toutefois aussi en relation).
+  - direction et services des utilisateurs : la relation existe, mais le code
+    utilise aussi le préfixe texte de `department`.
+
+18.3 Conséquence pour le mémoire
+
+Le modèle conceptuel doit distinguer :
+  (a) les relations normalisées (tables de liaison ci-dessus) ;
+  (b) les relations « documentaires » volontairement figées en texte pour
+      l'historique/audit (signataires, détenteurs, libellés de direction).
+Les champs de (b) ne sont pas des clés étrangères et ne doivent pas être
+présentés comme telles dans le dictionnaire.
+
+
+================================================================================
+19. TABLES DE LIAISON (structure physique)
+================================================================================
+
+Chaque table de liaison suit le même modèle :
+  id (INTEGER, PK), <source>_id (INTEGER), <cible>_id (INTEGER), et parfois
+  une colonne d'ordre (<source>_ord, float).
+Une contrainte UNIQUE est créée sur le couple de colonnes.
+
+Table de liaison                                | Colonnes (hors id)
+------------------------------------------------|------------------------------------------
+anomalies_reception_lnk                         | anomalie_id, reception_id
+anomalies_reception_ligne_lnk                   | anomalie_id, reception_ligne_id
+anomalies_responsable_lnk                       | anomalie_id, user_id
+components_demande_lignes_materiel_lnk          | ligne_id, material_id
+demandes_cmps                                   | entity_id, cmp_id, component_type, field, order
+demandes_demandeur_lnk                          | demande_id, user_id
+demandes_direction_lnk                          | demande_id, direction_id
+demandes_service_lnk                            | demande_id, service_id
+employees_service_lnk                           | employee_id, service_id, employee_ord
+entree_lignes_entree_lnk                        | entree_ligne_id, entree_id, entree_ligne_ord
+entree_lignes_materiel_lnk                      | entree_ligne_id, material_id, entree_ligne_ord
+entrees_demandeur_lnk                           | entree_id, user_id
+entrees_direction_lnk                           | entree_id, direction_id
+entrees_fournisseur_lnk                         | entree_id, fournisseur_id, entree_ord
+entrees_service_lnk                             | entree_id, service_id
+journal_actions_anomalie_lnk                    | journal_action_id, anomalie_id
+journal_actions_auteur_lnk                      | journal_action_id, user_id
+materials_categorie_lnk                         | material_id, category_id, material_ord
+mouvements_demande_lnk                          | mouvement_id, demande_id, mouvement_ord
+mouvements_entree_lnk                           | mouvement_id, entree_id, mouvement_ord
+mouvements_sortie_lnk                           | mouvement_id, sortie_id, mouvement_ord
+notification_outboxes_demande_lnk               | notification_outbox_id, demande_id
+notification_outboxes_sortie_lnk                | notification_outbox_id, sortie_id
+reception_lignes_materiel_lnk                   | reception_ligne_id, material_id
+reception_lignes_reception_lnk                  | reception_ligne_id, reception_id
+reception_lignes_sortie_ligne_lnk               | reception_ligne_id, sortie_ligne_id
+receptions_direction_lnk                        | reception_id, direction_id
+receptions_sortie_lnk                           | reception_id, sortie_id
+receptions_physiques_sortie_lnk                 | reception_physique_id, sortie_id
+remise_detenteur_lignes_remise_lnk              | remise_detenteur_ligne_id, remise_detenteur_id, remise_detenteur_ligne_ord
+remise_detenteur_lignes_sortie_ligne_lnk        | remise_detenteur_ligne_id, sortie_ligne_id
+remises_detenteurs_demandeur_lnk                | remise_detenteur_id, user_id
+remises_detenteurs_sortie_lnk                   | remise_detenteur_id, sortie_id
+services_direction_lnk                          | service_id, direction_id, service_ord
+sortie_lignes_materiel_lnk                      | sortie_ligne_id, material_id, sortie_ligne_ord
+sortie_lignes_sortie_lnk                        | sortie_ligne_id, sortie_id, sortie_ligne_ord
+sorties_demande_lnk                             | sortie_id, demande_id, sortie_ord
+sorties_direction_lnk                           | sortie_id, direction_id
+sorties_service_lnk                             | sortie_id, service_id
+up_users_direction_lnk                          | user_id, direction_id
+up_users_role_lnk                               | user_id, role_id, user_ord
+
+Note : `receptions_createdby_lnk` et `receptions_updatedby_lnk` N'EXISTENT
+PAS physiquement, alors que les champs createdBy/updatedBy sont déclarés dans
+le schéma. Les colonnes système created_by_id/updated_by_id existent, mais
+elles pointent vers admin_users (voir §23, point 6, et §17).
+
+
+================================================================================
+20. CHAMPS AUTOMATIQUES ET CALCULES PAR LE SERVEUR
+================================================================================
+
+20.1 Champs automatiques du framework (toutes les tables)
+  - id : clé primaire auto-incrémentée.
+  - document_id : identifiant public généré par Strapi 5.
+  - created_at / updated_at : horodatage système.
+  - published_at : null si draftAndPublish=false.
+  - created_by_id / updated_by_id : utilisateur de l'administration Strapi.
+  - locale : non utilisé (i18n non configuré).
+
+20.2 Champs générés par le code métier
+
+  Références de dossier (générées si le client n'en fournit pas) :
+    - demande.reference  : DEM-AAAA-NNN (service demande.js ; comptage des
+      références existantes de l'année + 1).
+    - entree.reference   : ENT-AAAA-NNN (contrôleur entree.js ; max des
+      numéros existants + 1).
+    - sortie.reference   : SOR-AAAA-NNN (utils/creationSortie.js).
+    - affectation.reference : AFF-AAAA-NNN (contrôleur affectation.js).
+
+  Identifiants et jetons :
+    - entree.qr_token     : « ENT-<base36 horodatage>-<8 caractères aléatoires> ».
+    - affectation.qr_token: « AFF-<base36 horodatage>-<8 caractères aléatoires> ».
+    - notification_outboxes.cleUnicite : `<eventType>:<documentId>:<recipientId>`.
+
+  Valeurs calculées :
+    - entree_lignes.montant = quantite × valeur_unitaire (arrondi centime).
+    - entrees.total = somme des montants des lignes.
+    - sortie_lignes.montant = quantite × valeur_unitaire.
+    - reception_lignes.quantite_reliquat = quantite_commandee - quantite_recue.
+    - demandes.groupe = reference si le client ne le fournit pas.
+
+  Compteurs et verrous :
+    - receptions.version : 1 à la création, +1 à chaque mise à jour.
+    - entrees.stock_impacte / sorties.stock_impacte : false à la création,
+      true après l'impact stock (idempotence).
+    - sorties.notifications_validee_envoyees : false puis true après émission.
+    - sorties.remise_detenteur_cloturee : false puis true à la remise.
+    - notification_outboxes.status/attempts/lastAttemptAt/lastError : gérés
+      par le service de distribution (pending -> processing -> sent/failed).
+
+  Valeurs posées côté serveur dans les contrôleurs :
+    - demandes.demandeur = utilisateur connecté (jamais le corps de requête).
+    - entrees.demandeur = utilisateur connecté.
+    - entrees.affectation_depositaire = nom de l'utilisateur connecté si absent.
+    - demandes.valide_par / date_validation = validateur et date de décision.
+    - receptions.createdBy / updatedBy = utilisateur connecté (champ déclaré,
+      voir la réserve du §23, point 6).
+    - sorties.statut : en_preparation à la création, validee à la 3e
+      signature, sortie_effectuee à la remise, annulee au rejet.
+    - remises_detenteurs.date_enregistrement = horodatage ISO serveur.
+    - sorties.remise_detenteur_date = date de remise recopiée.
+    - mouvements : créés par les contrôleurs à chaque étape (traçabilité).
+    - materials.quantite_stock : incrémenté à la validation d'une entrée,
+      décrémenté atomiquement à la 3e signature d'une sortie.
+
+20.3 Dates métier
+  Les dates « du jour » sont calculées dans le fuseau Indian/Antananarivo
+  (UTC+3) par src/utils/horloge.js, et stockées en AAAA-MM-JJ.
+
+
+================================================================================
+21. CYCLES DE STATUT OBSERVES
+================================================================================
+
+21.1 Demande (demandes.statut)
+  Valeurs : brouillon, en_attente, en_cours, approuvee, rejetee, preparation,
+  annulee, sortie_effectuee.
+  Transitions ATTESTEES par le code lu :
+    - création : brouillon ou en_attente ;
+    - décision : en_attente -> approuvee ou en_attente -> rejetee ;
+    - remise au détenteur : la demande liée passe à sortie_effectuee ;
+    - demandeur : peut poser brouillon / en_attente / annulee.
+  Les transitions vers en_cours et preparation ne sont PAS explicitement
+  tracées dans les contrôleurs lus : à vérifier avant de les présenter comme
+  un enchaînement certain.
+  Contrôles : décision réservée au rôle depositaire ; statut de départ
+  obligatoirement en_attente ; motif_rejet obligatoire en cas de rejet.
+
+21.2 Entrée (entrees.statut)
+  brouillon -> en_attente -> validee (après 3 signatures) ; rejetee possible.
+  Les signatures sont des booléens indépendants : depositaire_signed,
+  chef_service_1_signed, chef_service_2_signed. La 3e signature déclenche
+  l'impact stock et le statut validee.
+  (La valeur `verifiee` existe dans l'énumération mais son usage n'a pas été
+  observé dans les contrôleurs lus : information non déterminée.)
+
+21.3 Sortie (sorties.statut)
+  en_preparation (création) -> validee (3e signature logistique, débit stock)
+  -> sortie_effectuee (remise au détenteur) ; annulee (rejet).
+  Signatures : magasinier -> depositaire -> logistique.
+
+21.4 Réception (receptions.statut)
+  en_cours -> partielle | complete, selon les reliquats cumulés ; annulee
+  possible. La version est incrémentée lors du changement d'état.
+
+21.5 Réception physique (receptions_physiques.statut)
+  conforme (défaut) | anomalie.
+
+21.6 Affectation (affectations.statut)
+  en_attente -> validee après 4 signatures (responsable transfert,
+  dépositaire, chef service 1, chef service 2).
+
+21.7 Anomalie (anomalies.statut)
+  ouverte -> en_cours -> resolue | rejetee. Journalisée dans journal-actions.
+
+21.8 Notification outbox (notification_outboxes.status)
+  pending -> processing -> sent ; failed après échec (retry par cron chaque
+  minute, max 5 tentatives).
+
+
+================================================================================
+22. CONTRAINTES ET INTEGRITE
+================================================================================
+
+22.1 Contraintes réellement portées par SQLite
+  - Clé primaire `id` sur toutes les tables.
+  - Clés étrangères des tables de liaison vers les tables cibles (avec la
+    particularité que les tables de liaison portent des FK vers les deux
+    côtés).
+  - Clés étrangères created_by_id / updated_by_id -> admin_users.id.
+  - Contrainte UNIQUE sur les couples des tables de liaison.
+  - Contraintes UNIQUE propres au plugin upload (upload_folders.path,
+    upload_folders.path_id).
+
+22.2 Contraintes déclarées mais NON portées par la base
+  - `required: true` : aucune colonne métier n'est NOT NULL en SQLite.
+  - `unique: true` sur reference / qr_token / cleUnicite : aucun index unique
+    correspondant n'a été observé. L'unicité repose sur le code.
+  - `min` / `max` (ex. ouverture_exercices.annee, quantite >= 1) : contrôles
+    applicatifs uniquement.
+  - Les énumérations : pas de CHECK en SQLite ; valeurs contrôlées par Strapi.
+
+22.3 Règles applicatives structurantes
+  - Un seul ordre de sortie par demande (contrôle 409).
+  - Une seule remise au détenteur par sortie (verrou remise_detenteur_cloturee).
+  - Débit de stock atomique et idempotent (stock_impacte + UPDATE conditionnel).
+  - Réception possible seulement pour une sortie au statut validee (modèle
+    reception) ou sortie_effectuee (modèle reception-physique).
+  - Remise possible seulement pour une sortie sortie_effectuee avec une
+    réception physique quantite_recue > 0.
+  - Isolation par direction : un demandeur ne lit/crée que les objets de sa
+    direction (contrôleurs).
+  - Rôle Demandeur : écriture limitée aux demandes (roleGuard.js).
+  - Idempotence des notifications (cleUnicite) et de la création de réception
+    (clé idem_key — voir réserve §23).
+
+
+================================================================================
+23. INCOHERENCES ET POINTS A VERIFIER (constatés, non corrigés)
+================================================================================
+
+1) `reception` : le schéma déclare `numero` en integer, mais le contrôleur
+   create exige `typeof body.numero === 'string'`. Une chaîne ne peut pas
+   être stockée dans une colonne integer sans conversion ; le comportement
+   réel dépend de Strapi. À trancher avant de documenter le type définitif.
+
+2) `reception` : le contrôleur utilise une clé d'idempotence `idem_key`
+   (filtre sur idem_key et écriture de idem_key). Ce champ N'EXISTE NI dans le
+   schéma NI dans la table `receptions`. La création pourrait échouer ou
+   l'idempotence ne pas être effective. À vérifier par un test d'exécution.
+
+3) `reception` : le contrôleur écrit des mouvements avec les champs `date` et
+   `createdBy`, alors que `mouvements` déclare `date_mouvement` et
+   `utilisateur` (et n'a pas de champ date/createdBy). Incohérence de schéma.
+
+4) `reception` : le contrôleur crée des entrées outbox avec les eventType
+   `reception_complete` et `reception_partielle`, absents de l'énumération
+   `eventType` (qui contient 6 autres valeurs). Selon le mode d'écriture,
+   Strapi peut refuser ces valeurs.
+
+5) `sortie_lignes` : le code envoie `designation`, champ absent du schéma et
+   de la table.
+
+6) `receptions.createdBy` / `updatedBy` : relations déclarées vers
+   users-permissions.user, mais aucune table de liaison n'existe. Les colonnes
+   physiques created_by_id / updated_by_id pointent vers admin_users. Le sens
+   métier « créé par l'utilisateur » n'est donc pas garanti par la base.
+
+7) `notification_outboxes` : doublons de colonnes (lastAttemptAt et
+   last_attempt_at ; cleUnicite et cle_unicite) et colonnes historiques
+   (sortie_document_id, demande_document_id) non utilisées par le code actuel.
+
+8) Deux modèles de réception coexistent (`reception` et `reception-physique`),
+   avec des statuts de sortie attendus différents (validee vs
+   sortie_effectuee) et des règles de direction différentes (relation vs
+   préfixe de department). Il faut choisir lequel décrire dans le mémoire, ou
+   présenter les deux comme des versions successives.
+
+9) `affectations` ne contient aucune clé étrangère et ne modifie pas le stock :
+   c'est un registre documentaire, pas un mouvement de stock. À ne pas
+   confondre avec `mouvements` dans le modèle conceptuel.
+
+10) Unicité des références non garantie par la base. Les générateurs lisent le
+    maximum existant puis écrivent : deux créations concurrentes peuvent
+    produire la même référence (aucun verrou ni index unique observé).
+
+11) `backend/database/database.sql` est un export PostgreSQL d'une autre base
+    (« ms ») ; il ne décrit pas Compta. Ne pas l'utiliser comme source.
+
+
+================================================================================
+24. INFORMATIONS NON DETERMINEES
+================================================================================
+
+Les points suivants ne sont pas explicités dans le code ou les schémas et ne
+sont donc pas inventés ici :
+
+  - Signification métier exacte des champs `soa`, `budget_general`,
+    `subdivision_chapitre` (transmis tels quels depuis le formulaire).
+  - Différence fonctionnelle entre `components_demande_lignes.quantite` et
+    `quantite_demandee`.
+  - Usage réel de l'énumération `verifiee` pour les entrées.
+  - Choix, dans l'interface, entre le modèle `reception` et
+    `reception-physique`.
+  - Politique de sauvegarde/restauration de la base SQLite (fichiers .bak
+    présents dans backend/.tmp, non documentés).
+  - Taille maximale des médias et formats autorisés au-delà des
+    `allowedTypes` déclarés.
+  - Règles de calcul détaillées des rapports de reddition (elles sont dans
+    src/api/rapport/services/redition-calculs.js ; seuls les champs d'entrée
+    sont décrits ici).
+
+
+================================================================================
+25. SYNTHESE POUR LE MEMOIRE
+================================================================================
+
+Entités principales et leur rôle :
+
+  Utilisateur (up_users)       : compte métier, rôle, direction, département.
+  Direction / Service / Employé: organigramme.
+  Catégorie / Matériel        : référentiel du stock.
+  Fournisseur                 : partenaire des entrées.
+  Entrée / Ligne d'entrée     : arrivée de matériel, 3 signatures, impact stock.
+  Demande / Ligne de demande  : expression du besoin, décision, ordre de sortie.
+  Sortie / Ligne de sortie    : ordre de distribution, 3 signatures, débit stock.
+  Réception / Ligne            : contrôle à la livraison, reliquats, anomalies.
+  Réception physique           : variante simplifiée de la réception.
+  Remise au détenteur          : transfert final vers une personne physique.
+  Affectation                  : transfert entre services (registre texte).
+  Anomalie / Journal d'action  : traitement des écarts.
+  Mouvement                    : journal de traçabilité transverse.
+  Notification / Outbox        : notifications temps réel et file de reprise.
+  Ouverture d'exercice         : stock initial pour la reddition.
+
+Relations structurantes à représenter dans le MCD :
+  Direction 1-N Service 1-N Employé
+  Direction 1-N Utilisateur (relation) + département texte
+  Catégorie 1-N Matériel
+  Fournisseur 1-N Entrée 1-N Ligne d'entrée N-1 Matériel
+  Utilisateur 1-N Demande N-1 Direction / Service
+  Demande 1-N Sortie 1-N Ligne de sortie N-1 Matériel
+  Sortie 1-N Réception 1-N Ligne de réception N-1 Matériel
+  Sortie 1-N Remise au détenteur 1-N Ligne de remise N-1 Ligne de sortie
+  Réception 1-N Anomalie 1-N Journal d'action
+  Entrée / Sortie / Demande 1-N Mouvement
+  Sortie / Demande 1-N Notification outbox
+
+Recommandation de présentation :
+  1) Un tableau « Tables et collections » (section 3).
+  2) Un tableau par entité avec les colonnes : nom, type, taille,
+     obligation, unicité, description (sections 4 à 16).
+  3) Un schéma relationnel distinguant relations normalisées (section 18.1)
+     et champs documentaires dénormalisés (section 18.2).
+  4) Une liste des champs automatiques (section 20) et des cycles de statut
+     (section 21).
+  5) Une sous-section « limites et réserves » reprenant la section 23 : c'est
+     un point fort pour un jury, car il montre que l'analyse distingue le
+     modèle déclaré du comportement réel.
+
+
+================================================================================
+FIN DU DOCUMENT
+================================================================================

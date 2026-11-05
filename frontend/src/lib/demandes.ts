@@ -49,6 +49,11 @@ export interface DemandeLigne {
   quantite: number;
   motif: string;
   /**
+   * Détenteur du matériel : personne qui recevra/tiendra le matériel.
+   * Saisie libre (nom + fonction), ne nécessite pas de compte utilisateur.
+   */
+  detenteur?: string;
+  /**
    * `documentId` de la fiche de STOCK visée par la ligne (étape 1 : le
    * matériel vient du stock réel, jamais d'une saisie libre). Absent pour
    * les demandes antérieures à l'étape 1.

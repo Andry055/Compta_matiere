@@ -1,0 +1,313 @@
+[     997ms] [INFO] %cDownload the React DevTools for a better development experience: https://reactjs.org/link/react-devtools font-weight:bold @ http://localhost:3000/node_modules/.vite/deps/chunk-VGGCA2L5.js?v=e0e05f64:21550
+[    1613ms] [LOG] [SSE] disconnectSSE appelé, état actuel: {hasEventSource: false, readyState: undefined, isConnecting: false, currentUserId: null, connectedUserId: null} @ http://localhost:3000/src/lib/sseNotifications.ts:108
+[    1614ms] [LOG] [SSE] Déconnexion terminée, état nettoyé @ http://localhost:3000/src/lib/sseNotifications.ts:130
+[    1828ms] [LOG] [SSE] disconnectSSE appelé, état actuel: {hasEventSource: false, readyState: undefined, isConnecting: false, currentUserId: null, connectedUserId: null} @ http://localhost:3000/src/lib/sseNotifications.ts:108
+[    1829ms] [LOG] [SSE] Déconnexion terminée, état nettoyé @ http://localhost:3000/src/lib/sseNotifications.ts:130
+[    1834ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: null, eventSourceReady: undefined, isConnecting: false, currentUserId: null} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[    2686ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[    5690ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[    5700ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[    8716ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[    8723ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   11733ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   11746ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   14750ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   14775ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   17791ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   17811ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   20825ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   20852ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   23856ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   23864ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   26872ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   26881ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   29888ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   29902ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   32913ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   32924ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   35933ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   35964ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   38969ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   39001ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   42011ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   42021ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   45026ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   45047ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   48048ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   48062ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   51068ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   51077ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   54083ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   54090ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   57093ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   57151ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   60158ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   60213ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   63215ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   63225ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   66229ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   66244ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   69248ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   69261ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   72264ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   72276ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   75282ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   75292ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   78307ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   78326ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   81330ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   81366ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   84377ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   84548ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   87560ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   87569ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   90576ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   90591ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   93593ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   93603ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   96605ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   96620ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[   99623ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[   99637ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  102643ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  102651ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  105656ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  105677ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  108680ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  108688ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  111691ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  111701ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  114707ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  114720ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  117821ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  117847ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  120852ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  120869ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  123886ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  123901ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  126905ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  126916ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  129921ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  129985ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  132987ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  133016ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  136027ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  136059ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  139061ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  139076ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  142079ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  142101ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  145150ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  145224ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  148227ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  148247ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  151249ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  151259ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  154263ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  154278ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  157280ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  157308ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  160312ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  160320ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  163324ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  163338ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  165609ms] [ERROR] Failed to load resource: the server responded with a status of 400 (Bad Request) @ http://localhost:1337/api/demandes:0
+[  166350ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  166364ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  169374ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  169407ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  172435ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  172478ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  175480ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  175489ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  178496ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  178605ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  181613ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  181644ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  184645ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  184652ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  187656ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  187671ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  190675ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  190682ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  193695ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  193717ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  196722ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  196732ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  199734ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  199740ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  202742ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  202755ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  205764ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  205803ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  208809ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  208821ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  211824ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  211833ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  214839ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  214854ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  217857ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  217866ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  220866ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  220877ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  223885ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  223891ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  226905ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  226935ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  229955ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  229992ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  232996ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  233009ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  236019ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  236027ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  239042ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  239048ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  242053ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  242060ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  245067ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  245080ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  248085ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  248093ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  251106ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  251112ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  254117ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  254131ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  257137ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  257158ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  260167ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  260174ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  263183ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  263188ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  266198ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  266223ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  269234ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  269251ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  272263ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  272272ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  275283ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  275290ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  278295ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  278306ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  281312ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  281322ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  284329ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  284338ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  287340ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  287350ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  290356ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  290364ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  293378ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  293392ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  296393ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  296422ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  299428ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  299448ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  302458ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  302484ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  305486ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  305499ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  308508ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  308511ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  309417ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/materials?pagination%5Bpage%5D=1&pagination%5BpageSize%5D=200&sort=designation:asc&populate%5B%5D=categorie&populate%5B%5D=photos:0
+[  311524ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  311534ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  314541ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  314546ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  317548ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  317551ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  320554ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  320557ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  322021ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sorties?filters%5Bstatut%5D%5B$eq%5D=en_preparation&filters%5Bmagasinier_signed%5D%5B$eq%5D=false&pagination%5BpageSize%5D=1&pagination%5BwithCount%5D=true:0
+[  322026ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sorties?filters%5Bstatut%5D%5B$eq%5D=en_preparation&filters%5Bmagasinier_signed%5D%5B$eq%5D=false&sort=date_sortie:desc&pagination%5Bpage%5D=1&pagination%5BpageSize%5D=100&fields%5B%5D=documentId&fields%5B%5D=reference&fields%5B%5D=date_sortie&fields%5B%5D=statut&fields%5B%5D=magasinier_signed:0
+[  323558ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  323564ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  326572ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  326576ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  329412ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/materials?pagination%5Bpage%5D=1&pagination%5BpageSize%5D=200&sort=designation:asc&populate%5B%5D=categorie&populate%5B%5D=photos:0
+[  329584ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  329614ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  332618ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  332622ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  335623ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  335626ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  338634ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  338640ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  341653ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  341663ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  341840ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sorties?filters%5Bstatut%5D%5B$eq%5D=en_preparation&filters%5Bmagasinier_signed%5D%5B$eq%5D=false&pagination%5BpageSize%5D=1&pagination%5BwithCount%5D=true:0
+[  341841ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sorties?filters%5Bstatut%5D%5B$eq%5D=en_preparation&filters%5Bmagasinier_signed%5D%5B$eq%5D=false&sort=date_sortie:desc&pagination%5Bpage%5D=1&pagination%5BpageSize%5D=100&fields%5B%5D=documentId&fields%5B%5D=reference&fields%5B%5D=date_sortie&fields%5B%5D=statut&fields%5B%5D=magasinier_signed:0
+[  344674ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  344678ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  347685ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  347692ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/sse/stream?jwt=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MTYsImlhdCI6MTc5Mzg2NTgyNSwiZXhwIjoxNzk2NDU3ODI1fQ.XYsYyrO3sXBzhi97zaKXrS6pVEacYKxt2v3HJYzFUMs:0
+[  349418ms] [ERROR] Failed to load resource: net::ERR_CONNECTION_REFUSED @ http://localhost:1337/api/materials?pagination%5Bpage%5D=1&pagination%5BpageSize%5D=200&sort=designation:asc&populate%5B%5D=categorie&populate%5B%5D=photos:0
+[  350697ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  350722ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  353734ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  353743ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  356754ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  356761ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  359767ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  359776ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  362783ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  362794ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  365799ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  365807ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  368818ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  368829ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  371831ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  371840ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  374842ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  374855ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  377864ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  377871ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  380875ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  380883ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  383891ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  383898ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  386907ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  386916ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  389921ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  389930ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  392939ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  392945ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  395955ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  395967ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  398971ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  398979ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  401990ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  401998ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  405000ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  405007ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  408009ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  408016ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  411021ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  411027ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  414033ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  414041ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  417049ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  417056ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  420064ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  420071ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  423073ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  423079ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  426085ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  426096ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  429101ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  429112ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  432119ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  432129ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  435130ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  435141ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  438149ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  438156ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  441170ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  441178ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  444179ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  444205ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  447212ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  447218ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  450223ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  450230ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51
+[  453235ms] [LOG] [SSE] connectSSE appelé pour userId: 16 | état: {connectedUserId: 16, eventSourceReady: undefined, isConnecting: false, currentUserId: 16} @ http://localhost:3000/src/lib/sseNotifications.ts:21
+[  453241ms] [LOG] [SSE] ✅ Connecté avec succès (utilisateur #16) @ http://localhost:3000/src/lib/sseNotifications.ts:51

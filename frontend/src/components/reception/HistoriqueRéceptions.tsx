@@ -85,29 +85,31 @@ export function HistoriqueRéceptions({ receptionsServeur, receptionsList }: His
 
   if (isLoading) {
     return (
-      <div className="msr-etat">
-        <Clock className="w-10 h-10 text-muted-foreground mb-2 animate-spin" />
-        <h3 className="font-medium text-foreground mb-1">Chargement de l'historique…</h3>
+      <div className="msc-empty">
+        <Clock className="msc-empty__icon animate-spin" aria-hidden="true" />
+        <h3 className="msc-empty__title">Chargement de l'historique…</h3>
       </div>
     );
   }
 
   if (erreur) {
     return (
-      <div className="msr-etat">
-        <AlertTriangle className="w-10 h-10 text-destructive mb-2" />
-        <h3 className="font-medium text-destructive mb-1">Erreur de chargement</h3>
-        <p className="text-sm text-muted-foreground">{erreur}</p>
+      <div className="msc-alert msc-alert--error" role="alert">
+        <AlertTriangle className="msc-alert__icon" aria-hidden="true" />
+        <div className="msc-alert__content">
+          <div className="msc-alert__title">Erreur de chargement</div>
+          <div className="msc-alert__description">{erreur}</div>
+        </div>
       </div>
     );
   }
 
   if (receptionsTriees.length === 0) {
     return (
-      <div className="msr-etat">
-        <Package className="w-10 h-10 text-muted-foreground mb-2" />
-        <h3 className="font-medium text-foreground mb-1">Aucune réception enregistrée</h3>
-        <p className="text-sm text-muted-foreground">
+      <div className="msc-empty">
+        <Package className="msc-empty__icon" aria-hidden="true" />
+        <h3 className="msc-empty__title">Aucune réception enregistrée</h3>
+        <p className="msc-empty__description">
           Aucune réception physique n'a encore été effectuée.
         </p>
       </div>
@@ -115,8 +117,8 @@ export function HistoriqueRéceptions({ receptionsServeur, receptionsList }: His
   }
 
   return (
-    <div className="msr-liste">
-      <Card className="msr-carte border border-border">
+    <div className="msc-list">
+      <Card className="msc-card">
         <CardHeader>
           <CardTitle className="text-sm font-semibold">
             Historique des réceptions physiques ({receptionsTriees.length})
@@ -126,8 +128,8 @@ export function HistoriqueRéceptions({ receptionsServeur, receptionsList }: His
           </p>
         </CardHeader>
         <CardContent className="pt-3">
-          <div className="overflow-x-auto">
-            <Table>
+          <div className="msc-table-container" style={{ overflowX: 'auto' }}>
+            <Table className="msc-table">
               <TableHeader>
                 <TableRow className="border-b border-border">
                   <TableHead className="text-left py-3 px-3 text-sm text-muted-foreground">
@@ -190,18 +192,18 @@ export function HistoriqueRéceptions({ receptionsServeur, receptionsList }: His
                         {directionNom}
                       </TableCell>
                       <TableCell className="py-3 px-3 text-sm text-card-foreground">
-                        <div className="flex flex-col gap-1">
-                          <span className="text-xs">
+                        <div className="msc-table__quantities">
+                          <span className="msc-table__quantity-main">
                             {reception.quantite_recue} reçue(s)
                           </span>
-                          <span className="text-xs text-muted-foreground">
+                          <span className="msc-table__quantity-sub">
                             sur {reception.quantite_prevue} prévue(s)
                           </span>
                         </div>
                       </TableCell>
                       <TableCell className="py-3 px-3">
                         <span
-                          className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${STATUT_BADGE[statutBrute]}`}
+                          className={`msc-table__status ${estAnomalie ? "msc-table__status--anomalie" : "msc-table__status--conforme"}`}
                         >
                           {statutAffiche}
                         </span>

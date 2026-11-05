@@ -1,0 +1,39 @@
+- generic [ref=e2]:
+  - generic [ref=e4]:
+    - button "Passer en mode sombre" [ref=e5] [cursor=pointer]
+    - img "Bâtiment du Ministère"
+    - generic [ref=e8]:
+      - banner [ref=e9]:
+        - img "Logo du Ministère MTEFoP"
+        - generic [ref=e11]:
+          - img "Logo AssetTrack" [ref=e12]
+          - generic [ref=e13]:
+            - generic [ref=e14]: AssetTrack
+            - generic [ref=e15]: Système de Gestion et de Traçabilité des Matériels
+      - main [ref=e16]:
+        - generic [ref=e24]:
+          - heading "Connexion" [level=2] [ref=e25]
+          - generic [ref=e26]: Entrez vos identifiants pour accéder à votre espace
+        - generic [ref=e28]:
+          - generic [ref=e29]:
+            - generic [ref=e30]: Adresse email
+            - textbox "Adresse email" [ref=e32]:
+              - /placeholder: admin@compta.mg
+          - generic [ref=e33]:
+            - generic [ref=e34]: Mot de passe
+            - generic [ref=e35]:
+              - textbox "Mot de passe" [ref=e36]:
+                - /placeholder: ••••••••
+              - button "Afficher le mot de passe" [ref=e37] [cursor=pointer]
+          - generic [ref=e41]:
+            - generic [ref=e42] [cursor=pointer]:
+              - checkbox "Se souvenir de moi" [ref=e43]
+              - generic [ref=e44]: Se souvenir de moi
+            - link "Mot de passe oublié ?" [ref=e45] [cursor=pointer]:
+              - /url: "#"
+          - button "Se connecter" [ref=e46] [cursor=pointer]
+        - button "Afficher les comptes" [ref=e51] [cursor=pointer]
+      - contentinfo [ref=e52]:
+        - generic [ref=e54]: MTEFoP
+        - generic [ref=e58]: Une gestion efficace pour un meilleur service
+  - region "Notifications alt+T"

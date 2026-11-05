@@ -30,6 +30,27 @@ const LIGNE_UID = 'api::entree-ligne.entree-ligne';
 const MATERIEL_UID = 'api::material.material';
 const MOUVEMENT_UID = 'api::mouvement.mouvement';
 const FOURNISSEUR_UID = 'api::fournisseur.fournisseur';
+const USER_UID = 'plugin::users-permissions.user';
+
+/**
+ * Récupère le documentId valide de l'utilisateur connecté depuis la base
+ * users-permissions. L'objet `ctx.state.user` provient du JWT et son
+ * `documentId` n'est pas toujours fiable (peut être absent ou provenir
+ * d'une autre collection). On interroge donc la base par l'ID numérique
+ * (toujours présent dans le JWT) pour obtenir le documentId canonique.
+ */
+async function getUserDocumentId(strapi, userId) {
+  if (!userId) return null;
+  try {
+    const user = await strapi.db.query(USER_UID).findOne({
+      where: { id: userId },
+    });
+    return user?.documentId ?? null;
+  } catch (e) {
+    strapi.log.warn(`[entree] Impossible de résoudre le documentId utilisateur #${userId} : ${e.message}`);
+    return null;
+  }
+}
 
 const SIGNATURE_ROLES = {
   // Décision 4 — ordre définitif : magasinier (chef_service_1) → logistique
@@ -386,6 +407,16 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
     // --- Création de l'entrée ---------------------------------------------
     let entree;
     try {
+      // Résoudre le documentId canonique de l'utilisateur connecté
+      const user = ctx.state && ctx.state.user;
+      if (!user || !user.id) {
+        return forbid(ctx, 'Authentification requise pour créer une entrée.');
+      }
+      const demandeurDocumentId = await getUserDocumentId(app, user.id);
+      if (!demandeurDocumentId) {
+        return forbid(ctx, 'Utilisateur introuvable dans la base d\'authentification.');
+      }
+
       entree = await app.documents(ENTREE_UID).create({
         data: {
           reference,
@@ -399,8 +430,7 @@ module.exports = guardedCoreController(createCoreController, ENTREE_UID, {
           // requête (même règle que `demande.create`). C'est ce champ que
           // `find` / `findOne` utilisent pour nister les lectures du
           // Demandeur sur SES entrées.
-          demandeur:
-            (ctx.state && ctx.state.user && ctx.state.user.documentId) || null,
+          demandeur: demandeurDocumentId,
           statut: estBrouillon ? 'brouillon' : 'en_attente',
         // Décision 1 : affectations nullables jusqu'à signature. Le
         // dépositaire est dérivé de la session quand il n'est pas fourni ;

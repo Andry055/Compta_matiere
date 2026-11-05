@@ -28,6 +28,27 @@ const JOURNAL_ACTION_UID = 'api::journal-action.journal-action';
 const RECEPTION_LIGNE_UID = 'api::reception-ligne.reception-ligne';
 
 const DEPOSITAIRE_ROLE = 'depositaire';
+const USER_UID = 'plugin::users-permissions.user';
+
+/**
+ * Récupère le documentId valide de l'utilisateur connecté depuis la base
+ * users-permissions. L'objet `ctx.state.user` provient du JWT et son
+ * `documentId` n'est pas toujours fiable (peut être absent ou provenir
+ * d'une autre collection). On interroge donc la base par l'ID numérique
+ * (toujours présent dans le JWT) pour obtenir le documentId canonique.
+ */
+async function getUserDocumentId(strapi, userId) {
+  if (!userId) return null;
+  try {
+    const user = await strapi.db.query(USER_UID).findOne({
+      where: { id: userId },
+    });
+    return user?.documentId ?? null;
+  } catch (e) {
+    strapi.log.warn(`[anomalie] Impossible de résoudre le documentId utilisateur #${userId} : ${e.message}`);
+    return null;
+  }
+}
 
 class ErreurAnomalie extends Error {
   constructor(statusTransaction, message) {
@@ -150,6 +171,13 @@ module.exports = guardedCoreController(createCoreController, ANOMALIE_UID, {
       return forbid(ctx, 'Seul le dépositaire peut déclarer une anomalie.');
     }
 
+    // Résoudre le documentId canonique de l'utilisateur dans
+    // plugin::users-permissions.user.
+    const auteurDocumentId = await getUserDocumentId(app, user.id);
+    if (!auteurDocumentId) {
+      return forbid(ctx, 'Utilisateur introuvable dans la base d\'authentification.');
+    }
+
     const body = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
 
     const receptionDocumentId = body.reception;
@@ -182,7 +210,7 @@ module.exports = guardedCoreController(createCoreController, ANOMALIE_UID, {
         statut: 'ouverte',
         version: 1,
         date_ouverture: maintenant,
-        responsable: user.id,
+        responsable: auteurDocumentId,
       },
     });
 
@@ -191,7 +219,7 @@ module.exports = guardedCoreController(createCoreController, ANOMALIE_UID, {
       app,
       anomalie,
       'ouverte',
-      user.id,
+      auteurDocumentId,
       null,
       'ouverte',
       'Anomalie déclarée.'
@@ -219,6 +247,11 @@ module.exports = guardedCoreController(createCoreController, ANOMALIE_UID, {
     const code = await roleConnecte(app, ctx);
     if (code !== DEPOSITAIRE_ROLE) {
       return forbid(ctx, 'Seul le dépositaire peut résoudre ou rejeter une anomalie.');
+    }
+
+    const auteurDocumentId = await getUserDocumentId(app, user.id);
+    if (!auteurDocumentId) {
+      return forbid(ctx, 'Utilisateur introuvable dans la base d\'authentification.');
     }
 
     const anomalie = await app.documents(ANOMALIE_UID).findOne({ documentId });
@@ -266,7 +299,7 @@ module.exports = guardedCoreController(createCoreController, ANOMALIE_UID, {
         statut: nouveauStatut,
         version: anomalie.version + 1,
         date_resolution: nouveauStatut === 'resolue' ? new Date().toISOString() : anomalie.date_resolution,
-        responsable: user.id,
+        responsable: auteurDocumentId,
       },
     });
 
@@ -276,7 +309,7 @@ module.exports = guardedCoreController(createCoreController, ANOMALIE_UID, {
       app,
       anomalie,
       action,
-      user.id,
+      auteurDocumentId,
       anomalie.statut,
       nouveauStatut,
       commentaire

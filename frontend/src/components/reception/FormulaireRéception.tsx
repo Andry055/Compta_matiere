@@ -178,47 +178,64 @@ export function FormulaireRéception({ sortie, receptionsServeur, onClose, onRec
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="msr-dialogue sm:max-w-lg">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Truck className="w-5 h-5" />
+      <DialogContent className="msc-dialog msc-dialog__content">
+        <div className="msc-dialog__header">
+          <h2 className="msc-dialog__title">
+            <Truck className="msc-dialog__title-icon" aria-hidden="true" />
             Réception — {sortie.reference}
-          </DialogTitle>
-          <DialogDescription>
+          </h2>
+          <p className="msc-dialog__description">
             {sortie.materiel} • Quantité prévue :{" "}
             <span className="font-medium">{sortie.quantite}</span> • Déjà reçu :{" "}
             <span className="font-medium">{dejaRecue}</span> • Reliquat :{" "}
             <span className="font-medium">{reliquatActuel}</span>
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+          {sortie.lignes && sortie.lignes.length > 0 && sortie.lignes.some((l) => l.detenteur) && (() => {
+            const detenteurs = sortie.lignes.filter((l) => l.detenteur).map((l) => l.detenteur);
+            return (
+              <p className="msc-dialog__description" style={{ marginTop: 8 }}>
+                <UserCheck className="w-4 h-4 inline mr-1" aria-hidden="true" />
+                Détenteur(s) :{" "}
+                {detenteurs.join("; ")}
+              </p>
+            );
+          })()}
+        </div>
         <Separator className="my-3" />
-        <div className="msr-dialogue-corps space-y-4">
-          <form onSubmit={handleSubmit}>
+        <div className="msc-dialog__body">
+          <form onSubmit={handleSubmit} className="msc-form">
             {erreur && (
-              <div className="p-3 rounded-lg border border-destructive bg-destructive/10 text-destructive text-sm">
-                {erreur}
+              <div className="msc-alert msc-alert--error" role="alert">
+                <AlertCircle className="msc-alert__icon" aria-hidden="true" />
+                <div className="msc-alert__content">
+                  <div className="msc-alert__title">Erreur</div>
+                  <div className="msc-alert__description">{erreur}</div>
+                </div>
               </div>
             )}
             {/* Quantité à recevoir */}
-            <div className="space-y-1">
-              <Label htmlFor="quantiteRecue">Quantité reçue</Label>
-              <div className="flex items-center gap-2">
+            <div className="msc-form__group">
+              <Label htmlFor="quantiteRecue" className="msc-form__label msc-form__label--required">
+                Quantité reçue
+              </Label>
+              <div className="msc-quantity">
                 <Input
                   id="quantiteRecue"
                   type="text"
                   value={quantiteRecue}
                   onChange={handleQuantiteChange}
                   placeholder="0"
-                  className="w-24"
+                  className="msc-form__input msc-quantity__input"
                   disabled={isSubmitting}
+                  aria-describedby="quantite-hint"
                 />
-                <span className="text-xs text-muted-foreground">
+                <span id="quantite-hint" className="msc-quantity__unit">
                   unité(s) sur {reliquatActuel} disponible(s)
                 </span>
               </div>
               {!validation.ok && validation.message && (
-                <p className="text-xs text-destructive flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
+                <p className="msc-form__error" role="alert">
+                  <AlertCircle className="msc-form__error-icon" aria-hidden="true" />
                   {validation.message}
                 </p>
               )}
@@ -227,40 +244,49 @@ export function FormulaireRéception({ sortie, receptionsServeur, onClose, onRec
             <Separator />
 
             {/* Déclaration d'anomalie */}
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2 cursor-pointer select-none">
+            <div className="msc-form__group">
+              <div className="msc-form__checkbox">
                 <input
                   type="checkbox"
+                  id="declarationAnomalie"
                   checked={declarationAnomalie}
                   onChange={(e) => setDeclarationAnomalie(e.target.checked)}
-                  className="w-4 h-4 text-primary"
+                  className="msc-form__checkbox-input"
                 />
-                Déclarer une anomalie sur cette réception
-              </Label>
+                <Label htmlFor="declarationAnomalie" className="msc-form__checkbox-label">
+                  Déclarer une anomalie sur cette réception
+                </Label>
+              </div>
               {declarationAnomalie && (
-                <div className="space-y-2">
-                  <Label htmlFor="typeAnomalie">Type d'anomalie</Label>
+                <div className="msc-form__group">
+                  <Label htmlFor="typeAnomalie" className="msc-form__label msc-form__label--required">
+                    Type d'anomalie
+                  </Label>
                   <select
                     id="typeAnomalie"
                     value={typeAnomalie}
                     onChange={(e) =>
                       setTypeAnomalie(e.target.value as any)
                     }
-                    className="msr-select w-full"
+                    className="msc-form__input msc-form__select"
+                    disabled={isSubmitting}
                   >
                     <option value="quantite">Écart de quantité</option>
                     <option value="etat">État du matériel</option>
                     <option value="conformite">Non-conformité</option>
                     <option value="autre">Autre</option>
                   </select>
-                  <Label htmlFor="descriptionAnomalie">Description</Label>
+                  <Label htmlFor="descriptionAnomalie" className="msc-form__label msc-form__label--required">
+                    Description
+                  </Label>
                   <Textarea
                     id="descriptionAnomalie"
                     value={descriptionAnomalie}
                     onChange={(e) => setDescriptionAnomalie(e.target.value)}
                     placeholder="Décrivez l'anomalie constatée..."
-                    className="msr-textarea"
+                    className="msc-form__textarea"
                     rows={3}
+                    disabled={isSubmitting}
                   />
                 </div>
               )}
@@ -268,11 +294,11 @@ export function FormulaireRéception({ sortie, receptionsServeur, onClose, onRec
           </form>
         </div>
         <Separator className="my-3" />
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-muted-foreground">
+        <div className="msc-dialog__footer">
+          <div className="text-xs text-muted-foreground" style={{ flex: 1 }}>
             {validation.reliquat <= 0 && (
               <span className="flex items-center gap-1 text-green-600 font-medium">
-                <CheckCircle2 className="w-3 h-3" />
+                <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
                 Réception complète — reliquat épuisé
               </span>
             )}
@@ -283,8 +309,9 @@ export function FormulaireRéception({ sortie, receptionsServeur, onClose, onRec
               variant="outline"
               size="sm"
               disabled={isSubmitting}
+              className="msc-btn msc-btn--outline msc-btn--sm"
             >
-              <X className="w-3 h-3 mr-1" /> Annuler
+              <X className="w-3 h-3 mr-1" aria-hidden="true" /> Annuler
             </Button>
             <Button
               onClick={(e) => {
@@ -293,15 +320,16 @@ export function FormulaireRéception({ sortie, receptionsServeur, onClose, onRec
               }}
               disabled={!peutValider || isSubmitting}
               size="sm"
+              className="msc-btn msc-btn--primary msc-btn--sm"
             >
               {isSubmitting ? (
                 <>
-                  <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                  <RefreshCw className="w-3 h-3 mr-2 animate-spin" aria-hidden="true" />
                   Enregistrement...
                 </>
               ) : (
                 <>
-                  <Save className="w-3 h-3 mr-1" /> Confirmer la réception
+                  <Save className="w-3 h-3 mr-1" aria-hidden="true" /> Confirmer la réception
                 </>
               )}
             </Button>

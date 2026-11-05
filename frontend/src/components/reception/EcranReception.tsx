@@ -150,12 +150,12 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
   }, [sortiesServeur, receptionsServeur]);
 
   return (
-    <div className="msr-page">
+    <div className="msc-page">
       {/* En-tête */}
-      <div className="msr-entete">
-        <div>
-          <h1 className="msr-titre">Réception physique du matériel</h1>
-          <p className="msr-sous-titre">
+      <header className="msc-header">
+        <div className="msc-header__content">
+          <h1 className="msc-header__title">Réception physique du matériel</h1>
+          <p className="msc-header__subtitle">
             Réceptionnez les matériels sortis validés à trois signatures.{" "}
             {user.role === "depositaire"
               ? `Vous êtes dépositaire de la direction ${user.department}.`
@@ -164,99 +164,125 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
                 : "Accès réservé au Dépositaire comptable."}
           </p>
         </div>
-        <div className="msr-actions-en-tete">
+        <div className="msc-header__actions">
           <Button
             onClick={handleRefresh}
             disabled={isRefreshing || chargementSorties}
             variant="outline"
             size="sm"
+            className="msc-btn msc-btn--outline msc-btn--sm"
           >
             <RefreshCw className="w-4 h-4" />
             {isRefreshing || chargementSorties ? "Actualisation…" : "Actualiser"}
           </Button>
         </div>
+      </header>
+
+      {/* Statistiques / Compteurs */}
+      <div className="msc-stats" role="region" aria-label="Statistiques de réception">
+        <div className="msc-stat msc-stat--primary">
+          <div className="msc-stat__value">{countARéceptionner}</div>
+          <div className="msc-stat__label">À réceptionner</div>
+        </div>
+        <div className="msc-stat">
+          <div className="msc-stat__value">{countAnomaliesOuvertes}</div>
+          <div className="msc-stat__label">Anomalies ouvertes</div>
+        </div>
+        <div className="msc-stat">
+          <div className="msc-stat__value">{countRemiseDetenteur}</div>
+          <div className="msc-stat__label">Éligibles remise détenteur</div>
+        </div>
+        <div className="msc-stat">
+          <div className="msc-stat__value">{sortiesServeur.length}</div>
+          <div className="msc-stat__label">Sorties chargées</div>
+        </div>
+        <div className="msc-stat">
+          <div className="msc-stat__value">{receptionsServeur.length}</div>
+          <div className="msc-stat__label">Réceptions enregistrées</div>
+        </div>
       </div>
 
-      {/* Compteurs */}
-      <div className="msr-compteurs">
-        <div className="msr-compteur">
-          <div className="msr-compteur-valeur">{countARéceptionner}</div>
-          <div className="msr-compteur-libelle">Sorties à réceptionner</div>
-        </div>
-        <div className="msr-compteur">
-          <div className="msr-compteur-valeur">{countAnomaliesOuvertes}</div>
-          <div className="msr-compteur-libelle">Anomalies ouvertes</div>
-        </div>
-        <div className="msr-compteur">
-          <div className="msr-compteur-valeur">{countRemiseDetenteur}</div>
-          <div className="msr-compteur-libelle">Éligibles remise détenteur</div>
-        </div>
-        <div className="msr-compteur">
-          <div className="msr-compteur-valeur">{sortiesServeur.length}</div>
-          <div className="msr-compteur-libelle">Sorties chargées (serveur)</div>
-        </div>
-        <div className="msr-compteur">
-          <div className="msr-compteur-valeur">{receptionsServeur.length}</div>
-          <div className="msr-compteur-libelle">Réceptions enregistrées (serveur)</div>
-        </div>
-      </div>
-
+      {/* Alertes d'erreur */}
       {erreurSorties && (
-        <div className="p-3 rounded-lg border border-destructive bg-destructive/10 text-destructive text-sm mb-3">
-          {erreurSorties}
+        <div className="msc-alert msc-alert--error" role="alert">
+          <AlertTriangle className="msc-alert__icon" />
+          <div className="msc-alert__content">
+            <div className="msc-alert__title">Erreur de chargement</div>
+            <div className="msc-alert__description">{erreurSorties}</div>
+          </div>
         </div>
       )}
       {erreurReceptions && (
-        <div className="p-3 rounded-lg border border-destructive bg-destructive/10 text-destructive text-sm mb-3">
-          {erreurReceptions}
+        <div className="msc-alert msc-alert--error" role="alert">
+          <AlertTriangle className="msc-alert__icon" />
+          <div className="msc-alert__content">
+            <div className="msc-alert__title">Erreur de chargement</div>
+            <div className="msc-alert__description">{erreurReceptions}</div>
+          </div>
         </div>
       )}
 
-      <Separator />
+      <div className="msc-divider" aria-hidden="true" />
 
-      {/* Onglets */}
-      <div className="msr-onglets">
+      {/* Navigation par onglets */}
+      <nav className="msc-tabs" role="tablist" aria-label="Sections de réception">
         <button
+          role="tab"
+          aria-selected={onglet === "recevoir"}
+          aria-controls="panel-recevoir"
+          id="tab-recevoir"
           onClick={() => setOnglet("recevoir")}
-          className={`msr-onglet ${
-            onglet === "recevoir" ? "msr-onglet--actif" : ""
-          }`}
+          className={`msc-tab ${onglet === "recevoir" ? "msc-tab--active" : ""}`}
         >
-          <Truck className="w-4 h-4 mr-1" /> À réceptionner
-        </button>
-        <button
-          onClick={() => setOnglet("historique")}
-          className={`msr-onglet ${
-            onglet === "historique" ? "msr-onglet--actif" : ""
-          }`}
-        >
-          <History className="w-4 h-4 mr-1" /> Historique
-        </button>
-        <button
-          onClick={() => setOnglet("anomalies")}
-          className={`msr-onglet ${
-            onglet === "anomalies" ? "msr-onglet--actif" : ""
-          }`}
-        >
-          <AlertTriangle className="w-4 h-4 mr-1" /> Anomalies
-          {countAnomaliesOuvertes > 0 && (
-            <span className="ml-1 bg-red-500 text-white text-xs px-1.5 py-0.5 rounded-full">
-              {countAnomaliesOuvertes}
-            </span>
+          <Truck className="msc-tab__icon" aria-hidden="true" />
+          À réceptionner
+          {countARéceptionner > 0 && (
+            <span className="msc-tab__badge">{countARéceptionner}</span>
           )}
         </button>
         <button
-          onClick={() => setOnglet("remise-detenteur")}
-          className={`msr-onglet ${
-            onglet === "remise-detenteur" ? "msr-onglet--actif" : ""
-          }`}
+          role="tab"
+          aria-selected={onglet === "historique"}
+          aria-controls="panel-historique"
+          id="tab-historique"
+          onClick={() => setOnglet("historique")}
+          className={`msc-tab ${onglet === "historique" ? "msc-tab--active" : ""}`}
         >
-          <PackageCheck className="w-4 h-4 mr-1" /> Remise détenteur
+          <History className="msc-tab__icon" aria-hidden="true" />
+          Historique
         </button>
-      </div>
+        <button
+          role="tab"
+          aria-selected={onglet === "anomalies"}
+          aria-controls="panel-anomalies"
+          id="tab-anomalies"
+          onClick={() => setOnglet("anomalies")}
+          className={`msc-tab ${onglet === "anomalies" ? "msc-tab--active" : ""}`}
+        >
+          <AlertTriangle className="msc-tab__icon" aria-hidden="true" />
+          Anomalies
+          {countAnomaliesOuvertes > 0 && (
+            <span className="msc-tab__badge msc-badge--destructive">{countAnomaliesOuvertes}</span>
+          )}
+        </button>
+        <button
+          role="tab"
+          aria-selected={onglet === "remise-detenteur"}
+          aria-controls="panel-remise-detenteur"
+          id="tab-remise-detenteur"
+          onClick={() => setOnglet("remise-detenteur")}
+          className={`msc-tab ${onglet === "remise-detenteur" ? "msc-tab--active" : ""}`}
+        >
+          <PackageCheck className="msc-tab__icon" aria-hidden="true" />
+          Remise détenteur
+          {countRemiseDetenteur > 0 && (
+            <span className="msc-tab__badge">{countRemiseDetenteur}</span>
+          )}
+        </button>
+      </nav>
 
       {/* Contenu selon l'onglet */}
-      <div className="msr-contenu">
+      <div className="msc-content" role="tabpanel" id="panel-recevoir" aria-labelledby="tab-recevoir" hidden={onglet !== "recevoir"}>
         {onglet === "recevoir" && (
           <ListeSortiesARéceptionner
             sorties={sorties}
@@ -266,23 +292,25 @@ export function EcranReception({ user, onNavigate }: EcranReceptionProps) {
             onAnomalie={handleAnomalie}
           />
         )}
+      </div>
+      <div className="msc-content" role="tabpanel" id="panel-historique" aria-labelledby="tab-historique" hidden={onglet !== "historique"}>
         {onglet === "historique" && (
           <HistoriqueRéceptions receptionsServeur={receptionsServeur} />
         )}
+      </div>
+      <div className="msc-content" role="tabpanel" id="panel-anomalies" aria-labelledby="tab-anomalies" hidden={onglet !== "anomalies"}>
         {onglet === "anomalies" && (
-          <div className="msr-liste">
-            <div className="msr-etat">
-              <AlertTriangle className="w-10 h-10 text-muted-foreground mb-2" />
-              <h3 className="font-medium text-foreground mb-1">
-                Anomalies non disponibles (Phase 1)
-              </h3>
-              <p className="text-sm text-muted-foreground">
-                Aucune API d'anomalie n'existe sur le backend de cette branche.
-                Les déclarations d'anomalie restent locales et ne sont pas persistées.
-              </p>
-            </div>
+          <div className="msc-empty">
+            <AlertTriangle className="msc-empty__icon" aria-hidden="true" />
+            <h3 className="msc-empty__title">Anomalies non disponibles (Phase 1)</h3>
+            <p className="msc-empty__description">
+              Aucune API d'anomalie n'existe sur le backend de cette branche.
+              Les déclarations d'anomalie restent locales et ne sont pas persistées.
+            </p>
           </div>
         )}
+      </div>
+      <div className="msc-content" role="tabpanel" id="panel-remise-detenteur" aria-labelledby="tab-remise-detenteur" hidden={onglet !== "remise-detenteur"}>
         {onglet === "remise-detenteur" && (
           <RemiseDetenteurDemandeur
             sorties={sortiesServeur}

@@ -494,6 +494,18 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
 
 function mapSortie(row: StrapiEntity): SortieRecord {
   const lignes = row.lignes ?? [];
+
+  // Extraire les détenteurs depuis la demande d'origine (demande.lignes.detenteur)
+  const demandeLignes = row.demande?.lignes ?? [];
+  const detenteurParMateriel = new Map<string, string>();
+  for (const dl of demandeLignes) {
+    const designation = dl.designation?.trim();
+    const detenteur = dl.detenteur?.trim();
+    if (designation && detenteur) {
+      detenteurParMateriel.set(designation.toLowerCase(), detenteur);
+    }
+  }
+
   const materiels = Array.from(
     new Set(
       lignes
@@ -1370,7 +1382,12 @@ export async function fetchSorties(): Promise<SortieRecord[] | null> {
         populate: {
           direction: true,
           service: true,
-          demande: { populate: ["demandeur"] },
+          demande: {
+            populate: {
+              demandeur: true,
+              lignes: true,
+            },
+          },
           lignes: {
             populate: { materiel: { populate: ["categorie"] } },
           },
@@ -1544,7 +1561,12 @@ export async function fetchAllSortiesOrThrow(): Promise<SortieRecord[]> {
         populate: {
           direction: true,
           service: true,
-          demande: { populate: ["demandeur"] },
+          demande: {
+            populate: {
+              demandeur: true,
+              lignes: true,
+            },
+          },
           lignes: {
             populate: { materiel: { populate: ["categorie"] } },
           },
@@ -1822,7 +1844,14 @@ export async function listerReceptionsPhysiques(): Promise<
       ...row,
       // Strapi 5 retourne la relation `sortie` comme un objet peuplé
       // ({ documentId, id, ... }), jamais comme un champ plat `sortieId`.
-      // On extrait le documentId de la sortie pour que le calcul du reliquat
+      // Strapi 5 retourne la relation `sortie` comme un objet peuplé
+      // ({ documentId, id }), jamais comme un champ plat `sortieId`.
+      // On extrait l'identifiant de la sortie pour que le calcul du reliquat
+      // (getQuantiteDejaRecue / getReliquat / sortiesRéceptionnables) puisse
+      // faire correspondre chaque réception à sa sortie.
+      // Strapi 5 retourne la relation `sortie` comme un objet peuplé
+      // ({ documentId, id }), jamais comme un champ plat `sortieId`.
+      // On extrait l'identifiant de la sortie pour que le calcul du reliquat
       // (getQuantiteDejaRecue / getReliquat / sortiesRéceptionnables) puisse
       // faire correspondre chaque réception à sa sortie.
       sortieId: row.sortie?.documentId || row.sortieId || undefined,

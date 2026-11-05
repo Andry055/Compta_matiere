@@ -35,7 +35,6 @@ import {
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
-import "./RemiseDetenteurDemandeur.css";
 
 const STATUT_BADGE: Record<string, string> = {
   "En cours": "bg-blue-50 text-blue-700 border-blue-200",
@@ -144,113 +143,108 @@ export function RemiseDetenteurDemandeur({
   }, [onRemiseConfirmee]);
 
   return (
-    <div className="rdd-page">
+    <div className="msc-page rdd-page">
       {/* En-tête */}
-      <div className="rdd-entete">
-        <div>
-          <h1 className="rdd-titre">Remise au détenteur</h1>
-          <p className="rdd-sous-titre">
+      <header className="msc-header rdd-entete">
+        <div className="msc-header__content">
+          <h1 className="msc-header__title rdd-titre">Remise au détenteur</h1>
+          <p className="msc-header__subtitle rdd-sous-titre">
             Enregistrez le détenteur de chaque matériel après la réception physique complète.
           </p>
         </div>
-        <div className="rdd-actions-en-tete">
+        <div className="msc-header__actions rdd-actions-en-tete">
           <Button
             onClick={handleRafraichir}
             disabled={isRefreshing || isLoadingRemises}
             variant="outline"
             size="sm"
+            className="msc-btn msc-btn--outline msc-btn--sm"
           >
-            <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+            <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} aria-hidden="true" />
             {isRefreshing ? "Actualisation…" : "Actualiser"}
           </Button>
         </div>
-      </div>
+      </header>
 
       {/* Compteurs */}
-      <div className="rdd-compteurs">
-        <div className="rdd-compteur">
-          <div className="rdd-compteur-valeur">{sortiesTriees.length}</div>
-          <div className="rdd-compteur-libelle">Sorties réceptionnées complètement</div>
+      <div className="msc-stats rdd-compteurs" role="region" aria-label="Statistiques de remise">
+        <div className="msc-stat rdd-compteur">
+          <div className="msc-stat__value rdd-compteur-valeur">{sortiesTriees.length}</div>
+          <div className="msc-stat__label rdd-compteur-libelle">Sorties réceptionnées complètement</div>
         </div>
-        <div className="rdd-compteur">
-          <div className="rdd-compteur-valeur">
+        <div className="msc-stat rdd-compteur">
+          <div className="msc-stat__value rdd-compteur-valeur">
             {sortiesTriees.filter((s) => getRemisePourSortie(s.id)).length}
           </div>
-          <div className="rdd-compteur-libelle">Remises enregistrées</div>
+          <div className="msc-stat__label rdd-compteur-libelle">Remises enregistrées</div>
         </div>
       </div>
 
-      <Separator />
+      <div className="msc-divider" aria-hidden="true" />
 
       {/* Liste des sorties éligibles */}
-      <div className="rdd-contenu">
+      <div className="msc-content rdd-contenu">
         {isLoadingRemises ? (
-          <div className="rdd-etat">
-            <RefreshCw className="w-10 h-10 text-muted-foreground mb-2 animate-spin" />
-            <h3 className="font-medium text-foreground mb-1">Chargement des remises…</h3>
+          <div className="msc-empty rdd-etat">
+            <RefreshCw className="msc-empty__icon animate-spin" aria-hidden="true" />
+            <h3 className="msc-empty__title">Chargement des remises…</h3>
           </div>
         ) : sortiesTriees.length === 0 ? (
-          <div className="rdd-etat">
-            <PackageCheck className="w-10 h-10 text-muted-foreground mb-2" />
-            <h3 className="font-medium text-foreground mb-1">
-              Aucune sortie éligible à la remise
-            </h3>
-            <p className="text-sm text-muted-foreground">
+          <div className="msc-empty rdd-etat">
+            <PackageCheck className="msc-empty__icon" aria-hidden="true" />
+            <h3 className="msc-empty__title">Aucune sortie éligible à la remise</h3>
+            <p className="msc-empty__description">
               Les sorties doivent avoir une réception physique complète (reliquat = 0)
               et le statut « Sortie effectuée ».
             </p>
           </div>
         ) : (
-          <div className="rdd-liste">
+          <div className="msc-list rdd-liste" role="list" aria-label="Sorties éligibles à la remise">
             {sortiesTriees.map((sortie) => {
               const remise = getRemisePourSortie(sortie.id);
               const statutReception = getStatutRéceptionSortie(sortie, receptionsServeur);
               const dejaRemis = !!remise;
 
               return (
-                <Card key={sortie.id} className="rdd-carte border border-border">
-                  <CardHeader>
-                    <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                      <div>
-                        <CardTitle className="text-sm font-semibold">
-                          {sortie.reference}
-                        </CardTitle>
-                        <p className="text-xs text-muted-foreground">
-                          {sortie.materiel} • {sortie.categorie}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <Badge
-                          className={
-                            dejaRemis
-                              ? "bg-green-50 text-green-700 border-green-200 text-xs"
-                              : STATUT_BADGE[statutReception] + " text-xs"
-                          }
-                        >
-                          {dejaRemis ? "Remis au détenteur" : statutReception}
-                        </Badge>
-                      </div>
+                <Card key={sortie.id} className="msc-card rdd-carte">
+                  <div className="msc-card__header">
+                    <div className="msc-card__title-row">
+                      <h3 className="msc-card__reference">{sortie.reference}</h3>
+                      <p className="msc-card__meta">
+                        {sortie.materiel} • {sortie.categorie}
+                      </p>
                     </div>
-                  </CardHeader>
-                  <CardContent className="pt-3">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-                      <div className="rdd-champ">
-                        <span className="rdd-champ-cle">Quantité prévue</span>
-                        <span className="rdd-champ-valeur font-medium">
+                    <div className="msc-card__badges">
+                      <Badge
+                        className={
+                          dejaRemis
+                            ? "msc-badge msc-badge--success"
+                            : "msc-badge msc-badge--info"
+                        }
+                      >
+                        {dejaRemis ? "Remis au détenteur" : statutReception}
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="msc-card__body">
+                    <div className="msc-grid">
+                      <div className="msc-field rdd-champ">
+                        <span className="msc-field__label rdd-champ-cle">Quantité prévue</span>
+                        <span className="msc-field__value rdd-champ-valeur font-medium">
                           {sortie.quantite} unité(s)
                         </span>
                       </div>
-                      <div className="rdd-champ">
-                        <span className="rdd-champ-cle">Direction</span>
-                        <span className="rdd-champ-valeur text-sm">{sortie.direction}</span>
+                      <div className="msc-field rdd-champ">
+                        <span className="msc-field__label rdd-champ-cle">Direction</span>
+                        <span className="msc-field__value msc-field__value--muted rdd-champ-valeur">{sortie.direction}</span>
                       </div>
-                      <div className="rdd-champ">
-                        <span className="rdd-champ-cle">Bénéficiaire</span>
-                        <span className="rdd-champ-valeur text-sm">{sortie.beneficiaire}</span>
+                      <div className="msc-field rdd-champ">
+                        <span className="msc-field__label rdd-champ-cle">Bénéficiaire</span>
+                        <span className="msc-field__value msc-field__value--muted rdd-champ-valeur">{sortie.beneficiaire}</span>
                       </div>
-                      <div className="rdd-champ">
-                        <span className="rdd-champ-cle">Date de sortie</span>
-                        <span className="rdd-champ-valeur text-sm">
+                      <div className="msc-field rdd-champ">
+                        <span className="msc-field__label rdd-champ-cle">Date de sortie</span>
+                        <span className="msc-field__value msc-field__value--muted rdd-champ-valeur">
                           {new Date(sortie.dateSortie).toLocaleDateString("fr-FR")}
                         </span>
                       </div>
@@ -265,7 +259,7 @@ export function RemiseDetenteurDemandeur({
                         <ul className="rdd-apercu-lignes">
                           {remise.lignes.map((ligne, idx) => (
                             <li key={idx} className="rdd-apercu-ligne">
-                              <User className="w-3 h-3 inline mr-1" />
+                              <User className="w-3 h-3 inline mr-1" aria-hidden="true" />
                               <span className="rdd-apercu-designation">
                                 {ligne.sortie_ligne?.designation || "Matériel"}
                               </span>
@@ -282,35 +276,34 @@ export function RemiseDetenteurDemandeur({
                       </div>
                     )}
 
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                    <div className="msc-card__actions">
+                      <div className={`msc-signatures ${dejaRemis ? "msc-signatures--complete" : "msc-signatures--info"}`}>
                         {dejaRemis ? (
                           <>
-                            <CheckCircle2 className="w-3 h-3 text-green-600" />
+                            <CheckCircle2 className="msc-signatures__icon" aria-hidden="true" />
                             Remise enregistrée
                           </>
                         ) : (
                           <>
-                            <PackageCheck className="w-3 h-3 text-blue-600" />
+                            <PackageCheck className="msc-signatures__icon" aria-hidden="true" />
                             Prêt pour remise au détenteur
                           </>
                         )}
                       </div>
 
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
                         <Button
                           onClick={() => handleOuvrirFormulaire(sortie)}
                           size="sm"
                           disabled={dejaRemis}
-                          className={dejaRemis ? "opacity-50 cursor-not-allowed" : ""}
-                          variant={dejaRemis ? "outline" : "default"}
+                          className={`msc-btn msc-btn--sm ${dejaRemis ? "msc-btn--outline opacity-50 cursor-not-allowed" : "msc-btn--primary"}`}
                         >
-                          <User className="w-3 h-3 mr-1" />
+                          <User className="msc-btn__icon" aria-hidden="true" />
                           {dejaRemis ? "Déjà remis" : "Enregistrer la remise"}
                         </Button>
                       </div>
                     </div>
-                  </CardContent>
+                  </div>
                 </Card>
               );
             })}
@@ -461,37 +454,44 @@ function FormulaireRemiseDetenteur({
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="rdd-dialogue sm:max-w-2xl max-h-[90vh]">
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <PackageCheck className="w-5 h-5" />
+      <DialogContent className="msc-dialog msc-dialog__content sm:max-w-2xl max-h-[90vh]">
+        <div className="msc-dialog__header">
+          <h2 className="msc-dialog__title">
+            <PackageCheck className="msc-dialog__title-icon" aria-hidden="true" />
             Remise au détenteur — {sortie.reference}
-          </DialogTitle>
-          <DialogDescription>
+          </h2>
+          <p className="msc-dialog__description">
             {sortie.materiel} • Quantité totale :{" "}
             <span className="font-medium">{sortie.quantite}</span>{" "}
             • Direction : {sortie.direction}
-          </DialogDescription>
-        </DialogHeader>
+          </p>
+        </div>
         <Separator className="my-3" />
-        <div className="rdd-dialogue-corps space-y-4">
-          <form onSubmit={handleSubmit} data-testid="rdd-form">
+        <div className="msc-dialog__body">
+          <form onSubmit={handleSubmit} data-testid="rdd-form" className="msc-form">
             {erreur && (
-              <div className="p-3 rounded-lg border border-destructive bg-destructive/10 text-destructive text-sm">
-                {erreur}
+              <div className="msc-alert msc-alert--error" role="alert">
+                <AlertCircle className="msc-alert__icon" aria-hidden="true" />
+                <div className="msc-alert__content">
+                  <div className="msc-alert__title">Erreur</div>
+                  <div className="msc-alert__description">{erreur}</div>
+                </div>
               </div>
             )}
 
             {/* Date de remise */}
-            <div className="space-y-1">
-              <Label htmlFor="rdd-date-remise">Date de la remise</Label>
+            <div className="msc-form__group">
+              <Label htmlFor="rdd-date-remise" className="msc-form__label msc-form__label--required">
+                Date de la remise
+              </Label>
               <Input
                 id="rdd-date-remise"
                 type="date"
                 value={dateRemise}
                 max={aujourdhui}
                 onChange={(e) => setDateRemise(e.target.value)}
-                className="w-48"
+                className="msc-form__input"
+                style={{ width: '12rem' }}
                 disabled={isSubmitting}
               />
             </div>
@@ -499,11 +499,11 @@ function FormulaireRemiseDetenteur({
             <Separator />
 
             {/* Lignes de matériel avec détenteur */}
-            <div className="space-y-3">
-              <Label className="font-medium">
-                Détenteur par matériel <span className="text-destructive">*</span>
+            <div className="msc-form__group">
+              <Label className="msc-form__label msc-form__label--required">
+                Détenteur par matériel
               </Label>
-              <p className="text-xs text-muted-foreground">
+              <p className="msc-form__hint">
                 Indiquez qui a reçu physiquement chaque matériel. Le détenteur n'a pas
                 besoin de compte utilisateur.
               </p>
@@ -518,7 +518,7 @@ function FormulaireRemiseDetenteur({
                       <div className="sm:col-span-4">
                         <Label
                           htmlFor={`rdd-detenteur-nom-${index}`}
-                          className="text-xs text-muted-foreground block mb-1"
+                          className="msc-field__label"
                         >
                           Matériel
                         </Label>
@@ -526,15 +526,15 @@ function FormulaireRemiseDetenteur({
                           id={`rdd-detenteur-nom-${index}`}
                           value={`${ligne.designation} (Qté: ${ligne.quantitePrevue})`}
                           readOnly
-                          className="bg-muted text-sm"
+                          className="msc-form__input bg-muted"
                         />
                       </div>
                       <div className="sm:col-span-4">
                         <Label
                           htmlFor={`rdd-detenteur-nom-input-${index}`}
-                          className="text-xs block mb-1"
+                          className="msc-form__label msc-form__label--required"
                         >
-                          Nom du détenteur <span className="text-destructive">*</span>
+                          Nom du détenteur
                         </Label>
                         <Input
                           id={`rdd-detenteur-nom-input-${index}`}
@@ -544,14 +544,15 @@ function FormulaireRemiseDetenteur({
                           }
                           placeholder="Ex: Rakoto"
                           disabled={isSubmitting}
+                          className="msc-form__input"
                         />
                       </div>
                       <div className="sm:col-span-4">
                         <Label
                           htmlFor={`rdd-detenteur-fonction-${index}`}
-                          className="text-xs block mb-1"
+                          className="msc-form__label msc-form__label--required"
                         >
-                          Fonction <span className="text-destructive">*</span>
+                          Fonction
                         </Label>
                         <Input
                           id={`rdd-detenteur-fonction-${index}`}
@@ -561,12 +562,13 @@ function FormulaireRemiseDetenteur({
                           }
                           placeholder="Ex: Chef de service IT"
                           disabled={isSubmitting}
+                          className="msc-form__input"
                         />
                       </div>
                       <div className="sm:col-span-12">
                         <Label
                           htmlFor={`rdd-observation-${index}`}
-                          className="text-xs block mb-1"
+                          className="msc-form__label"
                         >
                           Observation (optionnel)
                         </Label>
@@ -578,6 +580,7 @@ function FormulaireRemiseDetenteur({
                           }
                           placeholder="Remarque sur l'état ou la remise..."
                           disabled={isSubmitting}
+                          className="msc-form__input"
                         />
                       </div>
                     </div>
@@ -586,8 +589,8 @@ function FormulaireRemiseDetenteur({
               </ScrollArea>
 
               {!validation.ok && validation.message && (
-                <p className="text-xs text-destructive flex items-center gap-1">
-                  <AlertCircle className="w-3 h-3" />
+                <p className="msc-form__error" role="alert">
+                  <AlertCircle className="msc-form__error-icon" aria-hidden="true" />
                   {validation.message}
                 </p>
               )}
@@ -595,11 +598,11 @@ function FormulaireRemiseDetenteur({
           </form>
         </div>
         <Separator className="my-3" />
-        <div className="flex items-center justify-between">
-          <div className="text-xs text-muted-foreground">
+        <div className="msc-dialog__footer">
+          <div className="text-xs text-muted-foreground" style={{ flex: 1 }}>
             {remiseExistante && (
               <span className="flex items-center gap-1 text-amber-600">
-                <AlertCircle className="w-3 h-3" />
+                <AlertCircle className="w-3 h-3" aria-hidden="true" />
                 Une remise existe déjà pour cette sortie — elle sera remplacée.
               </span>
             )}
@@ -612,22 +615,24 @@ function FormulaireRemiseDetenteur({
                   variant="outline"
                   size="sm"
                   disabled={isSubmitting}
+                  className="msc-btn msc-btn--outline msc-btn--sm"
                 >
-                  <X className="w-3 h-3 mr-1" /> Annuler
+                  <X className="w-3 h-3 mr-1" aria-hidden="true" /> Annuler
                 </Button>
                 <Button
                   onClick={() => handleSubmit(new Event("submit") as any)}
                   disabled={!validation.ok || isSubmitting}
                   size="sm"
+                  className="msc-btn msc-btn--primary msc-btn--sm"
                 >
                   {isSubmitting ? (
                     <>
-                      <RefreshCw className="w-3 h-3 mr-2 animate-spin" />
+                      <RefreshCw className="w-3 h-3 mr-2 animate-spin" aria-hidden="true" />
                       Enregistrement...
                     </>
                   ) : (
                     <>
-                      <Save className="w-3 h-3 mr-1" /> Confirmer la remise
+                      <Save className="w-3 h-3 mr-1" aria-hidden="true" /> Confirmer la remise
                     </>
                   )}
                 </Button>
@@ -638,8 +643,9 @@ function FormulaireRemiseDetenteur({
                 variant="outline"
                 size="sm"
                 disabled={isSubmitting || !validation.ok}
+                className="msc-btn msc-btn--outline msc-btn--sm"
               >
-                <Save className="w-3 h-3 mr-1" /> Enregistrer la remise
+                <Save className="w-3 h-3 mr-1" aria-hidden="true" /> Enregistrer la remise
               </Button>
             )}
           </div>
@@ -666,7 +672,7 @@ function FormulaireRemiseDetenteur({
                 matériel(s) pour la sortie <strong>{sortie.reference}</strong>.
               </p>
               <p className="text-xs text-amber-600 mb-4 flex items-center gap-1">
-                <AlertCircle className="w-3 h-3" />
+                <AlertCircle className="w-3 h-3" aria-hidden="true" />
                 Les données seront persistées côté serveur via l'API.
               </p>
               <div className="flex justify-end gap-2">
@@ -675,6 +681,7 @@ function FormulaireRemiseDetenteur({
                   variant="outline"
                   size="sm"
                   disabled={isSubmitting}
+                  className="msc-btn msc-btn--outline msc-btn--sm"
                 >
                   Annuler
                 </Button>
@@ -682,6 +689,7 @@ function FormulaireRemiseDetenteur({
                   onClick={() => handleSubmit(new Event("submit") as any)}
                   disabled={!validation.ok || isSubmitting}
                   size="sm"
+                  className="msc-btn msc-btn--primary msc-btn--sm"
                 >
                   {isSubmitting ? "Enregistrement..." : "Confirmer"}
                 </Button>

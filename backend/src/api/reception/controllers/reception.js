@@ -36,6 +36,27 @@ const MOUVEMENT_UID = 'api::mouvement.mouvement';
 const OUTBOX_SERVICE_PATH = '../../../api/notification-outbox/services/notification-outbox';
 
 const DEPOSITAIRE_ROLE = 'depositaire';
+const USER_UID = 'plugin::users-permissions.user';
+
+/**
+ * Récupère le documentId valide de l'utilisateur connecté depuis la base
+ * users-permissions. L'objet `ctx.state.user` provient du JWT et son
+ * `documentId` n'est pas toujours fiable (peut être absent ou provenir
+ * d'une autre collection). On interroge donc la base par l'ID numérique
+ * (toujours présent dans le JWT) pour obtenir le documentId canonique.
+ */
+async function getUserDocumentId(strapi, userId) {
+  if (!userId) return null;
+  try {
+    const user = await strapi.db.query(USER_UID).findOne({
+      where: { id: userId },
+    });
+    return user?.documentId ?? null;
+  } catch (e) {
+    strapi.log.warn(`[reception] Impossible de résoudre le documentId utilisateur #${userId} : ${e.message}`);
+    return null;
+  }
+}
 
 /**
  * Erreur métier levée dans le flux de création : le contrôleur la convertit
@@ -226,6 +247,13 @@ module.exports = guardedCoreController(createCoreController, RECEPTION_UID, {
       );
     }
 
+    // Résoudre le documentId canonique de l'utilisateur dans
+    // plugin::users-permissions.user (l'ID du JWT ne suffit pas pour une relation).
+    const demandeurDocumentId = await getUserDocumentId(app, user.id);
+    if (!demandeurDocumentId) {
+      return forbid(ctx, 'Utilisateur introuvable dans la base d\'authentification.');
+    }
+
     const body = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
 
     // --- Clé d'idempotence : même idem-key => même résultat, pas de doublon ---
@@ -338,8 +366,8 @@ module.exports = guardedCoreController(createCoreController, RECEPTION_UID, {
             direction: sortie.direction.documentId,
             sortie: sortieDocumentId,
             observations: typeof body.observations === 'string' ? body.observations : null,
-            createdBy: user.id,
-            updatedBy: user.id,
+            createdBy: demandeurDocumentId,
+            updatedBy: demandeurDocumentId,
           },
         });
 
@@ -427,7 +455,7 @@ module.exports = guardedCoreController(createCoreController, RECEPTION_UID, {
           if (statutFinal !== 'en_cours') {
             await app.documents(RECEPTION_UID).update({
               documentId: reception.documentId,
-              data: { statut: statutFinal, version: reception.version + 1, updatedBy: user.id },
+              data: { statut: statutFinal, version: reception.version + 1, updatedBy: demandeurDocumentId },
             });
           }
 
@@ -482,6 +510,13 @@ module.exports = guardedCoreController(createCoreController, RECEPTION_UID, {
     const user = ctx.state && ctx.state.user;
     if (!user || !user.id) {
       return forbid(ctx, 'Authentification requise pour ajouter une ligne.', 401);
+    }
+
+    // Résoudre le documentId canonique de l'utilisateur dans
+    // plugin::users-permissions.user.
+    const demandeurDocumentId = await getUserDocumentId(app, user.id);
+    if (!demandeurDocumentId) {
+      return forbid(ctx, 'Utilisateur introuvable dans la base d\'authentification.');
     }
 
     const code = await roleConnecte(app, ctx);
@@ -587,7 +622,7 @@ module.exports = guardedCoreController(createCoreController, RECEPTION_UID, {
     // Incrémente la version de la réception (verrou optimiste pour la prochaine ligne).
     await app.documents(RECEPTION_UID).update({
       documentId,
-      data: { version: reception.version + 1, updatedBy: user.id },
+      data: { version: reception.version + 1, updatedBy: demandeurDocumentId },
     });
 
     const complete = await loadReception(app, documentId);

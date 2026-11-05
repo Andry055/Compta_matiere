@@ -39,6 +39,27 @@ const CARACTERES_DETENTEUR = /^[A-Za-zÀ-ÖØ-öø-ÿ'’\-. ]+$/u;
 const FORMAT_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 const TABLE_SORTIES = 'sorties';
+const USER_UID = 'plugin::users-permissions.user';
+
+/**
+ * Récupère le documentId valide de l'utilisateur connecté depuis la base
+ * users-permissions. L'objet `ctx.state.user` provient du JWT et son
+ * `documentId` n'est pas toujours fiable (peut être absent ou provenir
+ * d'une autre collection). On interroge donc la base par l'ID numérique
+ * (toujours présent dans le JWT) pour obtenir le documentId canonique.
+ */
+async function getUserDocumentId(strapi, userId) {
+  if (!userId) return null;
+  try {
+    const user = await strapi.db.query(USER_UID).findOne({
+      where: { id: userId },
+    });
+    return user?.documentId ?? null;
+  } catch (e) {
+    strapi.log.warn(`[remise-detenteur] Impossible de résoudre le documentId utilisateur #${userId} : ${e.message}`);
+    return null;
+  }
+}
 
 /** Classe d'erreur pour les conflits transactionnels (409). */
 class ErreurTransaction extends Error {
@@ -378,6 +399,13 @@ module.exports = createCoreController(REMISE_UID, ({ strapi: app }) => ({
     const dateEnregistrement = maintenant;
     let remiseCreee = null;
 
+    // Résoudre le documentId canonique de l'utilisateur dans
+    // plugin::users-permissions.user (l'ID du JWT ne suffit pas pour une relation).
+    const demandeurDocumentId = await getUserDocumentId(app, user.id);
+    if (!demandeurDocumentId) {
+      return forbid(ctx, 'Utilisateur introuvable dans la base d\'authentification.');
+    }
+
     try {
       await app.db.transaction(async ({ trx }) => {
         // 1. Verrou anti-double exécution : UPDATE conditionnel, tolérant au
@@ -406,7 +434,7 @@ module.exports = createCoreController(REMISE_UID, ({ strapi: app }) => ({
             direction: sortie.direction?.nom_direction || sortie.direction?.abreviation || '',
             date_reception: dateDuJour(dateReceptionRecente) || dateRemise,
             date_remise: dateRemise,
-            demandeur: user.documentId || user.id,
+            demandeur: demandeurDocumentId,
             demandeur_nom: signataire,
             attestation: true,
             date_enregistrement: dateEnregistrement,

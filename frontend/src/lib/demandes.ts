@@ -684,6 +684,8 @@ interface StrapiDemandeRow {
   direction?: { nom_direction?: string | null } | null;
   service?: { nom_service?: string | null } | null;
   demandeur?: { id?: number; username?: string | null } | null;
+  /** Nom du demandeur dénormalisé (chaîne) : lisible sans lire plugin::users-permissions.user. */
+  demandeur_nom?: string | null;
   /** Lignes de la demande (composant `demande.ligne`, étape 1). */
   lignes?: StrapiDemandeLigne[] | null;
   /**
@@ -702,6 +704,8 @@ interface StrapiDemandeLigne {
   quantite?: number | null;
   motif?: string | null;
   categorie?: string | null;
+  /** Détenteur saisi par le demandeur (nom + fonction). */
+  detenteur?: string | null;
   /** Fiche de stock visée (relation `materiel`). */
   materiel?: {
     documentId?: string | null;
@@ -750,6 +754,7 @@ function mapLignesDemande(row: StrapiDemandeRow): DemandeLigne[] {
     materiel: ligne.designation || ligne.materiel?.designation || "—",
     quantite: Number(ligne.quantite) || 1,
     motif: ligne.motif || "—",
+    detenteur: ligne.detenteur || undefined,
     materielDocumentId: ligne.materiel?.documentId || undefined,
     // Quantité initialement demandée : conservée même si le Dépositaire a
     // ajusté la quantité approuvée (étape 2).
@@ -775,7 +780,7 @@ function mapStrapiDemande(row: StrapiDemandeRow): DemandeRecord {
     motifRejet: row.motif_rejet || undefined,
     direction: row.direction?.nom_direction || "—",
     service: row.service?.nom_service || "—",
-    demandeur: row.demandeur?.username || "—",
+    demandeur: row.demandeur_nom || row.demandeur?.username || "—",
     fonction: row.fonction || undefined,
     validePar: row.valide_par || undefined,
     // Ordre de sortie rattaché (étape 3) : le serveur n'en autorise qu'UN.

@@ -615,6 +615,7 @@ export interface ApiDemandeDemande extends Struct.CollectionTypeSchema {
       'manyToOne',
       'plugin::users-permissions.user'
     >;
+    demandeur_nom: Schema.Attribute.String;
     designation_materiel: Schema.Attribute.String & Schema.Attribute.Required;
     direction: Schema.Attribute.Relation<
       'manyToOne',

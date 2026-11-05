@@ -87,6 +87,9 @@
       "relation": "manyToOne",
       "target": "plugin::users-permissions.user"
     },
+    "demandeur_nom": {
+      "type": "string"
+    },
     "direction": {
       "type": "relation",
       "relation": "manyToOne",

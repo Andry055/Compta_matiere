@@ -576,9 +576,19 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
       quantite: totalQuantite,
       // POSSESSION : toujours l'utilisateur connecté (id numérique pour la relation users-permissions.user).
       demandeur: user.id,
+      // NOM du demandeur dénormalisé (chaîne) : lisible en réponse API sans
+      // avoir à lire plugin::users-permissions.user (aucun rôle n'y a accès).
+      demandeur_nom: nomUtilisateur(user),
       // ORGANIGRAMME : toujours celui du compte.
       direction: organigramme.direction ? organigramme.direction.documentId : null,
       service: organigramme.service ? organigramme.service.documentId : null,
+      // FONCTION : envoyée par l'écran ou reprise du profil utilisateur.
+      fonction:
+        typeof body.fonction === 'string' && body.fonction.trim()
+          ? body.fonction.trim()
+          : (user && typeof user.fonction === 'string' && user.fonction.trim()
+              ? user.fonction.trim()
+              : null),
       // createdBy/updatedBy : laissés à Strapi (gérés automatiquement par le
       // document service). Ne PAS les passer explicitement : app.documents()
       // les override avec l'id numérique du JWT avant la validation Yup, ce qui

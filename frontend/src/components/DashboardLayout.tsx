@@ -86,7 +86,12 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
   useEffect(() => {
     const isAdmin = user.role === 'admin'
     const isStaff = user.role === 'staff'
-    if (!isAdmin && !isStaff && roleConfig?.pages && !roleConfig.pages.includes(activeSection)) {
+    if (
+      !isAdmin &&
+      !isStaff &&
+      (activeSection === "users" ||
+        (roleConfig?.pages && !roleConfig.pages.includes(activeSection)))
+    ) {
       setActiveSection("dashboard")
     }
   }, [user.role, roleConfig, activeSection])
@@ -153,7 +158,7 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
       case "reports":
         return <Reports user={user} />
       case "users":
-        return <Users />
+        return <Users user={user} />
       case "settings":
         return <Settings />
       default:

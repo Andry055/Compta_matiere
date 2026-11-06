@@ -209,6 +209,7 @@ const APP_ROLES = [
 // `api::session.session-role.role` — et un 403 pour tout le monde.
 // */
 const SESSION_ROLE_ACTION = 'api::session-role.session-role.role';
+const SESSION_USERS_ACTION = 'api::session-role.session-role.users';
 
 const DEMAND_ACTIONS = [
   'api::demande.demande.find',
@@ -712,6 +713,15 @@ async function ensureAuthSetup(strapi) {
       const cle = `${role.type}:${action}`;
       if (accordees.has(cle)) continue;
       await permQuery.create({ data: { action, role: role.id } });
+      accordees.add(cle);
+    }
+  }
+  if (roles.admin) {
+    const cle = `admin:${SESSION_USERS_ACTION}`;
+    if (!accordees.has(cle)) {
+      await permQuery.create({
+        data: { action: SESSION_USERS_ACTION, role: roles.admin.id },
+      });
       accordees.add(cle);
     }
   }

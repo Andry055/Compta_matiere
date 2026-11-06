@@ -111,4 +111,92 @@ module.exports = {
       },
     };
   },
+
+  /**
+   * GET /api/session/users
+   * Liste des comptes et informations d'organisation, réservée à l'admin.
+   * Les champs de sécurité (mot de passe, jetons) ne sont jamais renvoyés.
+   */
+  async users(ctx) {
+    const user = ctx.state && ctx.state.user;
+    if (!user || !user.id) {
+      ctx.status = 401;
+      ctx.body = {
+        error: {
+          status: 401,
+          name: 'UnauthorizedError',
+          message: 'Connexion requise pour consulter les utilisateurs.',
+        },
+      };
+      return ctx.body;
+    }
+
+    const roleCode = await getRoleCode(strapi, user.id);
+    if (roleCode !== 'admin') {
+      ctx.status = 403;
+      ctx.body = {
+        error: {
+          status: 403,
+          name: 'ForbiddenError',
+          message: 'Seul le rôle administrateur peut consulter les utilisateurs.',
+        },
+      };
+      return ctx.body;
+    }
+
+    const comptes = await strapi.db
+      .query('plugin::users-permissions.user')
+      .findMany({
+        populate: ['role', 'direction'],
+        orderBy: { username: 'asc' },
+        limit: -1,
+      });
+    const emails = comptes.map((compte) => compte.email).filter(Boolean);
+    const employes = emails.length
+      ? await strapi.db.query('api::employee.employee').findMany({
+          where: { email: { $in: emails } },
+          populate: { service: { populate: ['direction'] } },
+          limit: -1,
+        })
+      : [];
+    const employeParEmail = new Map(
+      employes.map((employe) => [employe.email.toLowerCase(), employe])
+    );
+
+    ctx.body = {
+      data: comptes.map((compte) => {
+        const employe = employeParEmail.get((compte.email || '').toLowerCase());
+        const service = employe && employe.service;
+        const direction =
+          compte.direction || (service && service.direction) || null;
+
+        return {
+          id: compte.id,
+          username: compte.username,
+          email: compte.email,
+          role: compte.role
+            ? { name: compte.role.name, type: compte.role.type }
+            : null,
+          department: compte.department || null,
+          fonction: compte.fonction || null,
+          confirmed: compte.confirmed === true,
+          blocked: compte.blocked === true,
+          createdAt: compte.createdAt || null,
+          phone: (employe && employe.phone) || null,
+          direction: direction
+            ? {
+                id: direction.id,
+                name: direction.nom_direction || null,
+              }
+            : null,
+          service: service
+            ? {
+                id: service.id,
+                name: service.nom_service || null,
+              }
+            : null,
+        };
+      }),
+    };
+  },
 };

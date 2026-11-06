@@ -18,7 +18,7 @@ import {
 // URL du backend Strapi (définie dans .env : VITE_API_URL)
 export const API_URL =
   (import.meta.env.VITE_API_URL as string | undefined)?.replace(/\/$/, "") ||
-  "http://localhost:1337";
+  "http://127.0.0.1:1337";
 
 export const api = axios.create({
   baseURL: API_URL,

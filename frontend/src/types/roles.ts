@@ -23,7 +23,7 @@ export const ROLES_CONFIG: Record<AppRole, RoleConfig> = {
     label: 'Dépositaire par service',
     defaultEmployeeName: 'Rakotomalala Hery',
     description: "Dépositaire du service : réceptionne et enregistre les arrivées, tient le grand livre, traite et approuve les demandes, signe les sorties, déclare les pertes et clôture l'inventaire annuel.",
-    pages: ['dashboard', 'arrivee', 'journal', 'equipment', 'requests', 'distribution', 'movements', 'pertes', 'transferts', 'inventaire', 'departments', 'reports', 'users', 'settings'],
+    pages: ['dashboard', 'arrivee', 'journal', 'equipment', 'requests', 'distribution', 'movements', 'pertes', 'transferts', 'inventaire', 'departments', 'reports', 'settings'],
     signRole: 'depositaire',
     canApprove: true,
     levelLock: null,

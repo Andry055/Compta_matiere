@@ -3,14 +3,13 @@
 /**
  * session router
  *
- * Une seule route : GET /api/session/role — le rôle RÉEL de l'utilisateur
- * connecté. AUCUNE route CRUD n'est exposée : ce content type ne sert que de
- * support technique à la route (Strapi n'attache une route Content API qu'à un
- * content type) et ne stocke rien.
+ * Routes de session en lecture seule. Le content type ne sert que de support
+ * technique (Strapi n'attache une route Content API qu'à un content type) et
+ * ne stocke rien.
  *
  * `auth` n'est pas désactivé : la route exige un jeton. La permission
- * `api::session-role.session-role.role` est accordée à tous les rôles métier
- * lors du bootstrap (src/index.js).
+ * La route `role` est accordée aux utilisateurs connectés ; la route `users`
+ * est réservée au rôle admin (src/index.js).
  */
 
 module.exports = {
@@ -19,6 +18,11 @@ module.exports = {
       method: 'GET',
       path: '/session/role',
       handler: 'session-role.role',
+    },
+    {
+      method: 'GET',
+      path: '/session/users',
+      handler: 'session-role.users',
     },
   ],
 };

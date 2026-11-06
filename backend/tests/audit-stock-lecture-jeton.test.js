@@ -121,6 +121,32 @@ test('chaque compte proposé par l\'interface obtient un jeton et son rôle rée
   }
 });
 
+test('la liste des utilisateurs est réservée à l’admin et ne divulgue aucun secret', async () => {
+  const { corps: admin } = await connexion(
+    'm.rakoto@ministere.gov.mg',
+    'admin123'
+  );
+  const liste = await appel('GET', '/api/session/users', null, admin.jwt);
+  assert.strictEqual(liste.status, 200);
+  assert.ok(Array.isArray(liste.corps?.data));
+  assert.ok(
+    liste.corps.data.some((utilisateur) => utilisateur.email === 'm.rakoto@ministere.gov.mg'),
+    'la liste doit contenir les comptes réellement stockés'
+  );
+  for (const utilisateur of liste.corps.data) {
+    assert.ok(!('password' in utilisateur));
+    assert.ok(!('resetPasswordToken' in utilisateur));
+    assert.ok(!('confirmationToken' in utilisateur));
+  }
+
+  const { corps: depositaire } = await connexion(
+    'hery.rakoto@mtefop.gov.mg',
+    'depositaire123'
+  );
+  const refus = await appel('GET', '/api/session/users', null, depositaire.jwt);
+  assert.strictEqual(refus.status, 403);
+});
+
 test('le stock se lit AVEC le jeton de chaque compte (quantités présentes)', async () => {
   for (const compte of COMPTES_INTERFACE) {
     const { corps: auth } = await connexion(compte.email, compte.motDePasse);

@@ -224,6 +224,8 @@ export interface SortieLigne {
   montant?: number;
   /** N° logistique saisi à la signature 3 (jamais généré par l'application). */
   numeroLogistique?: string | null;
+  /** Détenteur du matériel (venant de la demande d'origine : demande.lignes.detenteur). */
+  detenteur?: string;
   /** Fiche matériel rattachée (vide si non rattachée). */
   materiel?: {
     documentId?: string;

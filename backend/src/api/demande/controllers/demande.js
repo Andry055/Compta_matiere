@@ -26,7 +26,12 @@
  */
 
 const { createCoreController } = require('@strapi/strapi').factories;
-const { assertCanWrite, getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
+const {
+  assertCanWrite,
+  getRoleCode,
+  DEMANDEUR_ROLE,
+  ADMIN_ROLE,
+} = require('../../../utils/roleGuard');
 const {
   resoudreDepositaireGeneral,
 } = require('../../../utils/resolveDepositaireGeneral');
@@ -50,6 +55,27 @@ const DEMANDE_UID = 'api::demande.demande';
 const MATERIEL_UID = 'api::material.material';
 const DIRECTION_UID = 'api::direction.direction';
 const SERVICE_UID = 'api::service.service';
+const USER_UID = 'plugin::users-permissions.user';
+
+/**
+ * Récupère le documentId valide de l'utilisateur connecté depuis la base
+ * users-permissions. L'objet `ctx.state.user` provient du JWT et son
+ * `documentId` n'est pas toujours fiable (peut être absent ou provenir
+ * d'une autre collection). On interroge donc la base par l'ID numérique
+ * (toujours présent dans le JWT) pour obtenir le documentId canonique.
+ */
+async function getUserDocumentId(strapi, userId) {
+  if (!userId) return null;
+  try {
+    const user = await strapi.db.query(USER_UID).findOne({
+      where: { id: userId },
+    });
+    return user?.documentId ?? null;
+  } catch (e) {
+    strapi.log.warn(`[demande] Impossible de résoudre le documentId utilisateur #${userId} : ${e.message}`);
+    return null;
+  }
+}
 
 // Statuts qu'un demandeur peut lui-même donner à sa demande.
 const DEMANDEUR_ALLOWED_STATUTS = ['brouillon', 'en_attente', 'annulee'];
@@ -96,6 +122,19 @@ function notFound(ctx, message) {
     error: {
       status: 404,
       name: 'NotFoundError',
+      message,
+    },
+  };
+  return ctx.body;
+}
+
+/** 500 — erreur interne du serveur. */
+function erreurInterne(ctx, message) {
+  ctx.status = 500;
+  ctx.body = {
+    error: {
+      status: 500,
+      name: 'ApplicationError',
       message,
     },
   };
@@ -324,9 +363,6 @@ async function validerLignes(app, lignes, ancienContrat) {
           `disponible (statut : ${materiel.statut}).`,
       };
     }
-
-    // Cumul des lignes visant le MÊME matériel (deux lignes ne peuvent pas
-    // contourner le contrôle de stock en se partageant le même article).
     const cumul = (cumulParMateriel.get(materiel.documentId) || 0) + quantite;
     cumulParMateriel.set(materiel.documentId, cumul);
 
@@ -348,6 +384,11 @@ async function validerLignes(app, lignes, ancienContrat) {
       quantite_demandee: quantite,
       motif:
         typeof ligne.motif === 'string' && ligne.motif.trim() ? ligne.motif.trim() : null,
+      // Détenteur du matériel (nom + fonction), transmis par le demandeur.
+      detenteur:
+        typeof ligne.detenteur === 'string' && ligne.detenteur.trim()
+          ? ligne.detenteur.trim()
+          : null,
     });
   }
 
@@ -356,10 +397,12 @@ async function validerLignes(app, lignes, ancienContrat) {
 
 /** documentId des demandes APPARTENANT à cet utilisateur (lecture serveur). */
 async function demandesPossedees(app, user) {
-  if (!user || !user.documentId) return [];
+  // Résoudre le documentId canonique depuis la base users-permissions
+  const demandeurDocumentId = await getUserDocumentId(app, user?.id);
+  if (!demandeurDocumentId) return [];
   try {
     const rows = await app.documents(DEMANDE_UID).findMany({
-      filters: { demandeur: { documentId: user.documentId } },
+      filters: { demandeur: { documentId: demandeurDocumentId } },
       fields: ['documentId'],
       limit: -1,
     });
@@ -463,6 +506,8 @@ async function notifierNouvelleDemande(app, demande, demandeur, organigramme) {
 }
 
 module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
+  getUserDocumentId,
+  resoudreOrganigramme,
   /** Le Demandeur ne list que ses propres demandes (contrôle serveur). */
   async find(ctx) {
     if (await isDemandeur(app, ctx)) {
@@ -507,8 +552,19 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
     if (ctx.status === 403) return ctx.body;
 
     const user = ctx.state && ctx.state.user;
-    if (!user || !user.documentId) {
+    // L'ID numérique (user.id) est la seule valeur fiable issue du JWT.
+    // Le documentId dans ctx.state.user n'est pas garanti (peut être absent
+    // ou provenir d'une collection différente). On le résout via la base.
+    if (!user || !user.id) {
       return forbid(ctx, 'Authentification requise pour créer une demande.');
+    }
+
+    // Résoudre le documentId canonique de l'utilisateur dans
+    // plugin::users-permissions.user
+    const demandeurDocumentId = await getUserDocumentId(app, user.id);
+    app.log.info(`[demande.create] user.id=${user.id}, demandeurDocumentId=${demandeurDocumentId}, user.documentId=${user?.documentId}`);
+    if (!demandeurDocumentId) {
+      return forbid(ctx, 'Utilisateur introuvable dans la base d\'authentification.');
     }
 
     const body = (ctx.request.body && ctx.request.body.data) || {};
@@ -554,6 +610,11 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
       statut,
       priorite: PRIORITES.includes(body.priorite) ? body.priorite : 'normal',
       date_demande: dateValide(body.date_demande),
+      // date_envoi : fournie par le frontend quand le statut est 'en_attente'
+      date_envoi:
+        typeof body.date_envoi === 'string' && body.date_envoi.trim()
+          ? body.date_envoi.trim()
+          : null,
       motif:
         typeof body.motif === 'string' && body.motif.trim()
           ? body.motif.trim()
@@ -561,23 +622,39 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
       // Dénormalisation : le circuit de sortie (non modifié) lit ces champs.
       designation_materiel: designations.join(' / ') || '—',
       quantite: totalQuantite,
-      // POSSESSION : toujours l'utilisateur connecté.
-      demandeur: user.documentId,
+      // POSSESSION : toujours l'utilisateur connecté (id numérique pour la relation users-permissions.user).
+      demandeur: user.id,
+      // NOM du demandeur dénormalisé (chaîne) : lisible en réponse API sans
+      // avoir à lire plugin::users-permissions.user (aucun rôle n'y a accès).
+      demandeur_nom: nomUtilisateur(user),
       // ORGANIGRAMME : toujours celui du compte.
       direction: organigramme.direction ? organigramme.direction.documentId : null,
       service: organigramme.service ? organigramme.service.documentId : null,
-      // DÉTENTEUR : identité de la personne qui reçoit le matériel.
-      detenteur_nom: champsDetenteur.detenteur_nom.valeur,
-      detenteur_fonction: champsDetenteur.detenteur_fonction.valeur,
-      detenteur_im: champsDetenteur.detenteur_im.valeur,
-      detenteur_port: champsDetenteur.detenteur_port.valeur,
-      // LIGNES : matériel du stock réel, quantité et motif.
+      // FONCTION : envoyée par l'écran ou reprise du profil utilisateur.
+      fonction:
+        typeof body.fonction === 'string' && body.fonction.trim()
+          ? body.fonction.trim()
+          : (user && typeof user.fonction === 'string' && user.fonction.trim()
+              ? user.fonction.trim()
+              : null),
+      // createdBy/updatedBy : laissés à Strapi (gérés automatiquement par le
+      // document service). Ne PAS les passer explicitement : app.documents()
+      // les override avec l'id numérique du JWT avant la validation Yup, ce qui
+      // provoque "1 relation(s) of type plugin::users-permissions.user associated
+      // with this entity do not exist".
+      // LIGNES : matériel du stock réel, quantité, motif et détenteur.
       lignes: lignes.map((ligne) => ({ __component: 'demande.ligne', ...ligne })),
     };
 
-    // 5. Écriture (service du content-type : la référence DEM-AAAA-NNN y est
-    //    générée par le service de la demande).
-    //
+    // 5. Référence et groupe (générés ici car on écrit via app.documents(),
+    //    pas via le service du content-type qui le faisait auparavant).
+    if (!data.reference) {
+      data.reference = await app.service(DEMANDE_UID).nextReference();
+    }
+    if (!data.groupe) {
+      data.groupe = data.reference;
+    }
+
     //    La création et sa notification « nouvelle_demande » forment UNE
     //    transaction : en Strapi 5, une transaction imbriquée réutilise la
     //    transaction ambiante, la demande et son entrée outbox sont donc
@@ -585,24 +662,33 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
     //    (demande absente) est ainsi impossible, comme une demande sans sa
     //    notification quand l'insertion outbox échoue pour une raison
     //    technique.
+    app.log.info(`[demande.create] data=${JSON.stringify({ ...data, lignes: data.lignes?.map((l) => ({ materiel: l.materiel, quantite: l.quantite })) })}`);
     let notificationCreee = false;
-    const entite = await app.db.transaction(async () => {
-      const created = await app.service(DEMANDE_UID).create({ data });
+    let entite;
+    try {
+      entite = await app.db.transaction(async () => {
+        const created = await app.documents(DEMANDE_UID).create({ data });
 
-      // Seule une demande DÉPOSÉE (en attente de décision) est notifiée :
-      // un brouillon n'est pas visible du côté dépositaire et sa notification
-      // ne pourrait mener à aucune demande à ouvrir.
-      if (created.statut === 'en_attente') {
-        notificationCreee = await notifierNouvelleDemande(
-          app,
-          created,
-          user,
-          organigramme
-        );
-      }
+        // Seule une demande DÉPOSÉE (en attente de décision) est notifiée :
+        // un brouillon n'est pas visible du côté dépositaire et sa notification
+        // ne pourrait mener à aucune demande à ouvrir.
+        if (created.statut === 'en_attente') {
+          notificationCreee = await notifierNouvelleDemande(
+            app,
+            created,
+            user,
+            organigramme
+          );
+        }
 
-      return created;
-    });
+        return created;
+      });
+    } catch (e) {
+      app.log.error(`[demande.create] Erreur création : ${e.message}`);
+      app.log.error(`[demande.create] Stack : ${e.stack}`);
+      app.log.error(`[demande.create] Contexte : demandeur=${data.demandeur}, direction=${data.direction}, service=${data.service}, lignes=${JSON.stringify(data.lignes)}`);
+      return erreurInterne(ctx, `Échec de création de la demande : ${e.message}`);
+    }
 
     // --- Distribution des notifications outbox (APRÈS transaction réussie) ---
     // L'entrée « nouvelle_demande » a été créée dans la transaction (atomicité
@@ -652,7 +738,13 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
       return forbid(ctx, 'Authentification requise pour approuver une demande.', 401);
     }
     const code = (await getRoleCode(app, user.id)).toLowerCase();
-    if (code !== ROLE_DECISION && code !== 'admin') {
+    if (code === ADMIN_ROLE) {
+      return forbid(
+        ctx,
+        "Le compte administrateur est en consultation seule : il ne peut pas approuver une demande."
+      );
+    }
+    if (code !== ROLE_DECISION) {
       return forbid(ctx, "Votre rôle ne permet pas d'approuver une demande.");
     }
 
@@ -792,7 +884,13 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
       return forbid(ctx, 'Authentification requise pour rejeter une demande.', 401);
     }
     const code = (await getRoleCode(app, user.id)).toLowerCase();
-    if (code !== ROLE_DECISION && code !== 'admin') {
+    if (code === ADMIN_ROLE) {
+      return forbid(
+        ctx,
+        "Le compte administrateur est en consultation seule : il ne peut pas rejeter une demande."
+      );
+    }
+    if (code !== ROLE_DECISION) {
       return forbid(ctx, 'Votre rôle ne permet pas de rejeter une demande.');
     }
 
@@ -852,7 +950,13 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
       return forbid(ctx, 'Authentification requise pour créer un ordre de sortie.', 401);
     }
     const code = (await getRoleCode(app, user.id)).toLowerCase();
-    if (code !== ROLE_DECISION && code !== 'admin') {
+    if (code === ADMIN_ROLE) {
+      return forbid(
+        ctx,
+        "Le compte administrateur est en consultation seule : il ne peut pas créer d'ordre de sortie."
+      );
+    }
+    if (code !== ROLE_DECISION) {
       return forbid(ctx, "Votre rôle ne permet pas de créer un ordre de sortie.");
     }
 
@@ -900,8 +1004,6 @@ module.exports = createCoreController(DEMANDE_UID, ({ strapi: app }) => ({
           : "Un ordre de sortie existe déjà pour cette demande : une demande ne porte qu'un seul ordre."
       );
     }
-
-    // Préremplissage : TOUT vient de la base.
     const body = {
       date_sortie: new Date().toISOString().slice(0, 10),
       // PIÈCE JUSTIFICATIVE = référence de la demande.

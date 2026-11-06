@@ -4,14 +4,23 @@ import {
   Calendar,
   Loader2,
   Mail,
+  Pencil,
   Phone,
+  Plus,
   RefreshCw,
   Search,
   Shield,
+  Trash2,
   User,
   Users as UsersIcon,
 } from "lucide-react";
-import { fetchUsers, type UserAccount } from "../lib/users";
+import {
+  deleteUser,
+  fetchUsers,
+  updateUser,
+  type UserAccount,
+} from "../lib/users";
+import { UserAccountModal } from "./UserAccountModal";
 import type { User as AppUser } from "../App";
 
 function formatDate(value: string | null): string {
@@ -54,6 +63,76 @@ export function Users({ user }: { user: AppUser }) {
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("Tous");
   const [statusFilter, setStatusFilter] = useState("Tous");
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalMode, setModalMode] = useState<"create" | "edit">("create");
+  const [selectedUser, setSelectedUser] = useState<UserAccount | null>(null);
+  const [actionEnCours, setActionEnCours] = useState<number | null>(null);
+
+  const messageErreurAction = (e: unknown): string => {
+    const axiosErr = e as {
+      response?: { data?: { error?: { message?: string } } };
+    };
+    return (
+      axiosErr.response?.data?.error?.message ||
+      (e instanceof Error ? e.message : "") ||
+      "Action impossible."
+    );
+  };
+
+  const estMonCompte = (compte: UserAccount) =>
+    user.strapiId != null && user.strapiId === compte.id;
+
+  const basculerSecurite = async (compte: UserAccount) => {
+    const suspendre = compte.status !== "Suspendu";
+    const question = suspendre
+      ? `Suspendre le compte de ${compte.username} ? Il ne pourra plus se connecter tant qu'il n'est pas réactivé.`
+      : `Réactiver le compte de ${compte.username} ?`;
+    if (!window.confirm(question)) return;
+
+    setActionEnCours(compte.id);
+    try {
+      await updateUser(compte.id, {
+        status: suspendre ? "Suspendu" : "Actif",
+      });
+      await loadUsers();
+    } catch (e) {
+      window.alert(messageErreurAction(e));
+    } finally {
+      setActionEnCours(null);
+    }
+  };
+
+  const supprimerCompte = async (compte: UserAccount) => {
+    if (
+      !window.confirm(
+        `Supprimer définitivement le compte de ${compte.username} ? Cette action est irréversible.`
+      )
+    ) {
+      return;
+    }
+
+    setActionEnCours(compte.id);
+    try {
+      await deleteUser(compte.id);
+      await loadUsers();
+    } catch (e) {
+      window.alert(messageErreurAction(e));
+    } finally {
+      setActionEnCours(null);
+    }
+  };
+
+  const ouvrirCreation = () => {
+    setSelectedUser(null);
+    setModalMode("create");
+    setModalOpen(true);
+  };
+
+  const ouvrirModification = (compte: UserAccount) => {
+    setSelectedUser(compte);
+    setModalMode("edit");
+    setModalOpen(true);
+  };
 
   const loadUsers = useCallback(async () => {
     if (user.role !== "admin") return;
@@ -115,13 +194,24 @@ export function Users({ user }: { user: AppUser }) {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-3xl tracking-tight mb-2 text-foreground">
-          Gestion des Utilisateurs
-        </h1>
-        <p className="text-muted-foreground">
-          Comptes enregistrés dans la base de données
-        </p>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl tracking-tight mb-2 text-foreground">
+            Gestion des Utilisateurs
+          </h1>
+          <p className="text-muted-foreground">
+            Comptes enregistrés dans la base de données — création et
+            modification réservées à l'administrateur
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={ouvrirCreation}
+          className="inline-flex items-center gap-2 self-start rounded-lg bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90"
+        >
+          <Plus className="h-4 w-4" />
+          Nouvel utilisateur
+        </button>
       </div>
 
       {error && (
@@ -252,12 +342,13 @@ export function Users({ user }: { user: AppUser }) {
                 <th className="px-4 py-3 text-left text-sm text-muted-foreground">Direction / Service</th>
                 <th className="px-4 py-3 text-left text-sm text-muted-foreground">Statut</th>
                 <th className="px-4 py-3 text-left text-sm text-muted-foreground">Créé le</th>
+                <th className="px-4 py-3 text-right text-sm text-muted-foreground">Actions</th>
               </tr>
             </thead>
             <tbody>
               {isLoading ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="py-10 text-center text-muted-foreground">
                     <span className="inline-flex items-center gap-2">
                       <Loader2 className="h-4 w-4 animate-spin" />
                       Chargement des comptes depuis la base…
@@ -266,7 +357,7 @@ export function Users({ user }: { user: AppUser }) {
                 </tr>
               ) : filteredUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="py-10 text-center text-muted-foreground">
+                  <td colSpan={7} className="py-10 text-center text-muted-foreground">
                     {error ? "Liste indisponible." : "Aucun utilisateur trouvé."}
                   </td>
                 </tr>
@@ -321,6 +412,61 @@ export function Users({ user }: { user: AppUser }) {
                     <td className="px-4 py-3 text-sm text-card-foreground">
                       {formatDate(user.createdAt)}
                     </td>
+                    <td className="px-4 py-3">
+                      <div className="flex items-center justify-end gap-1">
+                        <button
+                          type="button"
+                          onClick={() => ouvrirModification(user)}
+                          className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground"
+                          title="Modifier cet utilisateur"
+                          aria-label="Modifier cet utilisateur"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void basculerSecurite(user)}
+                          disabled={
+                            actionEnCours === user.id || estMonCompte(user)
+                          }
+                          className={`rounded p-1.5 text-muted-foreground hover:bg-muted disabled:cursor-not-allowed disabled:opacity-40 ${
+                            user.status === "Suspendu"
+                              ? "hover:text-green-600"
+                              : "hover:text-orange-600"
+                          }`}
+                          title={
+                            estMonCompte(user)
+                              ? "Action impossible sur votre propre compte"
+                              : user.status === "Suspendu"
+                                ? "Réactiver le compte"
+                                : "Suspendre le compte"
+                          }
+                          aria-label={
+                            user.status === "Suspendu"
+                              ? "Réactiver le compte"
+                              : "Suspendre le compte"
+                          }
+                        >
+                          <Shield className="h-4 w-4" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void supprimerCompte(user)}
+                          disabled={
+                            actionEnCours === user.id || estMonCompte(user)
+                          }
+                          className="rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-40"
+                          title={
+                            estMonCompte(user)
+                              ? "Action impossible sur votre propre compte"
+                              : "Supprimer cet utilisateur"
+                          }
+                          aria-label="Supprimer cet utilisateur"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </td>
                   </tr>
                 ))
               )}
@@ -328,6 +474,14 @@ export function Users({ user }: { user: AppUser }) {
           </table>
         </div>
       </div>
+
+      <UserAccountModal
+        open={modalOpen}
+        mode={modalMode}
+        user={selectedUser}
+        onClose={() => setModalOpen(false)}
+        onSaved={() => void loadUsers()}
+      />
     </div>
   );
 }

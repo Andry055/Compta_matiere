@@ -49,6 +49,11 @@ export interface DemandeLigne {
   quantite: number;
   motif: string;
   /**
+   * Détenteur du matériel : personne qui recevra/tiendra le matériel.
+   * Saisie libre (nom + fonction), ne nécessite pas de compte utilisateur.
+   */
+  detenteur?: string;
+  /**
    * `documentId` de la fiche de STOCK visée par la ligne (étape 1 : le
    * matériel vient du stock réel, jamais d'une saisie libre). Absent pour
    * les demandes antérieures à l'étape 1.
@@ -688,6 +693,8 @@ interface StrapiDemandeRow {
   direction?: { nom_direction?: string | null } | null;
   service?: { nom_service?: string | null } | null;
   demandeur?: { id?: number; username?: string | null } | null;
+  /** Nom du demandeur dénormalisé (chaîne) : lisible sans lire plugin::users-permissions.user. */
+  demandeur_nom?: string | null;
   /** Lignes de la demande (composant `demande.ligne`, étape 1). */
   lignes?: StrapiDemandeLigne[] | null;
   /**
@@ -706,6 +713,8 @@ interface StrapiDemandeLigne {
   quantite?: number | null;
   motif?: string | null;
   categorie?: string | null;
+  /** Détenteur saisi par le demandeur (nom + fonction). */
+  detenteur?: string | null;
   /** Fiche de stock visée (relation `materiel`). */
   materiel?: {
     documentId?: string | null;
@@ -754,6 +763,7 @@ function mapLignesDemande(row: StrapiDemandeRow): DemandeLigne[] {
     materiel: ligne.designation || ligne.materiel?.designation || "—",
     quantite: Number(ligne.quantite) || 1,
     motif: ligne.motif || "—",
+    detenteur: ligne.detenteur || undefined,
     materielDocumentId: ligne.materiel?.documentId || undefined,
     // Quantité initialement demandée : conservée même si le Dépositaire a
     // ajusté la quantité approuvée (étape 2).
@@ -779,7 +789,7 @@ function mapStrapiDemande(row: StrapiDemandeRow): DemandeRecord {
     motifRejet: row.motif_rejet || undefined,
     direction: row.direction?.nom_direction || "—",
     service: row.service?.nom_service || "—",
-    demandeur: row.demandeur?.username || "—",
+    demandeur: row.demandeur_nom || row.demandeur?.username || "—",
     fonction: row.fonction || undefined,
     detenteurNom: row.detenteur_nom || undefined,
     detenteurFonction: row.detenteur_fonction || undefined,

@@ -28,7 +28,12 @@
  */
 
 const { createCoreController } = require('@strapi/strapi').factories;
-const { guardedCoreController, getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
+const {
+  guardedCoreController,
+  getRoleCode,
+  DEMANDEUR_ROLE,
+  ADMIN_ROLE,
+} = require('../../../utils/roleGuard');
 
 const TRANSFERT_UID = 'api::transfert.transfert';
 const MOUVEMENT_UID = 'api::mouvement.mouvement';
@@ -152,7 +157,7 @@ async function peutSignerResponsableTransfert(strapi, ctx, transfert) {
   const user = ctx.state && ctx.state.user;
   if (!user) return false;
   const code = (await getRoleCode(strapi, user.id)).toLowerCase();
-  if (code === 'admin') return true;
+  if (code === ADMIN_ROLE) return false;
   if (code === DEMANDEUR_ROLE) {
     const estCreateur =
       (!!user.username && user.username === transfert.createur) ||
@@ -201,6 +206,17 @@ module.exports = guardedCoreController(createCoreController, TRANSFERT_UID, {
    */
   async createComplete(ctx) {
     const app = strapi;
+    const user = ctx.state && ctx.state.user;
+    // L'administrateur est en consultation seule : il ne crée aucun transfert.
+    if (user && user.id) {
+      const code = (await getRoleCode(app, user.id)).toLowerCase();
+      if (code === ADMIN_ROLE) {
+        return forbid(
+          ctx,
+          "Le compte administrateur est en consultation seule : il ne peut pas créer de transfert."
+        );
+      }
+    }
     const body = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
 
     // --- Validation des champs obligatoires --------------------------------
@@ -351,6 +367,14 @@ module.exports = guardedCoreController(createCoreController, TRANSFERT_UID, {
     }
     const code = (await getRoleCode(app, user.id)).toLowerCase();
 
+    // L'administrateur est en consultation seule : aucune signature.
+    if (code === ADMIN_ROLE) {
+      return forbid(
+        ctx,
+        "Le compte administrateur est en consultation seule : il ne peut pas signer un transfert."
+      );
+    }
+
     const transfert = await loadTransfert(app, documentId);
     if (!transfert) {
       ctx.status = 404;
@@ -368,17 +392,16 @@ module.exports = guardedCoreController(createCoreController, TRANSFERT_UID, {
       return badRequest(ctx, "Cette validation n'existe plus dans le circuit d'approbation.");
     }
 
-    // L'admin peut signer pour tous les rôles ; sinon correspondance stricte.
-    const estAdmin = code === 'admin';
+    // Correspondance stricte entre le rôle connecté et la signature demandée.
     if (roleKey === 'responsable_transfert') {
       const autorise = await peutSignerResponsableTransfert(app, ctx, transfert);
       if (!autorise) {
         return forbid(
           ctx,
-          'Seul le créateur de l’transfert (Responsable du transfert) ou un administrateur peut apposer cette signature.'
+          'Seul le créateur du transfert (Responsable du transfert) peut apposer cette signature.'
         );
       }
-    } else if (!estAdmin && !ROLE_FOR_SIGNATURE[roleKey].includes(code)) {
+    } else if (!ROLE_FOR_SIGNATURE[roleKey].includes(code)) {
       return forbid(
         ctx,
         `Votre rôle ne permet pas d'apposer la signature « ${roleKey.replace(/_/g, ' ')} ».`

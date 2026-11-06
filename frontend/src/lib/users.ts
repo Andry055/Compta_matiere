@@ -9,10 +9,40 @@ export interface UserAccount {
   department: string;
   fonction: string;
   phone: string;
+  directionId?: number | null;
   directionName: string;
+  serviceId?: number | null;
   serviceName: string;
   status: "Actif" | "Inactif" | "Suspendu";
   createdAt: string | null;
+}
+
+/** Charge utile de création/modification d'un compte (admin uniquement). */
+export interface UserInput {
+  username: string;
+  email: string;
+  password?: string;
+  roleType: string;
+  status: UserAccount["status"];
+  directionId?: number | null;
+  department?: string;
+  fonction?: string;
+  phone?: string;
+}
+
+export async function createUser(input: UserInput): Promise<void> {
+  await api.post("/api/session/users", { data: input }, { timeout: 15000 });
+}
+
+export async function updateUser(
+  id: number,
+  input: Partial<UserInput>
+): Promise<void> {
+  await api.put(`/api/session/users/${id}`, { data: input }, { timeout: 15000 });
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  await api.delete(`/api/session/users/${id}`, { timeout: 15000 });
 }
 
 interface ApiUser {
@@ -26,8 +56,8 @@ interface ApiUser {
   confirmed?: boolean;
   blocked?: boolean;
   createdAt?: string | null;
-  direction?: { name?: string | null } | null;
-  service?: { name?: string | null } | null;
+  direction?: { id?: number | null; name?: string | null } | null;
+  service?: { id?: number | null; name?: string | null } | null;
 }
 
 export async function fetchUsers(): Promise<UserAccount[]> {
@@ -52,6 +82,8 @@ export async function fetchUsers(): Promise<UserAccount[]> {
       department: user.department || "",
       fonction: user.fonction || "",
       phone: user.phone || "",
+      directionId: user.direction?.id ?? null,
+      serviceId: user.service?.id ?? null,
       directionName:
         user.direction?.name || departmentParts[0] || "Non renseignée",
       serviceName:

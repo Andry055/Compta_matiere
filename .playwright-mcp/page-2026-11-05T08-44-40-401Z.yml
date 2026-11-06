@@ -1,0 +1,211 @@
+- generic [ref=f4e2]:
+  - generic [ref=f4e4]:
+    - generic [ref=f4e6]:
+      - link "Logo MTEFoP Icône AssetTrack AssetTrack Système de Gestion et de Traçabilité des Matériels" [ref=f4e8] [cursor=pointer]:
+        - /url: "#dashboard"
+        - img "Logo MTEFoP" [ref=f4e9]
+        - img "Icône AssetTrack" [ref=f4e11]
+        - generic [ref=f4e12]:
+          - generic [ref=f4e13]: AssetTrack
+          - generic [ref=f4e14]: Système de Gestion et de Traçabilité des Matériels
+      - navigation [ref=f4e16]:
+        - paragraph [ref=f4e17]: Navigation
+        - button "Tableau de Bord Vue d'ensemble" [ref=f4e18]:
+          - generic [ref=f4e24]:
+            - generic [ref=f4e25]: Tableau de Bord
+            - generic [ref=f4e26]: Vue d'ensemble
+        - button "Mini-journal Direction Sorties remises de ma direction" [ref=f4e27]:
+          - generic [ref=f4e30]:
+            - generic [ref=f4e31]: Mini-journal Direction
+            - generic [ref=f4e32]: Sorties remises de ma direction
+        - button "Équipements Inventaire détaillé" [ref=f4e33]:
+          - generic [ref=f4e38]:
+            - generic [ref=f4e39]: Équipements
+            - generic [ref=f4e40]: Inventaire détaillé
+        - button "Réceptions Réceptions de votre direction" [ref=f4e41]:
+          - generic [ref=f4e44]:
+            - generic [ref=f4e45]: Réceptions
+            - generic [ref=f4e46]: Réceptions de votre direction
+        - button "Transferts Transferts entre services" [ref=f4e47]:
+          - generic [ref=f4e51]:
+            - generic [ref=f4e52]: Transferts
+            - generic [ref=f4e53]: Transferts entre services
+        - button "Sorties Suivi des sorties de matériels" [ref=f4e54]:
+          - generic [ref=f4e57]:
+            - generic [ref=f4e58]: Sorties
+            - generic [ref=f4e59]: Suivi des sorties de matériels
+        - button "Réception physique Réceptionner les matériels sortis" [ref=f4e60]:
+          - generic [ref=f4e66]:
+            - generic [ref=f4e67]: Réception physique
+            - generic [ref=f4e68]: Réceptionner les matériels sortis
+        - button "Demandes Gestion de mes demandes" [ref=f4e69]:
+          - generic [ref=f4e73]:
+            - generic [ref=f4e74]: Demandes
+            - generic [ref=f4e75]: Gestion de mes demandes
+        - button "Rapports Exports et analyses" [ref=f4e76]:
+          - generic [ref=f4e79]:
+            - generic [ref=f4e80]: Rapports
+            - generic [ref=f4e81]: Exports et analyses
+      - generic [ref=f4e88]:
+        - generic [ref=f4e89]: Rakotoson Jean
+        - generic [ref=f4e90]: Demandeur
+    - generic [ref=f4e91]:
+      - banner [ref=f4e92]:
+        - button "Toggle sidebar" [ref=f4e94]
+        - generic [ref=f4e97]:
+          - generic [ref=f4e98]: Conforme 94%
+          - generic [ref=f4e102]:
+            - generic [ref=f4e103]: Rakotoson Jean
+            - generic [ref=f4e104]: Demandeur
+          - button "5 Mes notifications" [ref=f4e304]:
+            - generic [ref=f4e305]: "5"
+            - generic [ref=f4e110]: Mes notifications
+          - button "Mode sombre" [ref=f4e306]
+          - button "Se déconnecter" [ref=f4e119]
+      - main [ref=f4e124]:
+        - generic [ref=f4e309]:
+          - generic [ref=f4e310]:
+            - generic [ref=f4e311]:
+              - heading "Mes demandes" [level=1] [ref=f4e312]
+              - paragraph [ref=f4e313]: Créez et suivez vos demandes de matériels
+              - generic [ref=f4e314]: "Source : API Strapi (backend en ligne)"
+            - button "Nouvelle demande" [active] [ref=f4e315]
+          - status [ref=f4e317]:
+            - generic [ref=f4e321]: "Vous créez, modifiez (brouillon) et annulez vos demandes : la validation appartient aux responsables habilités."
+          - generic [ref=f4e323]:
+            - generic [ref=f4e329]:
+              - generic [ref=f4e330]: Mes demandes
+              - generic [ref=f4e331]: "0"
+            - generic [ref=f4e337]:
+              - generic [ref=f4e338]: En attente
+              - generic [ref=f4e339]: "0"
+            - generic [ref=f4e344]:
+              - generic [ref=f4e345]: Validées
+              - generic [ref=f4e346]: "0"
+            - generic [ref=f4e352]:
+              - generic [ref=f4e353]: Refusées
+              - generic [ref=f4e354]: "0"
+          - textbox "Rechercher par référence, matériel, catégorie, service, direction, motif..." [ref=f4e360]
+          - generic [ref=f4e362]:
+            - button "Recherche" [ref=f4e363]
+            - button "Filtres" [ref=f4e367]
+          - generic [ref=f4e369]:
+            - generic [ref=f4e370]:
+              - heading "Liste de mes demandes (0)" [level=3] [ref=f4e371]
+              - paragraph [ref=f4e372]: Demande → Validation → Préparation → Sortie → Traçabilité
+            - table [ref=f4e375]:
+              - rowgroup [ref=f4e376]:
+                - row [ref=f4e377]:
+                  - columnheader "Référence" [ref=f4e378]
+                  - columnheader "Date" [ref=f4e379]
+                  - columnheader "Matériel" [ref=f4e380]
+                  - columnheader "Quantité" [ref=f4e381]
+                  - columnheader "Direction" [ref=f4e382]
+                  - columnheader "Service" [ref=f4e383]
+                  - columnheader "Priorité" [ref=f4e384]
+                  - columnheader "Statut" [ref=f4e385]
+                  - columnheader "Sortie associée" [ref=f4e386]
+                  - columnheader "Actions" [ref=f4e387]
+              - rowgroup [ref=f4e388]:
+                - row [ref=f4e389]:
+                  - cell "Aucune demande pour le moment Créez votre première demande de matériel. Nouvelle demande" [ref=f4e390]:
+                    - generic [ref=f4e391]:
+                      - generic [ref=f4e395]:
+                        - generic [ref=f4e396]: Aucune demande pour le moment
+                        - generic [ref=f4e397]: Créez votre première demande de matériel.
+                      - button "Nouvelle demande" [ref=f4e398]
+          - generic [ref=f4e401]:
+            - generic [ref=f4e402]:
+              - generic [ref=f4e403]:
+                - heading "Nouvelle demande" [level=3] [ref=f4e404]
+                - paragraph [ref=f4e408]: Renseignez les matériels demandés
+              - button [ref=f4e409]
+            - generic [ref=f4e413]:
+              - generic [ref=f4e414]:
+                - heading "Informations du demandeur" [level=4] [ref=f4e415]
+                - generic [ref=f4e416]:
+                  - generic [ref=f4e417]:
+                    - generic [ref=f4e418]: Nom
+                    - generic [ref=f4e419]: Rakotoson
+                  - generic [ref=f4e420]:
+                    - generic [ref=f4e421]: Prénom
+                    - generic [ref=f4e422]: Jean
+                  - generic [ref=f4e423]:
+                    - generic [ref=f4e424]: Direction
+                    - generic [ref=f4e425]: Direction Logistique
+                  - generic [ref=f4e426]:
+                    - generic [ref=f4e427]: Service
+                    - generic [ref=f4e428]: Direction Logistique
+                  - generic [ref=f4e429]:
+                    - generic [ref=f4e430]: Fonction
+                    - generic [ref=f4e431]: Fonction non renseignée
+                  - generic [ref=f4e432]:
+                    - generic [ref=f4e433]: N° porte
+                    - generic [ref=f4e434]: —
+                - paragraph [ref=f4e435]: Récupérées automatiquement depuis votre profil connecté.
+              - generic [ref=f4e436]:
+                - generic [ref=f4e437]:
+                  - heading "Matériel demandé" [level=4] [ref=f4e438]
+                  - button "Ajouter un matériel" [ref=f4e439]
+                - table [ref=f4e442]:
+                  - rowgroup [ref=f4e443]:
+                    - row [ref=f4e444]:
+                      - columnheader "Matériel" [ref=f4e445]
+                      - columnheader "Qté" [ref=f4e446]
+                      - columnheader "Détenteur" [ref=f4e447]
+                      - columnheader "Motif" [ref=f4e448]
+                      - columnheader [ref=f4e449]
+                  - rowgroup [ref=f4e450]:
+                    - row [ref=f4e451]:
+                      - cell "Choisir un matériel du stock..." [ref=f4e452]:
+                        - combobox "Matériel de la ligne 1" [ref=f4e453]:
+                          - option "Choisir un matériel du stock..." [selected]
+                          - option "Borne WiFi Ubiquiti UniFi — stock 42"
+                          - option "Câble réseau Cat6 (rouleau 305m) — stock 38"
+                          - option "E2E-REMISE-ClavierTest — stock 4"
+                          - option "E2E-REMISE-ClavierTest — stock 4"
+                          - option "E2E-REMISE-ClavierTest — stock 4"
+                          - option "E2E-REMISE-ClavierTest — stock 4"
+                          - option "E2E-REMISE-SourisTest — stock 4"
+                          - option "E2E-REMISE-SourisTest — stock 4"
+                          - option "E2E-REMISE-SourisTest — stock 4"
+                          - option "E2E-REMISE-SourisTest — stock 4"
+                          - option "Imprimante laser HP LaserJet — stock 2"
+                          - option "Onduleur APC 1500VA — stock 4"
+                          - option "Ordinateur portable Dell Latitude — stock 3"
+                          - option "Registre comptable grand format — stock 2"
+                          - option "Registre inventaire cartonné — stock 2"
+                          - option "Routeur Cisco RV340 — stock 318"
+                          - option "Switch manageable 48 ports — stock 23"
+                          - option "Vidéoprojecteur Epson EB-X500 — stock 1"
+                      - cell [ref=f4e454]:
+                        - spinbutton "Quantité de la ligne 1" [ref=f4e455]: "1"
+                      - cell [ref=f4e456]:
+                        - textbox "Détenteur de la ligne 1" [ref=f4e457]:
+                          - /placeholder: "Nom + fonction (ex: Rakoto, Chef IT)"
+                      - cell [ref=f4e458]:
+                        - textbox "Motif de la ligne 1" [ref=f4e459]:
+                          - /placeholder: Ex. Nouveau, Service...
+                      - cell [ref=f4e460]:
+                        - button "Retirer la ligne" [disabled] [ref=f4e461]
+              - generic [ref=f4e465]:
+                - generic [ref=f4e466]:
+                  - generic [ref=f4e467]: Priorité
+                  - combobox [ref=f4e468]:
+                    - option "Normal" [selected]
+                    - option "Urgent"
+                    - option "Critique"
+                - generic [ref=f4e469]:
+                  - generic [ref=f4e470]: Observation
+                  - textbox "Remarques complémentaires..." [ref=f4e471]
+            - generic [ref=f4e472]:
+              - button "Annuler" [ref=f4e473]
+              - button "Enregistrer comme brouillon" [ref=f4e475]
+              - button "Voir le résumé" [ref=f4e480]
+      - contentinfo [ref=f4e295]:
+        - generic [ref=f4e296]:
+          - generic [ref=f4e297]:
+            - generic [ref=f4e298]: Connecté
+            - generic [ref=f4e301]: "Dernière sync : à l'instant"
+          - generic [ref=f4e302]: Version 1.0.0
+  - region "Notifications alt+T"

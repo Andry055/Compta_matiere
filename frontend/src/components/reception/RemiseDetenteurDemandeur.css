@@ -1,0 +1,210 @@
+/* ———————————————————————————————————————————————
+   Écran « Remise au détenteur » (Demandeur)
+   Classes préfixées rdd- pour éviter les collisions.
+——————————————————————————————————————————————— */
+
+.rdd-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1rem;
+}
+
+@media (min-width: 640px) {
+  .rdd-page {
+    padding: 1.5rem;
+  }
+}
+
+/* En-tête */
+.rdd-entete {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  border-bottom: 1px solid;
+  border-color: var(--border-color, #e5e7eb);
+  padding-bottom: 1rem;
+}
+
+.rdd-titre {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0;
+}
+
+.rdd-sous-titre {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.95rem;
+  color: var(--muted-foreground, #6b7280);
+  margin: 0;
+  flex-wrap: wrap;
+}
+
+.rdd-simulation-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.125rem 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: #92400e;
+  background-color: #fef3c7;
+  border: 1px solid #fcd34d;
+  border-radius: 9999px;
+  text-transform: uppercase;
+  letter-spacing: 0.025em;
+}
+
+.rdd-actions-en-tete {
+  display: flex;
+  gap: 0.5rem;
+}
+
+/* Compteurs */
+.rdd-compteurs {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.rdd-compteur {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.75rem 1rem;
+  background: var(--background, #ffffff);
+  border: 1px solid;
+  border-color: var(--border-color, #e5e7eb);
+  border-radius: 0.75rem;
+  min-width: 160px;
+}
+
+.rdd-compteur-valeur {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--foreground, #000000);
+}
+
+.rdd-compteur-libelle {
+  font-size: 0.75rem;
+  color: var(--muted-foreground, #6b7280);
+}
+
+/* Contenu */
+.rdd-contenu {
+  min-height: 200px;
+}
+
+/* Liste */
+.rdd-liste {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.rdd-carte {
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+
+.rdd-carte:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03);
+}
+
+/* Champs dans les cartes */
+.rdd-champ {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.rdd-champ-cle {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--muted-foreground, #6b7280);
+}
+
+.rdd-champ-valeur {
+  font-size: 0.875rem;
+  font-weight: 600;
+}
+
+/* Aperçu des lignes déjà remises */
+.rdd-apercu {
+  padding: 0.75rem;
+  background: var(--muted, #f3f4f6);
+  border-radius: 0.5rem;
+  border: 1px solid var(--border-color, #e5e7eb);
+}
+
+.rdd-apercu-lignes {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.rdd-apercu-ligne {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.25rem 0;
+  font-size: 0.8rem;
+}
+
+.rdd-apercu-designation {
+  font-weight: 500;
+  color: var(--foreground, #000000);
+}
+
+.rdd-apercu-detenteur {
+  color: var(--muted-foreground, #6b7280);
+  margin-left: auto;
+}
+
+/* État vide */
+.rdd-etat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem 1rem;
+  text-align: center;
+  color: var(--muted-foreground, #6b7280);
+}
+
+/* Dialogue */
+.rdd-dialogue {
+  outline: none;
+}
+
+.rdd-dialogue-corps {
+  outline: none;
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Formulaire lignes */
+.rdd-ligne-formulaire {
+  padding: 0.5rem;
+  background: var(--card, #ffffff);
+  border: 1px solid var(--border-color, #e5e7eb);
+  border-radius: 0.5rem;
+}
+
+.rdd-ligne-formulaire > div {
+  min-width: 0;
+}
+
+/* Responsive pour les dialogues sur mobile */
+@media (max-width: 640px) {
+  .rdd-dialogue {
+    max-width: calc(100vw - 1rem);
+    max-height: calc(100vh - 2rem);
+  }
+
+  .rdd-ligne-formulaire {
+    grid-template-columns: 1fr !important;
+  }
+}

@@ -104,8 +104,10 @@ export function EntriesPage({ user }: EntriesPageProps) {
 
   // Le Demandeur consulte en lecture seule (pas de création, pas d'export) :
   // les signatures et la création restent réservées aux responsables habilités.
+  // L'administrateur est également en consultation seule : aucune création.
   const isDemandeur = user?.role === "demandeur";
-  const canCreate = !!user && user?.role !== "demandeur";
+  const canCreate =
+    !!user && user?.role !== "demandeur" && user?.role !== "admin";
   const canExport = !!user && (user.permissions?.includes("all") || user.role !== "demandeur");
   // Le demandeur peut imprimer le bon de sortie (lecture seule, pas d'export)
   const canPrint = isDemandeur || canExport;

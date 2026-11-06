@@ -1,0 +1,561 @@
+import { useEffect, useMemo, useState } from "react";
+import {
+  ArrowLeftRight,
+  Search,
+  SlidersHorizontal,
+  Plus,
+  Eye,
+  ChevronLeft,
+  ChevronRight,
+  CheckCircle2,
+  Clock,
+  Package,
+  CalendarDays,
+  RotateCcw,
+  BadgeCheck,
+} from "lucide-react";
+import { User } from "../App";
+import { entreeRecords, EntreeRecord } from "../lib/movements";
+import { fetchEntrees } from "../lib/api";
+import { getEntreesTransfert } from "../lib/transfers";
+import {
+  AffectationRecord,
+  calculerStock,
+  getStatistiquesAffectations,
+  getStatutAffectationAffiche,
+  directionDestinataireDe,
+  validationsAttendues,
+  getValidationCount,
+  listerAffectations,
+  statutAffectationBadge,
+} from "../lib/affectations";
+import { NewAffectationPage } from "./NewAffectationPage";
+import { AffectationDetailModal } from "./AffectationDetailModal";
+import { Message } from "./ui/message";
+
+const PAGE_SIZE = 6;
+
+const STATUTS_AFFICHAGE = ["En attente", "Validée"];
+
+interface AffectationsPageProps {
+  user?: User;
+}
+
+/**
+ * Page « Affectations » — rubrique indépendante de la page Entrées.
+ *
+ * Un transfert déplace un matériel déjà enregistré vers une AUTRE Direction :
+ * pas de sortie, pas de nouvelle entrée, seulement la mise à jour du stock et
+ * une traçabilité complète (2 validations obligatoires).
+ */
+export function AffectationsPage({ user }: AffectationsPageProps) {
+  const [showNewForm, setShowNewForm] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [searchOpen, setSearchOpen] = useState(true);
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState("Tous");
+  const [directionFilter, setDirectionFilter] = useState("Toutes");
+  const [dateDebut, setDateDebut] = useState("");
+  const [dateFin, setDateFin] = useState("");
+  const [page, setPage] = useState(1);
+  const [selected, setSelected] = useState<AffectationRecord | null>(null);
+  const [modalOpen, setModalOpen] = useState(false);
+  const [flash, setFlash] = useState("");
+
+  // Données : affectations (local) + entrées (pour le stock consolidé)
+  const [records, setRecords] = useState<AffectationRecord[]>(() =>
+    listerAffectations()
+  );
+  const [entrees, setEntrees] = useState<EntreeRecord[]>([
+    ...getEntreesTransfert(),
+    ...entreeRecords,
+  ]);
+
+  const canCreate = !!user;
+
+  const recharger = () => {
+    setRecords(listerAffectations());
+    fetchEntrees().then((data) => {
+      setEntrees([
+        ...getEntreesTransfert(),
+        ...(data && data.length > 0 ? data : entreeRecords),
+      ]);
+    });
+  };
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchEntrees().then((data) => {
+      if (cancelled) return;
+      setEntrees([
+        ...getEntreesTransfert(),
+        ...(data && data.length > 0 ? data : entreeRecords),
+      ]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const stock = useMemo(
+    () => calculerStock(entrees, records),
+    [entrees, records]
+  );
+
+  const directions = useMemo(
+    () => ["Toutes", ...Array.from(new Set(records.map((a) => a.direction)))],
+    [records]
+  );
+
+  const filtered = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    return records.filter((a) => {
+      const matchesSearch =
+        !term ||
+        a.reference.toLowerCase().includes(term) ||
+        a.materiel.toLowerCase().includes(term) ||
+        (a.direction || "").toLowerCase().includes(term) ||
+        a.serviceSource.toLowerCase().includes(term) ||
+        directionDestinataireDe(a).toLowerCase().includes(term) ||
+        (a.motif || "").toLowerCase().includes(term) ||
+        (a.materielReference || "").toLowerCase().includes(term);
+      const matchesStatus =
+        statusFilter === "Tous" ||
+        getStatutAffectationAffiche(a) === statusFilter;
+      const matchesDirection =
+        directionFilter === "Toutes" || a.direction === directionFilter;
+      const matchesDebut = !dateDebut || a.date >= dateDebut;
+      const matchesFin = !dateFin || a.date <= dateFin;
+      return (
+        matchesSearch && matchesStatus && matchesDirection && matchesDebut && matchesFin
+      );
+    });
+  }, [records, searchTerm, statusFilter, directionFilter, dateDebut, dateFin]);
+
+  const stats = getStatistiquesAffectations(records);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const currentPage = Math.min(page, totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const visibleRows = filtered.slice(startIndex, startIndex + PAGE_SIZE);
+
+  // ------------------------------------------------- formulaire dédié
+  if (showNewForm) {
+    return (
+      <NewAffectationPage
+        user={user}
+        entrees={entrees}
+        onClose={() => setShowNewForm(false)}
+        onCreated={(ref) => {
+          setShowNewForm(false);
+          recharger();
+          setFlash(
+            `✓ Transfert ${ref} créé (0/2) — en attente des validations.`
+          );
+          window.setTimeout(() => setFlash(""), 6000);
+        }}
+      />
+    );
+  }
+
+  const resetFilters = () => {
+    setSearchTerm("");
+    setStatusFilter("Tous");
+    setDirectionFilter("Toutes");
+    setDateDebut("");
+    setDateFin("");
+    setPage(1);
+  };
+
+  const statCards = [
+    {
+      label: "Total des transferts",
+      value: stats.total,
+      icon: Package,
+      iconClass:
+        "bg-blue-100 text-blue-600 rounded-lg dark:bg-blue-900/30 dark:text-blue-400",
+    },
+    {
+      label: `Transferts du mois (${stats.moisLabel})`,
+      value: stats.duMois,
+      icon: CalendarDays,
+      iconClass:
+        "bg-purple-100 text-purple-600 rounded-lg dark:bg-purple-900/30 dark:text-purple-400",
+    },
+    {
+      label: "Transferts en attente",
+      value: stats.enAttente,
+      icon: Clock,
+      iconClass:
+        "bg-orange-100 text-orange-600 rounded-lg dark:bg-orange-900/30 dark:text-orange-400",
+    },
+    {
+      label: "Transferts validés",
+      value: stats.validees,
+      icon: CheckCircle2,
+      iconClass:
+        "bg-green-100 text-green-600 rounded-lg dark:bg-green-900/30 dark:text-green-400",
+    },
+  ];
+
+  return (
+    <div className="p-3 sm:p-6 space-y-4 sm:space-y-6">
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-2xl sm:text-3xl tracking-tight mb-2 text-foreground">
+            Transferts
+          </h1>
+          <p className="text-muted-foreground text-sm sm:text-base">
+            Gestion des transferts de matériels entre services
+          </p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {canCreate && (
+            <button
+              onClick={() => setShowNewForm(true)}
+              className="inline-flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+            >
+              <Plus className="h-4 w-4" />
+              Nouveau transfert
+            </button>
+          )}
+          <button
+            onClick={() => setSearchOpen((v) => !v)}
+            className="inline-flex items-center gap-2 px-4 py-2 border border-border rounded-lg bg-background hover:bg-accent hover:text-accent-foreground transition-colors text-sm"
+          >
+            <Search className="h-4 w-4" />
+            Recherche
+          </button>
+          <button
+            onClick={() => setFiltersOpen((v) => !v)}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-lg text-sm transition-colors ${
+              filtersOpen
+                ? "bg-primary text-primary-foreground"
+                : "border border-border bg-background hover:bg-accent hover:text-accent-foreground"
+            }`}
+          >
+            <SlidersHorizontal className="h-4 w-4" />
+            Filtres
+          </button>
+        </div>
+      </div>
+
+      {/* Rappel métier */}
+      <Message variant="info" size="sm" icon={BadgeCheck}>
+        Transfert = déplacement d'un matériel vers une AUTRE Direction : pas
+        de sortie, pas de nouvelle entrée, seulement la mise à jour du stock et
+        la traçabilité. Validation obligatoire en 2 étapes (0/2 → 2/2) ; un
+        transfert validé n'est plus modifiable.
+      </Message>
+
+      {/* Indicateurs */}
+      <div className="grid gap-3 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+        {statCards.map((card) => {
+          const Icon = card.icon;
+          return (
+            <div
+              key={card.label}
+              className="cm-panel cm-panel-solid rounded-lg p-4"
+            >
+              <div className="flex items-center gap-3">
+                <Icon className={`h-8 w-8 p-2 ${card.iconClass}`} />
+                <div>
+                  <div className="text-xs sm:text-sm text-muted-foreground">
+                    {card.label}
+                  </div>
+                  <div className="text-lg sm:text-xl text-card-foreground">
+                    {card.value}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Recherche */}
+      {searchOpen && (
+        <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="text"
+              placeholder="Rechercher par référence, matériel, service, direction, référence de matériels…"
+              value={searchTerm}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setPage(1);
+              }}
+              className="w-full pl-10 pr-3 py-2 border border-border rounded-lg bg-background focus:ring-2 focus:ring-ring focus:border-transparent text-sm"
+            />
+          </div>
+        </div>
+      )}
+
+      {/* Filtres */}
+      {filtersOpen && (
+        <div className="cm-panel cm-panel-solid rounded-lg p-4 sm:p-6">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">
+                Statut
+              </label>
+              <select
+                value={statusFilter}
+                onChange={(e) => {
+                  setStatusFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring"
+              >
+                <option value="Tous">Tous les statuts</option>
+                {STATUTS_AFFICHAGE.map((s) => (
+                  <option key={s} value={s}>
+                    {s}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">
+                Direction d'origine
+              </label>
+              <select
+                value={directionFilter}
+                onChange={(e) => {
+                  setDirectionFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm focus:ring-2 focus:ring-ring"
+              >
+                {directions.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">
+                Date du
+              </label>
+              <input
+                type="date"
+                value={dateDebut}
+                onChange={(e) => {
+                  setDateDebut(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
+              />
+            </div>
+            <div>
+              <label className="block text-xs text-muted-foreground mb-1">
+                Date au
+              </label>
+              <input
+                type="date"
+                value={dateFin}
+                onChange={(e) => {
+                  setDateFin(e.target.value);
+                  setPage(1);
+                }}
+                className="w-full px-3 py-2 border border-border rounded-lg bg-background text-sm"
+              />
+            </div>
+            <div className="flex items-end">
+              <button
+                onClick={resetFilters}
+                className="inline-flex items-center gap-2 px-3 py-2 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted transition-colors"
+              >
+                <RotateCcw className="h-4 w-4" />
+                Réinitialiser
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tableau */}
+      <div className="cm-panel cm-panel-solid rounded-lg">
+        <div className="p-4 sm:p-6 border-b border-border">
+          <h3 className="text-lg text-card-foreground">
+            Tableau des transferts ({filtered.length})
+          </h3>
+          <p className="text-sm text-muted-foreground mt-1">
+            Direction d'origine → Service origine → Transfert → Direction
+            destinataire → Stock → Traçabilité
+          </p>
+        </div>
+        <div className="p-4 sm:p-6">
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[980px]">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Référence</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction d'origine</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Service d'origine</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Direction destinataire</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Matériel</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Quantité</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Date</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Statut</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Validation</th>
+                  <th className="text-left py-3 px-3 text-sm text-muted-foreground">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {visibleRows.length === 0 ? (
+                  <tr>
+                    <td
+                      colSpan={10}
+                      className="py-10 text-center text-sm text-muted-foreground"
+                    >
+                      {records.length === 0
+                        ? "Aucun transfert — créez le premier avec « + Nouveau transfert »."
+                        : "Aucun transfert ne correspond aux critères."}
+                    </td>
+                  </tr>
+                ) : (
+                  visibleRows.map((a) => {
+                    const count = getValidationCount(a);
+                    const attendues = validationsAttendues(a);
+                    const statut = getStatutAffectationAffiche(a);
+                    return (
+                      <tr
+                        key={a.reference}
+                        className="border-b border-border last:border-b-0 hover:bg-muted/30 transition-colors"
+                      >
+                        <td className="py-3 px-3 text-sm font-mono text-card-foreground">
+                          {a.reference}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground">
+                          {a.direction}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[150px] truncate">
+                          {a.serviceSource}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[150px] truncate">
+                          {(a.directionDestinataire || "").trim() || "—"}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground max-w-[200px] truncate">
+                          {a.materiel}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground">
+                          {a.quantite}
+                        </td>
+                        <td className="py-3 px-3 text-sm text-card-foreground whitespace-nowrap">
+                          {new Date(`${a.date}T00:00:00`).toLocaleDateString("fr-FR")}
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs ${statutAffectationBadge(
+                              statut
+                            )}`}
+                          >
+                            {statut}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <span
+title={`${count}/${attendues} validations`}
+title={`${count}/${attendues} validations`}
+                            className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-mono ${
+                              count >= attendues
+                                ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                                : count >= 1
+                                ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                                : "bg-orange-100 text-orange-800 dark:bg-orange-900/30 dark:text-orange-400"
+                            }`}
+                          >
+                            {count}/{attendues}
+                          </span>
+                        </td>
+                        <td className="py-3 px-3">
+                          <div className="flex items-center gap-1">
+                            <button
+                              title="Voir"
+                              onClick={() => {
+                                setSelected(a);
+                                setModalOpen(true);
+                              }}
+                              className="p-1.5 rounded text-primary hover:bg-primary/10 transition-colors"
+                            >
+                              <Eye className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3 mt-4">
+            <div className="text-xs text-muted-foreground">
+              {filtered.length === 0
+                ? "0 résultat"
+                : `${startIndex + 1}-${Math.min(
+                    startIndex + PAGE_SIZE,
+                    filtered.length
+                  )} sur ${filtered.length} transferts`}
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="inline-flex items-center gap-1 px-3 py-1.5 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                <ChevronLeft className="h-4 w-4" />
+                Précédent
+              </button>
+              <span className="text-xs text-muted-foreground">
+                Page {currentPage} / {totalPages}
+              </span>
+              <button
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="inline-flex items-center gap-1 px-3 py-1.5 border border-border rounded-lg text-sm text-muted-foreground hover:bg-muted disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              >
+                Suivant
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal détail */}
+      <AffectationDetailModal
+        open={modalOpen}
+        affectation={selected}
+        stock={stock}
+        user={user}
+        onChanged={() => {
+          recharger();
+          setSelected((prev) =>
+            prev
+              ? listerAffectations().find((a) => a.reference === prev.reference) ||
+                prev
+              : prev
+          );
+        }}
+        onClose={() => setModalOpen(false)}
+      />
+
+      {/* Message flash */}
+      {flash && (
+        <Message
+          variant="success"
+          className="fixed bottom-6 right-6 z-50 shadow-lg"
+          role="status"
+        >
+          {flash}
+        </Message>
+      )}
+    </div>
+  );
+}

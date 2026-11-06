@@ -1,14 +1,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
+  Building2,
+  Calendar,
   Check,
   Clock,
   FileOutput,
   Inbox,
   Loader2,
+  MessageCircle,
   Package,
+  ShieldCheck,
+  Truck,
+  User,
   X,
 } from "lucide-react";
-import { User } from "../App";
+import type { User } from "../App";
 import {
   DemandeRecord,
   LigneDecision,
@@ -90,6 +96,8 @@ export function DecisionRequests({
   );
   /** Carte de la demande cible, pour la faire défiler jusqu'à elle. */
   const refDemandeCible = useRef<HTMLElement | null>(null);
+  /** L'administrateur consulte les demandes sans pouvoir les trancher. */
+  const estAdmin = user?.role === "admin";
 
   const charger = useCallback(async () => {
     const resultat = await fetchDemandesDetail();
@@ -281,6 +289,463 @@ export function DecisionRequests({
     charger();
   };
 
+  // ═════════════════════════════════════════════════════════════════════════
+  // Composant de ligne de matériel enrichie (réutilisé par les deux sections)
+  // ═════════════════════════════════════════════════════════════════════════
+
+  const LigneMateriel = ({
+    ligne,
+    index,
+    demande,
+    ajustable = false,
+  }: {
+    ligne: DemandeRecord["lignes"][number];
+    index: number;
+    demande: DemandeRecord;
+    ajustable?: boolean;
+  }) => {
+    const cle = `${demande.documentId || demande.id}-${index}`;
+    const ajustee = quantiteDe(demande, index, ligne.quantite);
+    const demandee = ligne.quantiteDemandee ?? ligne.quantite;
+
+    return (
+      <div
+        key={cle}
+        className="flex items-start gap-2.5 rounded border border-border bg-background p-2.5"
+      >
+        <div className="flex-shrink-0 h-7 w-7 rounded bg-muted/20 flex items-center justify-center">
+          <Package className="h-3.5 w-3.5 text-muted-foreground" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="text-sm text-card-foreground">{ligne.materiel}</div>
+          {ligne.categorie && ligne.categorie !== "—" && (
+            <div className="text-xs text-muted-foreground">
+              {ligne.categorie}
+            </div>
+          )}
+          <div className="mt-1.5 text-xs text-muted-foreground">
+            Quantité :
+            <span className="text-card-foreground font-mono ml-0.5">
+              {ajustee}
+            </span>
+            {demandee !== ajustee && (
+              <span className="text-amber-600 dark:text-amber-400 ml-1.5">
+                demandé : {demandee}
+              </span>
+            )}
+          </div>
+        </div>
+        {ajustable && (
+          <div className="flex-shrink-0 w-20">
+            <input
+              type="number"
+              min={1}
+              aria-label={`Quantité pour ${ligne.materiel}`}
+              className="w-full rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+              value={ajustee}
+              onChange={(e) =>
+                ajuster(demande, index, Number(e.target.value) || 0)
+              }
+            />
+          </div>
+        )}
+        <div className="hidden sm:flex flex-col items-end gap-0.5">
+          <div className="text-xs text-muted-foreground">
+            Détenteur
+          </div>
+          <div className="text-sm text-card-foreground break-words">
+            {ligne.detenteur || "—"}
+          </div>
+        </div>
+        {!ajustable && (
+          <div className="hidden sm:flex flex-col items-end gap-0.5">
+            <div className="text-xs text-muted-foreground">Motif</div>
+            <div className="text-sm text-card-foreground break-words">
+              {ligne.motif || "—"}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Carte de demande : section « Demandes à traiter »
+  // ═════════════════════════════════════════════════════════════════════════
+
+  const CarteDemandeATraiter = ({ demande }: { demande: DemandeRecord }) => {
+    const occupée = enCours === demande.documentId;
+    const miseEnEvidence = demandeMiseEnEvidence === demande.documentId;
+    const rejetOuvert = rejetEnCours === demande.documentId;
+    const cleQuantite = (index: number) =>
+      `${demande.documentId || demande.id}-${index}`;
+    const quantiteAjustee = (index: number) =>
+      quantiteDe(demande, index, demande.lignes[index]?.quantite ?? 1);
+    const quantiteDemandee = (index: number) =>
+      demande.lignes[index]?.quantiteDemandee ?? demande.lignes[index]?.quantite ?? 1;
+
+    return (
+      <article
+        key={demande.documentId || demande.id}
+        ref={miseEnEvidence ? refDemandeCible : undefined}
+        data-demande-cible={miseEnEvidence ? "true" : undefined}
+        className={`rounded-lg border cm-panel cm-panel-solid p-4 ${
+          miseEnEvidence
+            ? "border-primary ring-2 ring-primary/40"
+            : "border-border"
+        }`}
+      >
+        {/* En-tête : référence, statut, priorité, date */}
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">
+              {demande.reference}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs ${statutDemandeBadge(
+                demande.statut
+              )}`}
+            >
+              {demande.statut}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs ${prioriteDemandeBadge(
+                demande.priorite
+              )}`}
+            >
+              {demande.priorite}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Calendar className="h-3 w-3" />
+            {formatDateCourt(demande.date)}
+          </div>
+        </header>
+
+        {/* Demandeur et périmètre */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <div className="flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-card-foreground">{demande.demandeur}</span>
+            {demande.fonction && (
+              <span className="text-xs text-muted-foreground">
+                — {demande.fonction}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Building2 className="h-3.5 w-3.5" />
+            <span>{demande.direction}</span>
+            <span className="mx-0.5">—</span>
+            <span>{demande.service}</span>
+          </div>
+        </div>
+
+        {/* Lignes de matériel avec quantité ajustable */}
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+            <h4 className="text-xs text-muted-foreground uppercase tracking-wider">
+              Matériels demandés
+            </h4>
+            <span className="ml-auto text-xs text-muted-foreground">
+              {demande.lignes.length} ligne{demande.lignes.length > 1 ? "s" : ""}
+            </span>
+          </div>
+          <div className="space-y-1.5">
+            {demande.lignes.map((ligne, index) => (
+              <LigneMateriel
+                key={cleQuantite(index)}
+                ligne={ligne}
+                index={index}
+                demande={demande}
+                ajustable={!estAdmin}
+              />
+            ))}
+          </div>
+          {demande.lignes.some(
+            (l, i) =>
+              quantiteAjustee(i) !== quantiteDemandee(i)
+          ) && (
+            <div className="mt-1.5 text-xs text-amber-600 dark:text-amber-400">
+              Une ou plusieurs quantités ont été ajustées par rapport à la
+              demande initiale.
+            </div>
+          )}
+        </div>
+
+        {/* Détails : motif, observation, dates */}
+        <div className="mb-3 space-y-2">
+          {demande.motif && (
+            <div className="flex items-start gap-2">
+              <MessageCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  Motif de la demande
+                </div>
+                <div className="text-sm text-card-foreground break-words">
+                  {demande.motif}
+                </div>
+              </div>
+            </div>
+          )}
+          {demande.observation && (
+            <div className="flex items-start gap-2">
+              <MessageCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  Observation
+                </div>
+                <div className="text-sm text-card-foreground break-words">
+                  {demande.observation}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" />
+              <span>
+                Créé : {formatDateCourt(demande.date)}
+              </span>
+            </div>
+            {demande.dateEnvoi && (
+              <div className="flex items-center gap-1">
+                <Clock className="h-3.5 w-3.5 opacity-50" />
+                <span>Envoyé : {formatDateCourt(demande.dateEnvoi)}</span>
+              </div>
+            )}
+            {demande.dateValidation && (
+              <div className="flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Validé : {formatDateCourt(demande.dateValidation)}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Actions : Approuver / Rejeter (jamais pour l'admin, en consultation) */}
+        {!estAdmin && (
+        <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-border">
+          <button
+            type="button"
+            disabled={occupée}
+            onClick={() => approuver(demande)}
+            className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-60"
+          >
+            {occupée ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Check className="h-3.5 w-3.5" />
+            )}
+            Approuver
+          </button>
+          <button
+            type="button"
+            disabled={occupée}
+            onClick={() => {
+              setRejetEnCours(
+                rejetEnCours === demande.documentId ? null : demande.documentId
+              );
+              setMessage(null);
+            }}
+            className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:opacity-60"
+          >
+            <X className="h-3.5 w-3.5" />
+            Rejeter
+          </button>
+        </div>
+        )}
+
+        {rejetOuvert && (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <input
+              type="text"
+              aria-label="Motif du rejet"
+              placeholder="Motif du rejet (ex. non disponible)"
+              className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground"
+              value={motif}
+              onChange={(e) => setMotif(e.target.value)}
+            />
+            <button
+              type="button"
+              disabled={occupée || !motif.trim()}
+              onClick={() => rejeter(demande)}
+              className="rounded-lg bg-destructive px-3 py-1.5 text-sm text-destructive-foreground disabled:opacity-60"
+            >
+              Confirmer le rejet
+            </button>
+          </div>
+        )}
+      </article>
+    );
+  };
+
+  // ═════════════════════════════════════════════════════════════════════════
+  // Carte de demande : section « Demandes approuvées »
+  // ═════════════════════════════════════════════════════════════════════════
+
+  const CarteDemandeApprouvee = ({ demande }: { demande: DemandeRecord }) => {
+    const occupe = ordreEnCours === demande.documentId;
+    const miseEnEvidence = demandeMiseEnEvidence === demande.documentId;
+    const dejaOrdonnee = !!demande.sortieReference;
+
+    return (
+      <article
+        key={`ordre-${demande.documentId || demande.id}`}
+        ref={miseEnEvidence ? refDemandeCible : undefined}
+        data-demande-cible={miseEnEvidence ? "true" : undefined}
+        className={`rounded-lg border cm-panel cm-panel-solid p-4 ${
+          miseEnEvidence
+            ? "border-primary ring-2 ring-primary/40"
+            : "border-border"
+        }`}
+      >
+        {/* En-tête : référence, statut, date */}
+        <header className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <span className="font-medium text-foreground">
+              {demande.reference}
+            </span>
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs ${statutDemandeBadge(
+                demande.statut
+              )}`}
+            >
+              {demande.statut}
+            </span>
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Calendar className="h-3 w-3" />
+            {formatDateCourt(demande.date)}
+          </div>
+        </header>
+
+        {/* Demandeur et périmètre */}
+        <div className="mb-3 flex flex-wrap items-center gap-2 text-sm">
+          <div className="flex items-center gap-1.5">
+            <User className="h-3.5 w-3.5 text-muted-foreground" />
+            <span className="text-card-foreground">{demande.demandeur}</span>
+            {demande.fonction && (
+              <span className="text-xs text-muted-foreground">
+                — {demande.fonction}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-1 text-xs text-muted-foreground">
+            <Building2 className="h-3.5 w-3.5" />
+            <span>{demande.direction}</span>
+            <span className="mx-0.5">—</span>
+            <span>{demande.service}</span>
+          </div>
+        </div>
+
+        {/* Lignes avec quantités approuvées */}
+        <div className="mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <Package className="h-3.5 w-3.5 text-muted-foreground" />
+            <h4 className="text-xs text-muted-foreground uppercase tracking-wider">
+              Matériels approuvés
+            </h4>
+          </div>
+          <div className="space-y-1.5">
+            {demande.lignes.map((ligne, index) => (
+              <LigneMateriel
+                key={`${demande.documentId || demande.id}-${index}`}
+                ligne={ligne}
+                index={index}
+                demande={demande}
+                ajustable={false}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Détails : motif, observation, dates */}
+        <div className="mb-3 space-y-2">
+          {demande.motif && (
+            <div className="flex items-start gap-2">
+              <MessageCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  Motif de la demande
+                </div>
+                <div className="text-sm text-card-foreground break-words">
+                  {demande.motif}
+                </div>
+              </div>
+            </div>
+          )}
+          {demande.observation && (
+            <div className="flex items-start gap-2">
+              <MessageCircle className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+              <div className="flex-1 min-w-0">
+                <div className="text-xs text-muted-foreground">
+                  Observation
+                </div>
+                <div className="text-sm text-card-foreground break-words">
+                  {demande.observation}
+                </div>
+              </div>
+            </div>
+          )}
+          <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <div className="flex items-center gap-1">
+              <Clock className="h-3.5 w-3.5" />
+              <span>
+                Créé : {formatDateCourt(demande.date)}
+              </span>
+            </div>
+            {demande.dateValidation && (
+              <div className="flex items-center gap-1">
+                <ShieldCheck className="h-3.5 w-3.5" />
+                <span>Validé : {formatDateCourt(demande.dateValidation)}</span>
+              </div>
+            )}
+            {demande.validePar && (
+              <div className="flex items-center gap-1">
+                <User className="h-3.5 w-3.5 opacity-50" />
+                <span>par {demande.validePar}</span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Sortie associée ou bouton de création */}
+        {dejaOrdonnee ? (
+          <div className="p-3 rounded bg-muted/50 border border-border">
+            <div className="flex items-center gap-2 mb-2">
+              <Truck className="h-3.5 w-3.5 text-muted-foreground" />
+              <h4 className="text-xs text-muted-foreground uppercase tracking-wider">
+                Ordre de sortie
+              </h4>
+            </div>
+            <div className="text-sm font-mono text-card-foreground">
+              {demande.sortieReference}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              Une demande, un ordre : cet ordre existe déjà.
+            </p>
+          </div>
+        ) : estAdmin ? null : (
+          <button
+            type="button"
+            disabled={occupe}
+            onClick={() => creerOrdre(demande)}
+            className="flex w-full items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-60"
+          >
+            {occupe ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <FileOutput className="h-3.5 w-3.5" />
+            )}
+            Créer l'ordre de sortie
+          </button>
+        )}
+      </article>
+    );
+  };
+
   return (
     <div className="space-y-4">
       {origineDetail && (
@@ -303,6 +768,9 @@ export function DecisionRequests({
         </div>
       )}
 
+      {/* ══════════════════════════════════════════════════════════════════════
+         SECTION : Demandes à traiter
+         ════════════════════════════════════════════════════════════════════ */}
       <section aria-label="Demandes à traiter" className="space-y-4">
         <div className="flex items-center justify-between">
           <div>
@@ -327,146 +795,14 @@ export function DecisionRequests({
           </div>
         )}
 
-        {aTraiter.map((demande) => {
-        const occupée = enCours === demande.documentId;
-        const miseEnEvidence = demandeMiseEnEvidence === demande.documentId;
-        return (
-          <article
-            key={demande.documentId || demande.id}
-            ref={miseEnEvidence ? refDemandeCible : undefined}
-            data-demande-cible={miseEnEvidence ? "true" : undefined}
-            className={`rounded-lg border cm-panel cm-panel-solid p-4 ${
-              miseEnEvidence
-                ? "border-primary ring-2 ring-primary/40"
-                : "border-border"
-            }`}
-          >
-            <header className="mb-3 flex flex-wrap items-center gap-2">
-              <span className="font-medium text-foreground">
-                {demande.reference}
-              </span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs ${statutDemandeBadge(
-                  demande.statut
-                )}`}
-              >
-                {demande.statut}
-              </span>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs ${prioriteDemandeBadge(
-                  demande.priorite
-                )}`}
-              >
-                {demande.priorite}
-              </span>
-              <span className="flex items-center gap-1 text-xs text-muted-foreground">
-                <Clock className="h-3 w-3" />
-                {formatDateCourt(demande.date)}
-              </span>
-              <span className="text-xs text-muted-foreground">
-                {demande.direction} — {demande.service}
-              </span>
-            </header>
-
-            <ul className="mb-3 space-y-2">
-              {demande.lignes.map((ligne, index) => {
-                const cle = `${demande.documentId || demande.id}-${index}`;
-                const ajustee = quantiteDe(demande, index, ligne.quantite);
-                const demandee =
-                  ligne.quantiteDemandee ?? ligne.quantite;
-                return (
-                  <li
-                    key={cle}
-                    className="flex flex-wrap items-center gap-3 rounded border border-border p-2"
-                  >
-                    <Package className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm text-foreground">
-                      {ligne.materiel}
-                    </span>
-                    <span className="text-xs text-muted-foreground">
-                      {ligne.motif}
-                    </span>
-                    <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
-                      Quantité
-                      <input
-                        type="number"
-                        min={1}
-                        aria-label={`Quantité pour ${ligne.materiel}`}
-                        className="w-20 rounded border border-border bg-background px-2 py-1 text-sm text-foreground"
-                        value={ajustee}
-                        onChange={(e) =>
-                          ajuster(demande, index, Number(e.target.value) || 0)
-                        }
-                      />
-                    </span>
-                    {ajustee !== demandee && (
-                      <span className="text-xs text-amber-600 dark:text-amber-400">
-                        demandée : {demandee}
-                      </span>
-                    )}
-                  </li>
-                );
-              })}
-            </ul>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                disabled={occupée}
-                onClick={() => approuver(demande)}
-                className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-60"
-              >
-                {occupée ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Check className="h-4 w-4" />
-                )}
-                Approuver
-              </button>
-              <button
-                type="button"
-                disabled={occupée}
-                onClick={() => {
-                  setRejetEnCours(
-                    rejetEnCours === demande.documentId
-                      ? null
-                      : demande.documentId
-                  );
-                  setMessage(null);
-                }}
-                className="flex items-center gap-1 rounded-lg border border-border px-3 py-1.5 text-sm text-foreground disabled:opacity-60"
-              >
-                <X className="h-4 w-4" />
-                Rejeter
-              </button>
-            </div>
-
-            {rejetEnCours === demande.documentId && (
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <input
-                  type="text"
-                  aria-label="Motif du rejet"
-                  placeholder="Motif du rejet (ex. non disponible)"
-                  className="flex-1 rounded border border-border bg-background px-2 py-1.5 text-sm text-foreground"
-                  value={motif}
-                  onChange={(e) => setMotif(e.target.value)}
-                />
-                <button
-                  type="button"
-                  disabled={occupée}
-                  onClick={() => rejeter(demande)}
-                  className="rounded-lg bg-destructive px-3 py-1.5 text-sm text-destructive-foreground disabled:opacity-60"
-                >
-                  Confirmer le rejet
-                </button>
-              </div>
-            )}
-          </article>
-        );
-        })}
+        {aTraiter.map((demande) => (
+          <CarteDemandeATraiter key={demande.documentId || demande.id} demande={demande} />
+        ))}
       </section>
 
-      {/* ═══════ ÉTAPE 3 « Ordre de sortie » ═══════ */}
+      {/* ══════════════════════════════════════════════════════════════════════
+         SECTION : Demandes approuvées (ÉTAPE 3 — Ordre de sortie)
+         ════════════════════════════════════════════════════════════════════ */}
       <section aria-label="Demandes approuvées" className="space-y-3">
         <div className="flex items-center justify-between">
           <div>
@@ -493,77 +829,12 @@ export function DecisionRequests({
           </div>
         )}
 
-        {approuvees.map((demande) => {
-          const occupe = ordreEnCours === demande.documentId;
-          const dejaOrdonnee = !!demande.sortieReference;
-          const miseEnEvidence =
-            demandeMiseEnEvidence === demande.documentId;
-          return (
-            <article
-              key={`ordre-${demande.documentId || demande.id}`}
-              ref={miseEnEvidence ? refDemandeCible : undefined}
-              data-demande-cible={miseEnEvidence ? "true" : undefined}
-              className={`rounded-lg border cm-panel cm-panel-solid p-4 ${
-                miseEnEvidence
-                  ? "border-primary ring-2 ring-primary/40"
-                  : "border-border"
-              }`}
-            >
-              <header className="mb-3 flex flex-wrap items-center gap-2">
-                <span className="font-medium text-foreground">
-                  {demande.reference}
-                </span>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs ${statutDemandeBadge(
-                    demande.statut
-                  )}`}
-                >
-                  {demande.statut}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {demande.direction} — {demande.service}
-                </span>
-              </header>
-
-              <ul className="mb-3 space-y-1">
-                {demande.lignes.map((ligne, index) => (
-                  <li
-                    key={`${demande.documentId || demande.id}-${index}`}
-                    className="flex flex-wrap items-center gap-3 text-sm text-foreground"
-                  >
-                    <Package className="h-4 w-4 text-muted-foreground" />
-                    <span>{ligne.materiel}</span>
-                    <span className="text-xs text-muted-foreground">
-                      quantité approuvée : {ligne.quantite}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-
-              {dejaOrdonnee ? (
-                <p className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <FileOutput className="h-4 w-4" />
-                  Ordre de sortie {demande.sortieReference} déjà créé (une
-                  demande, un ordre).
-                </p>
-              ) : (
-                <button
-                  type="button"
-                  disabled={occupe}
-                  onClick={() => creerOrdre(demande)}
-                  className="flex items-center gap-1 rounded-lg bg-primary px-3 py-1.5 text-sm text-primary-foreground disabled:opacity-60"
-                >
-                  {occupe ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <FileOutput className="h-4 w-4" />
-                  )}
-                  Créer l'ordre de sortie
-                </button>
-              )}
-            </article>
-          );
-        })}
+        {approuvees.map((demande) => (
+          <CarteDemandeApprouvee
+            key={demande.documentId || demande.id}
+            demande={demande}
+          />
+        ))}
       </section>
     </div>
   );

@@ -8,8 +8,9 @@
  * ne stocke rien.
  *
  * `auth` n'est pas désactivé : la route exige un jeton. La permission
- * La route `role` est accordée aux utilisateurs connectés ; la route `users`
- * est réservée au rôle admin (src/index.js).
+ * La route `role` est accordée aux utilisateurs connectés ; les routes
+ * `users` (lecture), `createUser` et `updateUser` sont réservées au rôle
+ * admin (src/index.js et contrôleur).
  */
 
 module.exports = {
@@ -23,6 +24,21 @@ module.exports = {
       method: 'GET',
       path: '/session/users',
       handler: 'session-role.users',
+    },
+    {
+      method: 'POST',
+      path: '/session/users',
+      handler: 'session-role.createUser',
+    },
+    {
+      method: 'PUT',
+      path: '/session/users/:id',
+      handler: 'session-role.updateUser',
+    },
+    {
+      method: 'DELETE',
+      path: '/session/users/:id',
+      handler: 'session-role.deleteUser',
     },
   ],
 };

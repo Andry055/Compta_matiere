@@ -56,6 +56,11 @@ module.exports = {
       path: '/sorties/:documentId/mouvements',
       handler: 'sortie.findMouvements',
     },
+    {
+      method: 'GET',
+      path: '/sorties/:documentId/remise-detenteur',
+      handler: 'sortie.findRemiseDetenteur',
+    },
   ],
 };
 

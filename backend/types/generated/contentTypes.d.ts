@@ -549,6 +549,7 @@ export interface ApiDemandeDemande extends Struct.CollectionTypeSchema {
       'manyToOne',
       'plugin::users-permissions.user'
     >;
+    demandeur_nom: Schema.Attribute.String;
     designation_materiel: Schema.Attribute.String & Schema.Attribute.Required;
     detenteur_fonction: Schema.Attribute.String;
     detenteur_im: Schema.Attribute.String;
@@ -1279,6 +1280,93 @@ export interface ApiReceptionReception extends Struct.CollectionTypeSchema {
   };
 }
 
+export interface ApiRemiseDetenteurLigneRemiseDetenteurLigne
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'remise_detenteur_lignes';
+  info: {
+    displayName: 'Ligne de remise au d\u00E9tenteur';
+    pluralName: 'remises-detenteur-lignes';
+    singularName: 'remise-detenteur-ligne';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    designation: Schema.Attribute.String & Schema.Attribute.Required;
+    detenteur_fonction: Schema.Attribute.Text;
+    detenteur_nom: Schema.Attribute.Text & Schema.Attribute.Required;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::remise-detenteur-ligne.remise-detenteur-ligne'
+    > &
+      Schema.Attribute.Private;
+    observation: Schema.Attribute.Text;
+    publishedAt: Schema.Attribute.DateTime;
+    quantite: Schema.Attribute.Integer & Schema.Attribute.DefaultTo<1>;
+    remise: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::remise-detenteur.remise-detenteur'
+    > &
+      Schema.Attribute.Required;
+    sortie_ligne: Schema.Attribute.Relation<
+      'manyToOne',
+      'api::sortie-ligne.sortie-ligne'
+    >;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
+export interface ApiRemiseDetenteurRemiseDetenteur
+  extends Struct.CollectionTypeSchema {
+  collectionName: 'remises_detenteurs';
+  info: {
+    displayName: 'Remise au d\u00E9tenteur';
+    pluralName: 'remises-detenteurs';
+    singularName: 'remise-detenteur';
+  };
+  options: {
+    draftAndPublish: false;
+  };
+  attributes: {
+    attestation: Schema.Attribute.Boolean & Schema.Attribute.DefaultTo<true>;
+    createdAt: Schema.Attribute.DateTime;
+    createdBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+    date_enregistrement: Schema.Attribute.Text;
+    date_reception: Schema.Attribute.Text;
+    date_remise: Schema.Attribute.Text;
+    demandeur: Schema.Attribute.Relation<
+      'manyToOne',
+      'plugin::users-permissions.user'
+    >;
+    demandeur_nom: Schema.Attribute.String;
+    direction: Schema.Attribute.String;
+    lignes: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::remise-detenteur-ligne.remise-detenteur-ligne'
+    >;
+    locale: Schema.Attribute.String & Schema.Attribute.Private;
+    localizations: Schema.Attribute.Relation<
+      'oneToMany',
+      'api::remise-detenteur.remise-detenteur'
+    > &
+      Schema.Attribute.Private;
+    publishedAt: Schema.Attribute.DateTime;
+    reference: Schema.Attribute.String;
+    sortie: Schema.Attribute.Relation<'manyToOne', 'api::sortie.sortie'> &
+      Schema.Attribute.Required;
+    updatedAt: Schema.Attribute.DateTime;
+    updatedBy: Schema.Attribute.Relation<'oneToOne', 'admin::user'> &
+      Schema.Attribute.Private;
+  };
+}
+
 export interface ApiServiceService extends Struct.CollectionTypeSchema {
   collectionName: 'services';
   info: {
@@ -1439,6 +1527,9 @@ export interface ApiSortieSortie extends Struct.CollectionTypeSchema {
     observations: Schema.Attribute.Text;
     publishedAt: Schema.Attribute.DateTime;
     reference: Schema.Attribute.String & Schema.Attribute.Unique;
+    remise_detenteur_cloturee: Schema.Attribute.Boolean &
+      Schema.Attribute.DefaultTo<false>;
+    remise_detenteur_date: Schema.Attribute.Text;
     responsable: Schema.Attribute.String;
     service: Schema.Attribute.Relation<'manyToOne', 'api::service.service'>;
     signataire_depositaire: Schema.Attribute.Text;
@@ -2015,6 +2106,7 @@ export interface PluginUsersPermissionsUser
       Schema.Attribute.SetMinMaxLength<{
         minLength: 6;
       }>;
+    phone: Schema.Attribute.String;
     provider: Schema.Attribute.String;
     publishedAt: Schema.Attribute.DateTime;
     resetPasswordToken: Schema.Attribute.String & Schema.Attribute.Private;
@@ -2063,6 +2155,8 @@ declare module '@strapi/strapi' {
       'api::reception-ligne.reception-ligne': ApiReceptionLigneReceptionLigne;
       'api::reception-physique.reception-physique': ApiReceptionPhysiqueReceptionPhysique;
       'api::reception.reception': ApiReceptionReception;
+      'api::remise-detenteur-ligne.remise-detenteur-ligne': ApiRemiseDetenteurLigneRemiseDetenteurLigne;
+      'api::remise-detenteur.remise-detenteur': ApiRemiseDetenteurRemiseDetenteur;
       'api::service.service': ApiServiceService;
       'api::session-role.session-role': ApiSessionRoleSessionRole;
       'api::sortie-ligne.sortie-ligne': ApiSortieLigneSortieLigne;

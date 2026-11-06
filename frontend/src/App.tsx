@@ -24,6 +24,8 @@ export interface User {
   directionId?: string
   directionName?: string
   serviceId?: string
+  /** Numéro de porte du bureau du demandeur */
+  numeroPorte?: string
 }
 
 export default function App() {

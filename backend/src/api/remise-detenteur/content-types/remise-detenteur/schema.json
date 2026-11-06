@@ -1,0 +1,63 @@
+{
+  "kind": "collectionType",
+  "collectionName": "remises_detenteurs",
+  "info": {
+    "singularName": "remise-detenteur",
+    "pluralName": "remises-detenteurs",
+    "displayName": "Remise au détenteur"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "sortie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie.sortie",
+      "required": true,
+      "description": "Dossier de sortie concerné par la remise (un dossier = une remise)."
+    },
+    "reference": {
+      "type": "string",
+      "description": "Référence du dossier de sortie, recopiée pour l'historique."
+    },
+    "direction": {
+      "type": "string",
+      "description": "Libellé de la direction destinataire, recopié pour l'historique."
+    },
+    "date_reception": {
+      "type": "text",
+      "description": "Date (AAAA-MM-JJ) de la réception physique qui a précédé la remise."
+    },
+    "date_remise": {
+      "type": "text",
+      "description": "Date (AAAA-MM-JJ) de la remise au détenteur."
+    },
+    "demandeur": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "plugin::users-permissions.user",
+      "description": "Demandeur responsable de la remise."
+    },
+    "demandeur_nom": {
+      "type": "string",
+      "description": "Nom du demandeur responsable, recopié pour l'historique."
+    },
+    "attestation": {
+      "type": "boolean",
+      "default": true,
+      "description": "Attestation de remise physique effective par le demandeur."
+    },
+    "date_enregistrement": {
+      "type": "text",
+      "description": "Horodatage ISO posé par le serveur à l'enregistrement."
+    },
+    "lignes": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::remise-detenteur-ligne.remise-detenteur-ligne",
+      "mappedBy": "remise"
+    }
+  }
+}

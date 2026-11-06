@@ -210,6 +210,12 @@ const APP_ROLES = [
 // */
 const SESSION_ROLE_ACTION = 'api::session-role.session-role.role';
 const SESSION_USERS_ACTION = 'api::session-role.session-role.users';
+// Création et modification d'un compte : réservées à l'administrateur.
+const SESSION_USERS_WRITE_ACTIONS = [
+  'api::session-role.session-role.createUser',
+  'api::session-role.session-role.updateUser',
+  'api::session-role.session-role.deleteUser',
+];
 
 const DEMAND_ACTIONS = [
   'api::demande.demande.find',
@@ -501,6 +507,24 @@ const SORTIE_REMISE_ACTIONS = [
 const ROLES_REMISE_SORTIE = ['magasinier', 'depositaire'];
 
 // ---------------------------------------------------------------------------
+// Remise au détenteur : création et lecture des remises —
+// Accordée aux rôles Demandeur et Dépositaire (le contrôleur accepte les deux).
+// Le contrôleur vérifie en outre l'appropriation par direction.
+// ---------------------------------------------------------------------------
+const REMISE_DETENTEUR_ACTIONS = [
+  'api::remise-detenteur.remise-detenteur.find',
+  'api::remise-detenteur.remise-detenteur.findOne',
+  'api::remise-detenteur.remise-detenteur.create',
+];
+
+const REMISE_DETENTEUR_LIGNE_ACTIONS = [
+  'api::remise-detenteur-ligne.remise-detenteur-ligne.find',
+  'api::remise-detenteur-ligne.remise-detenteur-ligne.findOne',
+];
+
+const ROLES_REMISE_DETENTEUR = ['demandeur', 'depositaire'];
+
+// ---------------------------------------------------------------------------
 // Réception physique : création et lecture des réceptions physiques —
 // Accordée UNIQUEMENT au rôle Demandeur (dépositaire de direction).
 // Le contrôleur vérifie en outre l'appropriation par direction.
@@ -717,11 +741,10 @@ async function ensureAuthSetup(strapi) {
     }
   }
   if (roles.admin) {
-    const cle = `admin:${SESSION_USERS_ACTION}`;
-    if (!accordees.has(cle)) {
-      await permQuery.create({
-        data: { action: SESSION_USERS_ACTION, role: roles.admin.id },
-      });
+    for (const action of [SESSION_USERS_ACTION, ...SESSION_USERS_WRITE_ACTIONS]) {
+      const cle = `admin:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roles.admin.id } });
       accordees.add(cle);
     }
   }
@@ -1043,7 +1066,57 @@ async function ensureAuthSetup(strapi) {
     }
   }
 
-  // 2treize ter) LECTURE DES RÉCEPTIONS PHYSIQUES pour l'admin APPLICATIF.
+// 2treize) Permissions « Remise au détenteur » : accordées aux rôles
+  // Demandeur et Dépositaire (le contrôleur accepte les deux). Le contrôleur
+  // vérifie en outre l'appropriation par direction.
+  // Les permissions sur les lignes sont nécessaires pour que le sanitizer
+  // n'enlève pas le peuplement de `lignes` dans les réponses.
+  if (roleDemandeur) {
+    for (const action of REMISE_DETENTEUR_ACTIONS) {
+      const cle = `${roleDemandeur.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roleDemandeur.id } });
+      accordees.add(cle);
+    }
+    for (const action of REMISE_DETENTEUR_LIGNE_ACTIONS) {
+      const cle = `${roleDemandeur.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roleDemandeur.id } });
+      accordees.add(cle);
+    }
+  }
+  if (roleDepositaire) {
+    for (const action of REMISE_DETENTEUR_ACTIONS) {
+      const cle = `${roleDepositaire.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roleDepositaire.id } });
+      accordees.add(cle);
+    }
+    for (const action of REMISE_DETENTEUR_LIGNE_ACTIONS) {
+      const cle = `${roleDepositaire.type}:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roleDepositaire.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // Admin applicatif : mêmes permissions
+  if (roles.admin) {
+    for (const action of REMISE_DETENTEUR_ACTIONS) {
+      const cle = `admin:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roles.admin.id } });
+      accordees.add(cle);
+    }
+    for (const action of REMISE_DETENTEUR_LIGNE_ACTIONS) {
+      const cle = `admin:${action}`;
+      if (accordees.has(cle)) continue;
+      await permQuery.create({ data: { action, role: roles.admin.id } });
+      accordees.add(cle);
+    }
+  }
+
+  // 2treize bis) LECTURE DES RÉCEPTIONS PHYSIQUES pour l'admin APPLICATIF.
   //
   // Même défaut que les sorties (voir « 2septies ter ») : le rôle `admin`
   // (« Administration Centrale ») a accès à TOUTES les rubriques côté
@@ -1061,7 +1134,7 @@ async function ensureAuthSetup(strapi) {
     }
   }
 
-  // 2treize) Notification Outbox : lecture des notifications propres à chaque
+  // 2quatorze) Notification Outbox : lecture des notifications propres à chaque
   // utilisateur. Accordée à tous les rôles métier + l'admin applicatif.
   for (const type of ROLES_NOTIFICATION_OUTBOX) {
     const role = roles[type];

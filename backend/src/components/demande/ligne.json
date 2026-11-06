@@ -26,6 +26,9 @@
     },
     "motif": {
       "type": "text"
+    },
+    "detenteur": {
+      "type": "string"
     }
   }
 }

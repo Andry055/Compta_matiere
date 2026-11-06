@@ -29,6 +29,7 @@ const {
   guardedCoreController,
   getRoleCode,
   DEMANDEUR_ROLE,
+  ADMIN_ROLE,
 } = require('../../../utils/roleGuard');
 const {
   filtreAppropriation,
@@ -180,7 +181,12 @@ async function documentIdsDuDirection(strapi, user) {
   if (!directionNom) return [];
 
   const directions = await strapi.documents('api::direction.direction').findMany({
-    filters: { nom_direction: { $eqi: directionNom } },
+    filters: {
+      $or: [
+        { nom_direction: { $eqi: directionNom } },
+        { abreviation: { $eqi: directionNom } },
+      ],
+    },
     fields: ['documentId'],
     limit: -1,
   });
@@ -624,7 +630,13 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       return forbid(ctx, 'Authentification requise pour créer une sortie.', 401);
     }
     const code = (await getRoleCode(app, user.id)).toLowerCase();
-    if (code !== 'depositaire' && code !== 'admin') {
+    if (code === ADMIN_ROLE) {
+      return forbid(
+        ctx,
+        "Le compte administrateur est en consultation seule : il ne peut pas créer d'ordre de sortie."
+      );
+    }
+    if (code !== 'depositaire') {
       return forbid(ctx, "Seul le dépositaire peut créer un ordre de sortie.");
     }
 
@@ -741,9 +753,16 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       return forbid(ctx, "Votre rôle (Demandeur) ne permet pas de signer une sortie.");
     }
 
+    // L'administrateur est en consultation seule : aucune signature.
+    if (code === ADMIN_ROLE) {
+      return forbid(
+        ctx,
+        "Le compte administrateur est en consultation seule : il ne peut pas signer une sortie."
+      );
+    }
+
     const config = SIGNATURE_ROLES[roleKey];
-    const estAdmin = code === 'admin';
-    if (!estAdmin && !config.roles.includes(code)) {
+    if (!config.roles.includes(code)) {
       return forbid(
         ctx,
         `Votre rôle ne permet pas d'apposer la signature « ${roleKey.replace(/_/g, ' ')} ».`
@@ -985,7 +1004,7 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
       return forbid(ctx, "Votre rôle (Demandeur) ne permet pas de rejeter une sortie.");
     }
     const rolesAutorises = ['magasinier', 'depositaire', 'logistique'];
-    if (code !== 'admin' && !rolesAutorises.includes(code)) {
+    if (!rolesAutorises.includes(code)) {
       return forbid(ctx, "Votre rôle ne permet pas de rejeter une sortie.");
     }
 
@@ -1122,8 +1141,9 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     }
 
     // Vérification du rôle : seulement magasinier et depositaire autorisés
+    // (l'administrateur est en consultation seule, il n'effectue aucune remise)
     const rolesAutorises = ['magasinier', 'depositaire'];
-    if (code !== 'admin' && !rolesAutorises.includes(code)) {
+    if (!rolesAutorises.includes(code)) {
       return forbid(ctx, "Votre rôle ne permet pas d'effectuer une remise.", 403);
     }
 
@@ -1403,5 +1423,54 @@ module.exports = guardedCoreController(createCoreController, SORTIE_UID, {
     });
 
     return { data: mouvements };
+  },
+
+  /**
+   * GET /api/sorties/:documentId/remise-detenteur
+   * Retourne la remise au détenteur associée à ce dossier de sortie,
+   * si elle existe. Accessible aux rôles qui lisent les sorties.
+   * Le Demandeur ne voit que la remise de SES sorties (direction).
+   */
+  async findRemiseDetenteur(ctx) {
+    const app = strapi;
+    const { documentId } = ctx.params;
+
+    // Vérifier que la sortie existe
+    const sortie = await app.documents(SORTIE_UID).findOne({ documentId });
+    if (!sortie) {
+      ctx.status = 404;
+      ctx.body = { error: { status: 404, name: 'NotFoundError', message: 'Sortie introuvable.' } };
+      return ctx.body;
+    }
+
+    // Le Demandeur ne voit que les remises de SES sorties (direction)
+    if (await isDemandeurSession(app, ctx)) {
+      const miens = await documentIdsPossedesPar(app, ctx.state.user);
+      const directionSorties = await documentIdsDuDirection(app, ctx.state.user);
+      const tousIds = [...new Set([...miens, ...directionSorties])];
+      if (!tousIds.includes(documentId)) {
+        return forbid(
+          ctx,
+          "Accès refusé : vous ne pouvez consulter la remise au détenteur que des sorties de votre direction.",
+          403
+        );
+      }
+    }
+
+    // Chercher la remise-detenteur liée à cette sortie
+    const remise = await app.documents('api::remise-detenteur.remise-detenteur').findFirst({
+      filters: { sortie: { documentId: { $eq: documentId } } },
+      populate: {
+        lignes: { populate: ['sortie_ligne'] },
+        sortie: { populate: { direction: true } },
+      },
+      sort: { date_enregistrement: 'desc' },
+    });
+
+    if (!remise) {
+      return { data: null, meta: { remise_enregistree: false } };
+    }
+
+    return { data: remise, meta: { remise_enregistree: true } };
   },
 });

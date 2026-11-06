@@ -143,7 +143,7 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
       case "movements":
         return <Movements />
       case "departments":
-        return <Departments />
+        return <Departments readOnly={user.role === 'admin'} />
       case "requests":
         return (
           <Requests
@@ -310,7 +310,8 @@ export function DashboardLayout({ user, onLogout, notificationVersion = 0 }: Das
             <div className="hidden md:flex flex-col items-end">
               <span className="text-sm font-medium text-foreground">{user.name}</span>
               <span className="text-xs text-muted-foreground">
-                {roleConfig?.label || (user.role === 'admin' ? 'Administrateur' : user.department)}
+                {roleConfig?.label ||
+                  (user.role === 'admin' ? 'Administrateur — données en consultation' : user.department)}
               </span>
             </div>
 

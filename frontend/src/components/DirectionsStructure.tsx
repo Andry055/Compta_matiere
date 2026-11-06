@@ -57,6 +57,8 @@ interface DirectionsStructureProps {
   onEditDirection?: (direction: Direction) => void;
   addingEmployees: { [key: number]: boolean };
   getStatusColor: (status: string) => string;
+  /** Consultation seule (admin) : aucun bouton d'écriture affiché. */
+  readOnly?: boolean;
 }
 
 export function DirectionsStructure({
@@ -71,6 +73,7 @@ export function DirectionsStructure({
   onEditDirection,
   addingEmployees,
   getStatusColor,
+  readOnly = false,
 }: DirectionsStructureProps) {
   return (
     <div className="space-y-4">
@@ -138,25 +141,27 @@ export function DirectionsStructure({
                   </div>
                   <div>Employés</div>
                 </div>
-                <div className="flex gap-1">
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onEditDirection?.(direction);
-                    }}
-                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
-                    title="Modifier la direction"
-                  >
-                    <Edit className="h-4 w-4" />
-                  </button>
-                  <button
-                    onClick={(e) => e.stopPropagation()}
-                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-red-600"
-                    title="Supprimer la direction"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                {!readOnly && (
+                  <div className="flex gap-1">
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onEditDirection?.(direction);
+                      }}
+                      className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                      title="Modifier la direction"
+                    >
+                      <Edit className="h-4 w-4" />
+                    </button>
+                    <button
+                      onClick={(e) => e.stopPropagation()}
+                      className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-red-600"
+                      title="Supprimer la direction"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -231,34 +236,36 @@ export function DirectionsStructure({
                                 </div>
                                 <div className="text-xs">Employés</div>
                               </div>
-                              <div className="flex gap-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    onAddEmployee(service.id);
-                                  }}
-                                  disabled={addingEmployees[service.id]}
-                                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-blue-600 disabled:opacity-50"
-                                >
-                                  {addingEmployees[service.id] ? (
-                                    <Loader2 className="h-3 w-3 animate-spin" />
-                                  ) : (
-                                    <UserPlus className="h-3 w-3" />
-                                  )}
-                                </button>
-                                <button
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
-                                >
-                                  <Edit className="h-3 w-3" />
-                                </button>
-                                <button
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-red-600"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
+                              {!readOnly && (
+                                <div className="flex gap-1">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      onAddEmployee(service.id);
+                                    }}
+                                    disabled={addingEmployees[service.id]}
+                                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-blue-600 disabled:opacity-50"
+                                  >
+                                    {addingEmployees[service.id] ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <UserPlus className="h-3 w-3" />
+                                    )}
+                                  </button>
+                                  <button
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                                  >
+                                    <Edit className="h-3 w-3" />
+                                  </button>
+                                  <button
+                                    onClick={(e) => e.stopPropagation()}
+                                    className="p-1 hover:bg-muted rounded text-muted-foreground hover:text-red-600"
+                                  >
+                                    <Trash2 className="h-3 w-3" />
+                                  </button>
+                                </div>
+                              )}
                             </div>
                           </div>
                         </div>
@@ -335,35 +342,37 @@ export function DirectionsStructure({
                                           </span>
                                         </td>
                                         <td className="py-2 px-2">
-                                          <div className="flex items-center gap-1">
-                                            <button
-                                              onClick={() =>
-                                                onEditEmployee?.(
-                                                  employee,
-                                                  service.id
-                                                )
-                                              }
-                                              className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
-                                              title="Modifier l'employé"
-                                            >
-                                              <Edit className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                              onClick={() =>
-                                                onTransferEmployee?.(employee)
-                                              }
-                                              className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-blue-600"
-                                              title="Transférer l'employé"
-                                            >
-                                              <ArrowRightLeft className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                              className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-red-600"
-                                              title="Supprimer l'employé"
-                                            >
-                                              <Trash2 className="h-3 w-3" />
-                                            </button>
-                                          </div>
+                                          {!readOnly && (
+                                            <div className="flex items-center gap-1">
+                                              <button
+                                                onClick={() =>
+                                                  onEditEmployee?.(
+                                                    employee,
+                                                    service.id
+                                                  )
+                                                }
+                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-foreground"
+                                                title="Modifier l'employé"
+                                              >
+                                                <Edit className="h-3 w-3" />
+                                              </button>
+                                              <button
+                                                onClick={() =>
+                                                  onTransferEmployee?.(employee)
+                                                }
+                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-blue-600"
+                                                title="Transférer l'employé"
+                                              >
+                                                <ArrowRightLeft className="h-3 w-3" />
+                                              </button>
+                                              <button
+                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground hover:text-red-600"
+                                                title="Supprimer l'employé"
+                                              >
+                                                <Trash2 className="h-3 w-3" />
+                                              </button>
+                                            </div>
+                                          )}
                                         </td>
                                       </tr>
                                     ))}

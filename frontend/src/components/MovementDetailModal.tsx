@@ -68,13 +68,12 @@ interface MovementDetailModalProps {
   onClose: () => void;
 }
 
-/** Rôle de signature autorisé pour le profil connecté (l'admin signe tout) */
+/** Rôle de signature autorisé pour le profil connecté (l'admin ne signe pas) */
 function roleDeSignature(user?: User | null): "depositaire" | "chef_service_1" | "chef_service_2" | null {
   if (!user) return null;
   if (user.role === "depositaire") return "depositaire";
   if (user.role === "magasinier") return "chef_service_1";
   if (user.role === "logistique") return "chef_service_2";
-  if (user.role === "admin") return "depositaire"; // l'admin choisit via le menu
   return null;
 }
 
@@ -701,9 +700,7 @@ export function MovementDetailModal({
                     !!monRole &&
                     !signature.signed &&
                     entree!.statut !== "Rejetée" &&
-                    (user?.role === "admin"
-                      ? true
-                      : monRole === roleAttendant);
+                    monRole === roleAttendant;
                   // Ordre du workflow : les étapes précédentes doivent être signées
                   const precedenteSignee =
                     idx === 0 ||
@@ -791,7 +788,7 @@ export function MovementDetailModal({
                 </Message>
               )}
 
-              {(user?.role === "admin" || user?.role === "depositaire") &&
+              {user?.role === "depositaire" &&
                 entree!.statut !== "Rejetée" &&
                 entree!.statut !== "Validée" && (
                   <div className="flex justify-end">

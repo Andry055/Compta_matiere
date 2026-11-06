@@ -501,6 +501,18 @@ function mapEntree(row: StrapiEntity & StrapiEntreeChamps): EntreeRecord {
 
 function mapSortie(row: StrapiEntity): SortieRecord {
   const lignes = row.lignes ?? [];
+
+  // Extraire les détenteurs depuis la demande d'origine (demande.lignes.detenteur)
+  const demandeLignes = row.demande?.lignes ?? [];
+  const detenteurParMateriel = new Map<string, string>();
+  for (const dl of demandeLignes) {
+    const designation = dl.designation?.trim();
+    const detenteur = dl.detenteur?.trim();
+    if (designation && detenteur) {
+      detenteurParMateriel.set(designation.toLowerCase(), detenteur);
+    }
+  }
+
   const materiels = Array.from(
     new Set(
       lignes
@@ -1594,7 +1606,12 @@ export async function fetchSorties(): Promise<SortieRecord[] | null> {
         populate: {
           direction: true,
           service: true,
-          demande: { populate: ["demandeur"] },
+          demande: {
+            populate: {
+              demandeur: true,
+              lignes: true,
+            },
+          },
           lignes: {
             populate: { materiel: { populate: ["categorie"] } },
           },
@@ -1768,7 +1785,12 @@ export async function fetchAllSortiesOrThrow(): Promise<SortieRecord[]> {
         populate: {
           direction: true,
           service: true,
-          demande: { populate: ["demandeur"] },
+          demande: {
+            populate: {
+              demandeur: true,
+              lignes: true,
+            },
+          },
           lignes: {
             populate: { materiel: { populate: ["categorie"] } },
           },
@@ -2046,7 +2068,14 @@ export async function listerReceptionsPhysiques(): Promise<
       ...row,
       // Strapi 5 retourne la relation `sortie` comme un objet peuplé
       // ({ documentId, id, ... }), jamais comme un champ plat `sortieId`.
-      // On extrait le documentId de la sortie pour que le calcul du reliquat
+      // Strapi 5 retourne la relation `sortie` comme un objet peuplé
+      // ({ documentId, id }), jamais comme un champ plat `sortieId`.
+      // On extrait l'identifiant de la sortie pour que le calcul du reliquat
+      // (getQuantiteDejaRecue / getReliquat / sortiesRéceptionnables) puisse
+      // faire correspondre chaque réception à sa sortie.
+      // Strapi 5 retourne la relation `sortie` comme un objet peuplé
+      // ({ documentId, id }), jamais comme un champ plat `sortieId`.
+      // On extrait l'identifiant de la sortie pour que le calcul du reliquat
       // (getQuantiteDejaRecue / getReliquat / sortiesRéceptionnables) puisse
       // faire correspondre chaque réception à sa sortie.
       sortieId: row.sortie?.documentId || row.sortieId || undefined,
@@ -2426,4 +2455,168 @@ export async function fetchMouvements(): Promise<MouvementRecord[] | null> {
       return null;
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Remises détenteur (bon de remise au détenteur)
+// ---------------------------------------------------------------------------
+
+export interface RemiseDetenteurLigne {
+  id: string;
+  documentId: string;
+  sortie_ligne: {
+    documentId: string;
+    designation: string;
+    quantite: number;
+  };
+  detenteur_nom: string;
+  detenteur_fonction: string;
+  observation?: string;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string;
+}
+
+export interface RemiseDetenteurSortie {
+  documentId: string;
+  reference: string;
+  dateSortie: string;
+  materiel: string;
+  quantite: number;
+  beneficiaire: string;
+  direction: string;
+  serviceDemandeur: string;
+  remise_detenteur_cloturee: boolean;
+}
+
+export interface RemiseDetenteur {
+  id: string;
+  documentId: string;
+  reference: string;
+  date_remise: string;
+  sortie: RemiseDetenteurSortie;
+  lignes: RemiseDetenteurLigne[];
+  attestation: boolean;
+  createdAt: string;
+  updatedAt: string;
+  publishedAt: string;
+}
+
+export interface CreateRemiseDetenteurPayload {
+  sortie: string; // documentId de la sortie
+  date_remise: string; // ISO date string
+  materiels: Array<{
+    ligne: string; // documentId de la ligne de sortie
+    detenteur_nom: string;
+    detenteur_fonction: string;
+    observation?: string;
+  }>;
+  attestation: boolean;
+}
+
+/**
+ * Liste les remises détenteur.
+ * GET /api/remises-detenteurs — rôles demandeur, dépositaire, admin
+ * Populate: lignes + sortie (pour la référence et les détails)
+ */
+export async function fetchRemisesDetenteurs(): Promise<RemiseDetenteur[] | null> {
+  try {
+    const { data } = await api.get("/api/remises-detenteurs", {
+      timeout: 5000,
+      params: {
+        populate: {
+          lignes: {
+            populate: { sortie_ligne: true },
+          },
+          sortie: true,
+        },
+        sort: "date_remise:desc",
+        "pagination[pageSize]": 100,
+      },
+    });
+    const rows: Array<any> = data?.data ?? [];
+    return rows.map((row) => ({
+      id: row.id || row.documentId,
+      documentId: row.documentId,
+      reference: row.reference,
+      date_remise: row.date_remise,
+      sortie: row.sortie,
+      lignes: row.lignes ?? [],
+      attestation: row.attestation,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      publishedAt: row.publishedAt,
+    }));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Récupère une remise détenteur par son documentId.
+ * GET /api/remises-detenteurs/:documentId
+ */
+export async function fetchRemiseDetenteur(
+  documentId: string
+): Promise<RemiseDetenteur | null> {
+  try {
+    const { data } = await api.get(`/api/remises-detenteurs/${documentId}`, {
+      timeout: 5000,
+      params: {
+        populate: {
+          lignes: {
+            populate: { sortie_ligne: true },
+          },
+          sortie: true,
+        },
+      },
+    });
+    const row = data?.data;
+    if (!row) return null;
+    return {
+      id: row.id || row.documentId,
+      documentId: row.documentId,
+      reference: row.reference,
+      date_remise: row.date_remise,
+      sortie: row.sortie,
+      lignes: row.lignes ?? [],
+      attestation: row.attestation,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+      publishedAt: row.publishedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Crée une remise détenteur côté serveur.
+ * POST /api/remises-detenteurs — rôle demandeur ou dépositaire requis
+ * La sortie doit être en statut `sortie_effectuee`, avoir les 3 signatures,
+ * avoir une réception physique (quantite_recue > 0), et ne pas avoir déjà
+ * une remise cloturée (remise_detenteur_cloturee = false).
+ * Le stock n'est PAS touché ici (déjà débité à la signature logistique).
+ */
+export async function createRemiseDetenteur(
+  payload: CreateRemiseDetenteurPayload
+): Promise<RemiseDetenteur> {
+  const { data: reponse } = await api.post(
+    "/api/remises-detenteurs",
+    { data: payload },
+    { timeout: 30000 }
+  );
+  const row = reponse.data;
+  return {
+    id: row.id || row.documentId,
+    documentId: row.documentId,
+    reference: row.reference,
+    date_remise: row.date_remise,
+    sortie: row.sortie,
+    lignes: row.lignes ?? [],
+    attestation: row.attestation,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    publishedAt: row.publishedAt,
+  };
 }

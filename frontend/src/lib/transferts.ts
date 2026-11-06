@@ -288,11 +288,12 @@ export interface UtilisateurValidation {
 
 /**
  * Qui a le droit de poser la validation `key` ?
- *  - Responsable du transfert : le CRÉATEUR du transfert (ou l'admin),
- *  - Dépositaire              : rôle depositaire (ou admin),
- *  - Logistique               : rôle logistique (ou admin).
+ *  - Responsable du transfert : le CRÉATEUR du transfert,
+ *  - Dépositaire              : rôle depositaire,
+ *  - Logistique               : rôle logistique.
  * Un Demandeur ne signe JAMAIS à la place d'un responsable (sauf 1/3 sur sa
  * propre création, en tant que créateur/responsable du transfert).
+ * L'administrateur est en consultation seule : il ne valide rien.
  */
 export function peutValiderTransfert(
   user: UtilisateurValidation | undefined,
@@ -301,14 +302,13 @@ export function peutValiderTransfert(
 ): boolean {
   if (!user || a.statut === "Validée") return false;
   if (a.validations[key]) return false;
+  if (user.role === "admin") return false;
 
   const estCreateur =
     (!!user.name && user.name === a.createur) ||
     (!!user.email && user.email === a.createurEmail);
-  const estAdmin = user.role === "admin";
 
-  if (key === "responsableTransfert") return estCreateur || estAdmin;
-  if (estAdmin) return true;
+  if (key === "responsableTransfert") return estCreateur;
   if (user.role === "demandeur") return false; // jamais pour un responsable
   if (key === "depositaire") return user.role === "depositaire";
   if (key === "logistique") return user.role === "logistique";

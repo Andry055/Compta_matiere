@@ -1,0 +1,51 @@
+{
+  "kind": "collectionType",
+  "collectionName": "remise_detenteur_lignes",
+  "info": {
+    "singularName": "remise-detenteur-ligne",
+    "pluralName": "remises-detenteur-lignes",
+    "displayName": "Ligne de remise au détenteur"
+  },
+  "options": {
+    "draftAndPublish": false
+  },
+  "pluginOptions": {},
+  "attributes": {
+    "remise": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::remise-detenteur.remise-detenteur",
+      "required": true,
+      "inversedBy": "lignes"
+    },
+    "sortie_ligne": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie-ligne.sortie-ligne",
+      "description": "Ligne du dossier de sortie à laquelle ce matériel est rattaché."
+    },
+    "designation": {
+      "type": "string",
+      "required": true,
+      "description": "Désignation du matériel, recalculée par le serveur depuis la ligne de sortie."
+    },
+    "quantite": {
+      "type": "integer",
+      "default": 1,
+      "description": "Quantité du matériel dans le dossier, recalculée par le serveur."
+    },
+    "detenteur_nom": {
+      "type": "text",
+      "required": true,
+      "description": "Nom de la personne physique devenue responsable du matériel."
+    },
+    "detenteur_fonction": {
+      "type": "text",
+      "description": "Fonction du détenteur (facultative)."
+    },
+    "observation": {
+      "type": "text",
+      "description": "Observation propre au matériel remis."
+    }
+  }
+}

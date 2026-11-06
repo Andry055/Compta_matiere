@@ -1,0 +1,3618 @@
+================================================================================
+ ANALYSE DES EXTRAITS DE CODE — SECTION 7.5 DU MÉMOIRE
+ Système de comptabilité matière (gestion des matériels)
+ Projet « Compta-main » — backend Strapi 5 / PostgreSQL, frontend React
+================================================================================
+
+Document établi par lecture directe du dépôt, sans exécution ni modification du
+code. Les extraits reproduits sont copiés tels quels depuis les fichiers
+sources ; seuls les numéros de ligne ont été ajoutés dans la marge de l'analyse
+(ils ne figurent pas dans les blocs de code).
+
+CONVENTIONS
+  - Les chemins sont relatifs à la racine du dépôt.
+  - Les numéros de ligne renvoient à l'état du dépôt à la date de rédaction
+    (branche `andry`, commit de fusion `b0aadedd`).
+  - Un extrait peut être volontairement amputé de lignes sans intérêt
+    pédagogique ; la plage citée indique alors exactement ce qui est reproduit.
+  - Aucun secret (mot de passe, jeton, clé) n'est reproduit dans ce document.
+
+AVERTISSEMENT SUR LE PÉRIMÈTRE
+  Le dépôt contient deux implémentations partiellement redondantes du circuit
+  de réception (module `reception` et module `reception-physique`) ainsi que
+  plusieurs écrans dont les données sont encore locales au navigateur. Ces
+  points sont signalés explicitement dans les sections concernées : le mémoire
+  ne doit pas présenter comme opérationnelle une fonctionnalité dont
+  l'implémentation est partielle.
+
+
+================================================================================
+ INTRODUCTION
+================================================================================
+
+Le système étudié couvre le cycle de vie du matériel d'une organisation :
+expression d'un besoin par un service, décision d'un responsable, préparation
+et contrôle du matériel par le magasin, triple signature de l'ordre de sortie,
+remise physique, réception par le dépositaire de la direction demandeuse, puis
+affectation nominative au détenteur final. Il produit en outre un journal de
+comptabilité matière (mouvements) et des états de reddition de compte.
+
+L'architecture est de type « API d'abord » :
+
+  - le backend est une application Strapi 5 (Node.js) exposant une API REST
+    générée par content-type, complétée de contrôleurs métier écrits à la main
+    pour les opérations sensibles (signature, validation, remise, réception,
+    rapports) ;
+  - la base de données est PostgreSQL, interrogeable directement via l'objet
+    `trx` de Knex dans les transactions critiques (verrous conditionnels,
+    décrément atomique du stock) ;
+  - le frontend est une application React (TypeScript) qui consomme cette API
+    par un module central `lib/api.ts` et n'effectue aucun calcul de stock.
+
+Le fil conducteur de l'analyse est la séparation des responsabilités :
+
+  1. le frontend ne décide jamais du stock, du statut ni du signataire : il
+     envoie une intention (signer, remettre, réceptionner) et affiche la
+     réponse du serveur ;
+  2. le backend vérifie le rôle réel de l'utilisateur connecté (jamais un rôle
+     transmis par le client), l'ordre des signatures, la disponibilité du
+     stock, puis écrit dans une transaction unique ;
+  3. le stock n'est débité qu'une seule fois, à la troisième signature de
+     l'ordre de sortie ; les étapes suivantes (remise, réception, affectation)
+     ne le touchent plus et ne produisent que des mouvements de traçabilité.
+
+Les onze fonctionnalités analysées sont les suivantes :
+
+   1. Authentification, rôles et contrôle des accès
+   2. Gestion des utilisateurs, directions et services
+   3. Gestion des matériels et des fournisseurs
+   4. Entrées de matériel et impact sur le stock
+   5. Expression et traitement des demandes de matériel
+   6. Circuit de sortie : les trois signatures et le débit du stock
+   7. Préparation des matériels et remise physique
+   8. Réception par le dépositaire de direction
+   9. Affectation du matériel au détenteur
+  10. Retours, pertes et inventaire
+  11. Journal des mouvements et reddition de compte
+
+Pour chacune, le document présente : les fichiers concernés (A), des extraits
+de code commentés avec leurs numéros de ligne (B), l'explication du
+fonctionnement, des données et des règles de gestion (C), puis la capture
+d'écran à produire pour l'illustration du mémoire (D).
+
+
+================================================================================
+ 1. AUTHENTIFICATION, RÔLES ET CONTRÔLE DES ACCÈS
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/index.js
+      Démarrage de Strapi : déclaration des rôles applicatifs (APP_ROLES) et
+      création idempotente de ces rôles dans le plugin users-permissions au
+      premier lancement (fonction ensureAuthSetup).
+
+  backend/src/utils/roleGuard.js
+      Socle du contrôle d'accès côté serveur : lecture du code de rôle réel de
+      l'utilisateur, refus des écritures pour le profil « demandeur »,
+      fabrique de contrôleurs « gardés » réutilisée par plusieurs modules.
+
+  backend/src/api/session-role/controllers/session-role.js
+      Contrôleur de la route GET /api/session/role : renvoie l'identité utile
+      au frontend (nom, courriel, département, fonction, rôle, direction).
+
+  backend/src/api/session-role/routes/session-role.js
+      Déclaration de la route ci-dessus (lignes 16-24).
+
+  backend/src/api/direction/content-types/direction/schema.json
+      Modèle de la direction (nom_direction, abreviation, directeur,
+      directeur_email, localisation, relation oneToMany vers les services).
+
+  backend/src/utils/directionUtilisateur.js
+      Résolution de la ou des directions d'un utilisateur à partir du champ
+      texte `department` de son compte.
+
+  frontend/src/components/LoginScreen.tsx
+      Écran de connexion : appel de l'API d'authentification Strapi, puis de
+      la route de session pour obtenir le rôle.
+
+  frontend/src/lib/session.ts
+      Normalisation de l'utilisateur Strapi vers le modèle `User` du frontend
+      (rôle applicatif, direction, niveau du demandeur).
+
+  frontend/src/lib/api.ts
+      Fonctions `strapiLogin` (ligne 210) et `fetchSessionRole` (ligne 112).
+
+  frontend/src/types/roles.ts
+      Type `AppRole` et table `ROLES_CONFIG` : pages autorisées, droit de
+      signature, droit d'approbation par rôle.
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 1.1 — Lecture du rôle réel de l'utilisateur ------------------------
+Fichier : backend/src/utils/roleGuard.js
+Lignes  : 27-40
+
+```js
+async function getRoleCode(strapi, userId) {
+  try {
+    const user = await strapi.db
+      .query('plugin::users-permissions.user')
+      .findOne({ where: { id: userId }, populate: ['role'] });
+    if (!user || !user.role) return '';
+    // Strapi users-permissions : le code du rôle est `type`
+    // (`code` reste toléré pour compatibilité).
+    const code = user.role.code || user.role.type || '';
+    return code.toString().toLowerCase();
+  } catch (e) {
+    return '';
+  }
+}
+```
+
+--- Extrait 1.2 — Interdiction d'écriture pour le profil « demandeur » ----------
+Fichier : backend/src/utils/roleGuard.js
+Lignes  : 57-72
+
+```js
+async function assertCanWrite(strapi, ctx, uid) {
+  const userId = ctx.state && ctx.state.user ? ctx.state.user.id : null;
+  if (!userId) {
+    return; // non authentifie -> gere par l'authentification Strapi
+  }
+
+  const code = await getRoleCode(strapi, userId);
+  if (!code || code !== DEMANDEUR_ROLE) return;
+
+  if (uid !== DEMANDE_UID) {
+    forbid(
+      ctx,
+      "Votre rôle (Demandeur) ne vous permet pas de modifier ou de supprimer ces données."
+    );
+    return;
+  }
+```
+
+--- Extrait 1.3 — Fabrique de contrôleur « gardé » -----------------------------
+Fichier : backend/src/utils/roleGuard.js
+Lignes  : 144-163
+
+```js
+function guardedCoreController(createCoreController, uid, customMethods = {}) {
+  return createCoreController(uid, ({ strapi: app }) => ({
+    async create(ctx) {
+      await assertCanWrite(app, ctx, uid);
+      if (ctx.status === 403) return ctx.body;
+      return super.create(ctx);
+    },
+    async update(ctx) {
+      await assertCanWrite(app, ctx, uid);
+      if (ctx.status === 403) return ctx.body;
+      return super.update(ctx);
+    },
+    async delete(ctx) {
+      await assertCanWrite(app, ctx, uid);
+      if (ctx.status === 403) return ctx.body;
+      return super.delete(ctx);
+    },
+    ...customMethods,
+  }));
+}
+```
+
+--- Extrait 1.4 — Rôles applicatifs déclarés au démarrage ----------------------
+Fichier : backend/src/index.js
+Lignes  : 169-196
+
+```js
+const APP_ROLES = [
+  {
+    type: 'demandeur',
+    name: 'Demandeur',
+    description:
+      'Exprime les besoins en matériel, consulte et suit ses demandes (aucun droit de validation ni de signature).',
+  },
+  {
+    type: 'depositaire',
+    name: 'Dépositaire par service',
+    description: 'Dépositaire du service : réceptionne, vérifie et valide les entrées (validation Dépositaire par service).',
+  },
+  {
+    type: 'magasinier',
+    name: 'Magasinier',
+    description: 'Contrôle le matériel au magasin et suit les sorties.',
+  },
+  {
+    type: 'logistique',
+    name: 'Chef logistique',
+    description: "Supervise l'approvisionnement et les sorties.",
+  },
+  {
+    type: 'comptable',
+    name: 'Comptable',
+    description: 'Audite le journal de comptabilité matière et produit les rapports.',
+  },
+];
+```
+
+--- Extrait 1.5 — Création idempotente des rôles au démarrage ------------------
+Fichier : backend/src/index.js
+Lignes  : 675-684
+
+```js
+  // 1) Rôles métier
+  const roles = {};
+  for (const def of APP_ROLES) {
+    let role = await roleQuery.findOne({ where: { type: def.type } });
+    if (!role) {
+      role = await roleQuery.create({ data: def });
+      strapi.log.info(`[auth] Rôle « ${def.type} » créé.`);
+    }
+    roles[def.type] = role;
+  }
+```
+
+--- Extrait 1.6 — Route de session : identité et rôle ---------------------------
+Fichier : backend/src/api/session-role/controllers/session-role.js
+Lignes  : 81-113
+
+```js
+  async role(ctx) {
+    const user = ctx.state && ctx.state.user;
+    if (!user) {
+      ctx.status = 401;
+      ctx.body = {
+        error: {
+          status: 401,
+          name: 'UnauthorizedError',
+          message: 'Authentification requise.',
+        },
+      };
+      return ctx.body;
+    }
+
+    const role = await roleDeLUtilisateur(strapi, user.id);
+    const direction = await directionDeLUtilisateur(strapi, user.id);
+
+    // La réponse est bâtie à la main (et non via le Document Service) : elle
+    // ne transite par aucun sanitizer, le champ `role` est donc réellement
+    // présent — c'est tout l'objet de cette route.
+    return {
+      data: {
+        id: user.id,
+        documentId: user.documentId,
+        username: user.username,
+        email: user.email,
+        department: user.department ?? null,
+        fonction: user.fonction ?? null,
+        role,
+        direction,
+      },
+    };
+  },
+```
+
+--- Extrait 1.7 — Enchaînement connexion Strapi puis lecture du rôle ------------
+Fichier : frontend/src/components/LoginScreen.tsx
+Lignes  : 128-143
+
+```tsx
+    const strapiAuth = await strapiLogin(email, password);
+
+    if (strapiAuth.ok) {
+      const user = await fetchSessionRole();
+      if (user) setStrapiSession(strapiAuth.jwt, user);
+      const mapped = mapStrapiUser(user ?? strapiAuth.user);
+      if (mapped) {
+        applyRememberMe();
+        setIsLoading(false);
+        onLogin(mapped);
+        return;
+      }
+      setError("Authentification Strapi réussie, mais le rôle utilisateur est indisponible.");
+      setIsLoading(false);
+      return;
+    }
+```
+
+--- Extrait 1.8 — Normalisation de l'utilisateur côté frontend -----------------
+Fichier : frontend/src/lib/session.ts
+Lignes  : 23-46
+
+```ts
+export function mapStrapiUser(
+  user: StrapiAuthUser | null | undefined
+): User | null {
+  if (!user) return null;
+  const role = (user.role?.type || user.role?.code || "").toLowerCase();
+  const isKnown =
+    role === "admin" || (KNOWN_APP_ROLES as string[]).includes(role);
+  if (!isKnown) return null;
+
+  return {
+    id: user.documentId || String(user.id),
+    strapiId: user.id,
+    name: user.username,
+    email: user.email,
+    role: role as User["role"],
+    department: user.department || "",
+    directionId: user.direction?.id?.toString() ?? undefined,
+    directionName: user.direction?.nom_direction ?? undefined,
+    permissions: ["equipment.view"],
+    ...(role === "demandeur"
+      ? { demandeurLevel: (user.department || "").includes(" - ") ? ("service" as const) : ("direction" as const) }
+      : {}),
+  };
+}
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Établir une identité fiable avant toute opération, et faire en sorte que le
+  rôle utilisé pour autoriser une action soit toujours celui enregistré en base,
+  jamais une valeur envoyée par le navigateur.
+
+Fonctionnement des instructions
+
+  - `getRoleCode` (extrait 1.1) est la brique de base. Elle interroge la table
+    des utilisateurs du plugin `users-permissions` avec `populate: ['role']`
+    afin de charger la relation de rôle dans la même requête SQL, puis lit
+    `user.role.code` et, à défaut, `user.role.type` — Strapi nommant le code du
+    rôle `type` dans ses versions récentes. La valeur est convertie en
+    minuscules pour rendre les comparaisons insensibles à la casse. En cas
+    d'erreur (utilisateur supprimé, relation absente), la fonction renvoie une
+    chaîne vide : aucun appelant ne peut alors considérer l'utilisateur comme
+    autorisé, ce qui place le système en refus par défaut.
+
+  - `assertCanWrite` (extrait 1.2) applique une règle métier simple : le profil
+    « demandeur » ne peut écrire que sur la ressource `api::demande.demande`.
+    La fonction sort immédiatement si l'appel n'est pas authentifié (le cas est
+    traité en amont par la couche d'authentification de Strapi), puis compare
+    le code de rôle à la constante `DEMANDEUR_ROLE`. Si l'utilisateur est
+    demandeur et que la ressource visée n'est pas la demande, la fonction
+    `forbid` positionne un statut HTTP 403 et un corps d'erreur normalisé
+    (`error.status`, `error.name`, `error.message`).
+
+  - `guardedCoreController` (extrait 1.3) est une fabrique : elle reçoit la
+    fonction `createCoreController` de Strapi, l'identifiant du content-type et
+    un objet de méthodes personnalisées. Elle renvoie un contrôleur dont les
+    trois opérations d'écriture (`create`, `update`, `delete`) appellent
+    d'abord `assertCanWrite`, testent `ctx.status === 403` et n'appellent
+    l'implémentation standard (`super.create`, etc.) que si le contrôle est
+    passé. Les méthodes métier supplémentaires sont fusionnées par
+    `...customMethods`, ce qui permet à un module d'ajouter, par exemple, une
+    route de signature tout en héritant du même contexte Strapi.
+
+  - `APP_ROLES` (extrait 1.4) décrit les cinq profils métier : demandeur,
+    dépositaire par service, magasinier, chef logistique, comptable. Chaque
+    entrée porte un `type` (code technique, stocké en base), un `name`
+    (libellé affiché) et une `description` qui documente les droits. Ce
+    tableau est la source unique de vérité : les mêmes codes sont réutilisés
+    par les contrôleurs métier (`SIGNATURE_ROLES` des modules `entree` et
+    `sortie`).
+
+  - `ensureAuthSetup` (extrait 1.5) rend le déploiement reproductible : pour
+    chaque définition, elle cherche le rôle par son `type` et ne le crée que
+    s'il est absent. Un redémarrage ne duplique donc pas les rôles et ne
+    réécrit pas leurs libellés.
+
+  - La route de session (extrait 1.6) répond à un problème concret de Strapi :
+    le service de documents applique un « sanitizer » qui supprime la relation
+    `role` des réponses utilisateur. Le contrôleur construit donc la réponse à
+    la main (`return { data: { ... } }`) pour que le rôle, le département, la
+    fonction et la direction soient réellement transmis. Elle renvoie 401 si
+    aucun utilisateur n'est attaché au contexte de la requête.
+
+  - Côté frontend (extrait 1.7), la connexion se fait en deux temps : appel de
+    `strapiLogin(email, password)` qui renvoie un jeton et l'utilisateur brut,
+    puis appel de `fetchSessionRole()` qui fournit la vue enrichie. Le jeton et
+    l'utilisateur sont mémorisés (`setStrapiSession`), puis l'utilisateur est
+    normalisé avant d'être remonté au composant parent (`onLogin`). Si
+    l'authentification réussit mais que le rôle est inconnu, un message
+    explicite est affiché et la connexion est refusée : on ne laisse jamais
+    entrer un compte sans rôle applicatif.
+
+  - `mapStrapiUser` (extrait 1.8) vérifie que le rôle appartient à la liste
+    `KNOWN_APP_ROLES` (ou vaut `admin`) et renvoie `null` sinon. Elle construit
+    l'objet `User` utilisé partout dans l'interface et dérive un
+    `demandeurLevel` : si le libellé du département contient le séparateur
+    « - », le demandeur est rattaché à un service, sinon à une direction.
+
+Données manipulées
+  Table `up_users` (plugin users-permissions) : `id`, `documentId`,
+  `username`, `email`, `department`, `fonction` ; table `up_roles` : `id`,
+  `type`, `name`, `description` ; table de liaison utilisateur-rôle. Côté
+  frontend : objet `User` (identifiant, nom, courriel, rôle, département,
+  direction, permissions).
+
+Règles de gestion
+  R1. Le rôle est toujours relu en base à partir de l'identifiant de session.
+  R2. Un compte sans rôle applicatif connu ne peut pas se connecter.
+  R3. Le profil « demandeur » n'a de droit d'écriture que sur ses demandes.
+  R4. Toute réponse d'erreur d'autorisation est un HTTP 403 au format
+      `{ error: { status, name, message } }`.
+  R5. Les rôles sont créés de façon idempotente au démarrage : un déploiement
+      successif ne crée pas de doublons.
+
+Résultat attendu
+  À la connexion, l'utilisateur obtient un jeton et un objet de session
+  contenant son rôle métier ; toutes les opérations d'écriture ultérieures sont
+  filtrées par ce rôle, côté serveur.
+
+Limites constatées
+  - Le contrôle d'accès en lecture n'est pas uniforme : `assertCanWrite` ne
+    couvre que les écritures, et chaque module métier ajoute ses propres
+    contrôles de lecture (par exemple `assertCanReadRapports` pour les
+    rapports). Il n'existe pas de matrice centralisée « rôle × ressource ».
+  - Le rôle `admin` applicatif est traité comme un rôle de secours dans
+    plusieurs contrôleurs (`estAdmin`), ce qui contourne la séparation des
+    tâches ; ce point doit être présenté comme un choix d'exploitation et non
+    comme une règle métier.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran de connexion (champs courriel / mot de passe) avec, en incrustation, la
+  réponse JSON de `GET /api/session/role` dans les outils de développement
+  (onglet Réseau), montrant `role.type` et `department`. Alternative : capture
+  de la liste des rôles dans l'administration Strapi (Settings → Users &
+  Permissions → Roles) où apparaissent les cinq rôles métier.
+
+
+================================================================================
+ 2. GESTION DES UTILISATEURS, DIRECTIONS ET SERVICES
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/direction/content-types/direction/schema.json
+      Modèle de la direction et de sa relation avec les services.
+
+  backend/src/api/service/content-types/service/schema.json
+      Modèle du service (nom_service, responsable, relation vers la direction
+      et vers les employés).
+
+  backend/src/api/employee/content-types/employee/schema.json
+      Modèle de l'employé (im, nom, prenom, fonction, service).
+
+  backend/src/utils/directionUtilisateur.js
+      Déduction de la direction d'un utilisateur à partir du libellé de son
+      département.
+
+  backend/src/api/session-role/controllers/session-role.js
+      Utilise la fonction précédente pour exposer la direction dans la session.
+
+  frontend/src/lib/api.ts
+      `fetchOrganisation` (lignes 1938-1974) : lecture de l'organigramme complet
+      (directions → services → employés) pour l'affichage.
+
+  frontend/src/components/Users.tsx
+      Écran d'administration des comptes. ATTENTION : cet écran travaille sur
+      un état local pré-rempli, sans appel d'API (voir extrait 2.4).
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 2.1 — Modèle de la direction ---------------------------------------
+Fichier : backend/src/api/direction/content-types/direction/schema.json
+Lignes  : 13-39
+
+```json
+  "attributes": {
+    "nom_direction": {
+      "type": "string",
+      "required": true
+    },
+    "abreviation": {
+      "type": "string"
+    },
+    "description": {
+      "type": "string"
+    },
+    "directeur": {
+      "type": "string"
+    },
+    "directeur_email": {
+      "type": "email"
+    },
+    "localisation": {
+      "type": "string"
+    },
+    "services": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::service.service",
+      "mappedBy": "direction"
+    }
+  }
+```
+
+--- Extrait 2.2 — Résolution de la direction de l'utilisateur -------------------
+Fichier : backend/src/utils/directionUtilisateur.js
+Lignes  : 30-49
+
+```js
+async function getDirectionIdsDuUtilisateur(strapi, user) {
+  const departement = (user && user.department) || '';
+  const separateur = departement.indexOf(' - ');
+  const directionNom = separateur >= 0
+    ? departement.slice(0, separateur).trim()
+    : departement.trim();
+  if (!directionNom) return [];
+
+  const directions = await strapi.documents(DIRECTION_UID).findMany({
+    filters: {
+      $or: [
+        { nom_direction: { $eqi: directionNom } },
+        { abreviation: { $eqi: directionNom } },
+      ],
+    },
+    fields: ['documentId'],
+    limit: -1,
+  });
+  return (directions || []).map((d) => d.documentId);
+}
+```
+
+--- Extrait 2.3 — Lecture de l'organigramme côté frontend ----------------------
+Fichier : frontend/src/lib/api.ts
+Lignes  : 1938-1955
+
+```ts
+export async function fetchOrganisation(): Promise<OrgDirection[]> {
+  const { data } = await api.get("/api/directions", {
+    params: {
+      "populate[services][populate][0]": "employees",
+      "sort[0]": "nom_direction:asc",
+    },
+  });
+
+  const rows: StrapiDirection[] = data?.data ?? [];
+
+  return rows.map((direction) => ({
+    id: direction.id,
+    name: direction.nom_direction ?? "",
+    director: direction.directeur ?? "",
+    directorEmail: direction.directeur_email ?? "",
+    description: direction.description ?? "",
+    location: direction.localisation ?? "",
+    services: (direction.services ?? []).map((service) => ({
+      id: service.id,
+      name: service.nom_service ?? "",
+```
+
+--- Extrait 2.4 — Écran d'administration des comptes : état local --------------
+Fichier : frontend/src/components/Users.tsx
+Lignes  : 335-354
+
+```tsx
+  const handleSaveUser = (userData: UserAccount) => {
+    if (modalMode === "create") {
+      const newUser = {
+        ...userData,
+        id: Date.now(),
+        lastLogin: "Jamais connecté",
+        createdDate: new Date().toLocaleDateString("fr-FR"),
+      };
+      setUsers([...users, newUser]);
+    } else {
+      setUsers(users.map((u) => (u.id === userData.id ? userData : u)));
+    }
+    setShowUserModal(false);
+  };
+
+  const handleDeleteUser = (userId: number) => {
+    if (confirm("Êtes-vous sûr de vouloir supprimer cet utilisateur ?")) {
+      setUsers(users.filter((u) => u.id !== userId));
+    }
+  };
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Décrire l'organisation (directions, services, employés) et expliquer comment
+  le système rattache automatiquement un utilisateur à une direction, ce
+  rattachement conditionnant l'accès aux sorties et aux réceptions.
+
+Fonctionnement des instructions
+
+  - Le modèle de direction (extrait 2.1) porte les informations d'identification
+    (`nom_direction` obligatoire, `abreviation` utilisée dans les libellés
+    courts, `directeur`, `directeur_email`, `localisation`) et une relation
+    `oneToMany` vers `api::service.service` avec `mappedBy: "direction"` : la
+    clé étrangère est portée par le service, la direction n'en conserve pas de
+    copie.
+
+  - `getDirectionIdsDuUtilisateur` (extrait 2.2) est la pièce centrale du
+    rattachement. Le compte utilisateur ne possède pas de relation vers la
+    table des directions : il possède un champ texte `department`, par exemple
+    « Direction des Ressources Humaines - Service du personnel ». La fonction
+    coupe ce libellé au premier séparateur « - » pour isoler le nom de la
+    direction, puis recherche dans la table des directions une entrée dont
+    `nom_direction` ou `abreviation` correspond, sans tenir compte de la casse
+    (`$eqi`). Elle renvoie la liste des `documentId` trouvés — une liste, car
+    rien n'interdit deux directions homonymes. Une liste vide signifie « aucune
+    direction » : les contrôleurs qui l'utilisent refusent alors l'opération.
+
+  - `fetchOrganisation` (extrait 2.3) illustre la lecture de l'organigramme par
+    le frontend : un seul appel `GET /api/directions`, avec un `populate`
+    imbriqué (`populate[services][populate][0]=employees`) pour charger en une
+    requête les directions, leurs services et les employés de chaque service,
+    triés par nom. Le résultat est ensuite projeté dans le type `OrgDirection`
+    utilisé par les écrans d'organisation.
+
+  - L'écran `Users.tsx` (extrait 2.4) montre, à l'inverse, une implémentation
+    incomplète : la création affecte un identifiant calculé localement
+    (`Date.now()`), la modification remplace l'objet dans le tableau d'état, la
+    suppression filtre ce même tableau. Aucun appel HTTP n'est émis : ni
+    `POST /api/users`, ni `PUT`, ni `DELETE`. Les comptes affichés proviennent
+    d'un jeu de démonstration chargé dans `useState`. La conséquence est
+    importante pour le mémoire : la création réelle d'un compte se fait
+    aujourd'hui par l'administration de Strapi, pas par cette interface.
+
+Données manipulées
+  Tables `directions` (`nom_direction`, `abreviation`, `directeur`,
+  `directeur_email`, `localisation`), `services` (`nom_service`,
+  `responsable`, clé étrangère `direction`), `employees` (`im`, `nom`,
+  `prenom`, `fonction`, clé étrangère `service`) et champ texte
+  `up_users.department`.
+
+Règles de gestion
+  R1. Une direction est identifiée par son nom ou son abréviation, sans
+      sensibilité à la casse.
+  R2. Le rattachement d'un utilisateur à une direction est déduit du préfixe de
+      son champ `department`, avant le séparateur « - ».
+  R3. Un utilisateur sans direction résoluble ne peut ni réceptionner une
+      sortie ni consulter les sorties de sa direction (voir sections 8 et 9).
+  R4. La hiérarchie est direction → services → employés ; un service appartient
+      à une seule direction.
+
+Résultat attendu
+  L'organigramme s'affiche avec ses trois niveaux, et chaque utilisateur
+  connecté est rattaché à une direction, ce qui restreint automatiquement les
+  listes de sorties et de réceptions qu'il peut traiter.
+
+Limites constatées (à signaler dans le mémoire)
+  - `Users.tsx` n'est pas connecté à l'API : création, modification et
+    suppression de comptes ne sont pas persistées. La gestion des comptes se
+    fait via le back-office Strapi.
+  - Le rattachement à la direction repose sur une convention de chaîne de
+    caractères (`department`), non sur une clé étrangère. Une faute de frappe
+    dans le libellé suffit à priver l'utilisateur de ses droits sur les
+    sorties de sa direction.
+  - L'écran `Users.tsx` affiche des comptes de démonstration, y compris des
+    mots de passe en clair dans son état initial ; ce point doit être corrigé
+    avant toute mise en production et ne doit pas être illustré par une capture.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran « Organisation » (ou la vue hiérarchique directions / services /
+  employés) montrant au moins deux directions et leurs services. Une seconde
+  capture peut montrer la fiche d'un utilisateur dans l'administration Strapi
+  avec ses champs `department` et `fonction`, pour matérialiser la règle de
+  rattachement.
+
+
+================================================================================
+ 3. GESTION DES MATÉRIELS ET DES FOURNISSEURS
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/material/content-types/material/schema.json
+      Fiche matériel : désignation, nomenclature, catégorie, quantité en stock,
+      valeur unitaire, statut, observations, photo de référence.
+
+  backend/src/api/material/controllers/material.js
+      Contrôleur enveloppé par `guardedCoreController` (lignes 14-45) : les
+      écritures directes sur une fiche matériel sont soumises au contrôle de
+      rôle décrit en section 1.
+
+  backend/src/api/fournisseur/content-types/fournisseur/schema.json
+      Fiche fournisseur et relation vers les entrées.
+
+  backend/src/api/entree/controllers/entree.js
+      `findOrCreateFournisseur` (lignes 134-173) : rapprochement d'un
+      fournisseur saisi en texte libre avec la fiche existante, ou création.
+
+  frontend/src/components/Equipment.tsx
+      Écran « Matériels » : consulte le stock réel mais neutralise les actions
+      d'écriture (lignes 396-427) pour que le stock n'évolue que par le circuit
+      d'entrée validé.
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 3.1 — Champs de stock de la fiche matériel -------------------------
+Fichier : backend/src/api/material/content-types/material/schema.json
+Lignes  : 30-41
+
+```json
+    "quantite_stock": {
+      "type": "integer",
+      "default": 0
+    },
+    "valeur_unitaire": {
+      "type": "decimal"
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": ["en_stock", "distribue", "maintenance", "reforme", "sortie"],
+      "default": "en_stock"
+    },
+```
+
+--- Extrait 3.2 — Modèle du fournisseur ----------------------------------------
+Fichier : backend/src/api/fournisseur/content-types/fournisseur/schema.json
+Lignes  : 13-35
+
+```json
+  "attributes": {
+    "nom": {
+      "type": "string",
+      "required": true
+    },
+    "contact": {
+      "type": "string"
+    },
+    "email": {
+      "type": "email"
+    },
+    "telephone": {
+      "type": "string"
+    },
+    "adresse": {
+      "type": "string"
+    },
+    "entrees": {
+      "type": "relation",
+      "relation": "oneToMany",
+      "target": "api::entree.entree",
+      "mappedBy": "fournisseur"
+    }
+  }
+```
+
+--- Extrait 3.3 — Rapprochement ou création d'un fournisseur -------------------
+Fichier : backend/src/api/entree/controllers/entree.js
+Lignes  : 134-157
+
+```js
+async function findOrCreateFournisseur(strapi, nom) {
+  const nomPropre = String(nom || '').trim().replace(/\s+/g, ' ');
+  if (!nomPropre) return null;
+
+  // Recherche directe (insensible à la casse)…
+  try {
+    const directs = await strapi.documents(FOURNISSEUR_UID).findMany({
+      filters: { nom: { $eqi: nomPropre } },
+      limit: 1,
+    });
+    if (directs && directs.length > 0) return directs[0];
+  } catch (e) {
+    // On tente la comparaison normalisée ci-dessous.
+  }
+
+  // …puis comparaison normalisée (espaces superflus / casse mélangée).
+  try {
+    const tous = await strapi.documents(FOURNISSEUR_UID).findMany({ limit: -1 });
+    const cle = cleFournisseur(nomPropre);
+    const existant = (tous || []).find((f) => cleFournisseur(f.nom) === cle);
+    if (existant) return existant;
+  } catch (e) {
+    // Création ci-dessous.
+  }
+```
+
+--- Extrait 3.4 — Actions d'écriture neutralisées sur l'écran Matériels --------
+Fichier : frontend/src/components/Equipment.tsx
+Lignes  : 396-411
+
+```tsx
+  // Actions fictives désactivées : le stock évolue uniquement par le circuit d'entrée validé
+  const handleAddEquipment = () => {
+    /* Action fictive désactivée */
+  };
+
+  const handleDeleteEquipment = () => {
+    /* Action fictive désactivée */
+  };
+
+  const handleEditEquipment = () => {
+    /* Action fictive désactivée */
+  };
+
+  const handleDuplicateEquipment = () => {
+    /* Action fictive désactivée */
+  };
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Disposer d'un référentiel unique d'articles (la fiche matériel) et d'un
+  référentiel de fournisseurs, afin que chaque mouvement de stock puisse être
+  rattaché à un article et à une origine identifiables.
+
+Fonctionnement des instructions
+
+  - La fiche matériel (extrait 3.1) isole trois champs décisifs.
+    `quantite_stock` est un entier initialisé à 0 : c'est la seule grandeur que
+    les circuits d'entrée et de sortie modifient. `valeur_unitaire` est un
+    décimal qui sert au calcul des montants dans les lignes de mouvement et
+    dans les états de reddition. `statut` est une énumération à cinq valeurs
+    (`en_stock`, `distribue`, `maintenance`, `reforme`, `sortie`) : elle décrit
+    la situation administrative de l'article, indépendamment de sa quantité.
+    Deux articles différents ont deux fiches différentes : c'est cette fiche
+    qui est visée par les clés étrangères des lignes d'entrée et de sortie.
+
+  - Le contrôleur `material.js` est construit avec `guardedCoreController`
+    (section 1, extrait 1.3). Les opérations d'écriture standard restent
+    disponibles pour les rôles habilités, mais tout profil « demandeur » est
+    arrêté par un 403 avant d'atteindre la base. Le frontend, lui, désactive
+    explicitement les boutons d'ajout, de modification et de suppression
+    (extrait 3.4) : le commentaire du code énonce la règle — « le stock évolue
+    uniquement par le circuit d'entrée validé ». Une fiche matériel ne doit donc
+    pas être créée « à la main » pour y inscrire une quantité : elle est créée
+    par le circuit d'entrée, puis alimentée par la validation des entrées.
+
+  - Le fournisseur (extrait 3.2) est un référentiel simple : nom obligatoire,
+    coordonnées facultatives, et relation `oneToMany` vers les entrées. La
+    relation est portée par l'entrée (`mappedBy: "fournisseur"`), ce qui permet
+    de retrouver l'historique des livraisons d'un fournisseur sans dupliquer
+    l'information.
+
+  - `findOrCreateFournisseur` (extrait 3.3) résout un problème d'usage : à la
+    saisie d'un bon de livraison, le magasinier tape un nom de fournisseur en
+    texte libre. La fonction normalise d'abord la chaîne (suppression des
+    espaces de bord et réduction des espaces multiples), puis tente une
+    recherche exacte insensible à la casse (`$eqi`). Si elle échoue, elle
+    charge tous les fournisseurs et compare une clé normalisée
+    (`cleFournisseur`), ce qui rapproche « SOCIETE X » de « Société  X ». Ce
+    n'est qu'en dernier recours qu'une fiche est créée. Ce comportement évite
+    la prolifération de doublons tout en restant tolérant aux variations de
+    saisie.
+
+Données manipulées
+  Table `materials` : `designation`, `nomenclature`, `categorie` (relation),
+  `quantite_stock`, `valeur_unitaire`, `statut`, `observations`. Table
+  `fournisseurs` : `nom`, `contact`, `email`, `telephone`, `adresse`. Table
+  `entrees` : clé étrangère `fournisseur`.
+
+Règles de gestion
+  R1. Une quantité en stock est un entier positif ou nul, jamais négatif.
+  R2. Le statut d'un article appartient à une liste fermée de cinq valeurs.
+  R3. Le stock ne se modifie pas par édition directe de la fiche : il évolue
+      par validation d'un circuit (entrée, sortie).
+  R4. Un fournisseur est identifié par son nom, comparaison insensible à la
+      casse et aux espaces multiples ; une fiche existante est réutilisée.
+  R5. Un article peut exister en base avec une quantité nulle (fiche créée par
+      une entrée, en attente de validation).
+
+Résultat attendu
+  L'écran « Matériels » présente, pour chaque article, la désignation, la
+  nomenclature, la quantité en stock, la valeur unitaire et le statut, sans
+  permettre de les modifier directement. Les fournisseurs saisis dans les
+  entrées alimentent un référentiel unique.
+
+
+Limites constatées
+  - Les boutons d'ajout, modification, suppression et export de `Equipment.tsx`
+    sont des fonctions vides : l'écran est en lecture seule. Toute création de
+    fiche passe par le circuit d'entrée (section 4).
+  - La multiplication de fiches matériel reste possible si deux désignations
+    différentes sont saisies pour le même article : le rapprochement se fait
+    sur la désignation exacte, sans référentiel de nomenclatures fermé.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran « Matériels » avec une liste d'articles affichant quantité, valeur
+  unitaire et statut, et le bouton d'ajout visiblement inactif. En complément,
+  la fiche d'un fournisseur dans l'administration Strapi, avec le nombre
+  d'entrées liées.
+
+
+================================================================================
+ 4. ENTRÉES DE MATÉRIEL ET IMPACT SUR LE STOCK
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/entree/content-types/entree/schema.json
+      En-tête d'entrée : référence ENT-AAAA-NNN, dates, bon de livraison,
+      fournisseur, statut, trois drapeaux de signature, `stock_impacte`.
+
+  backend/src/api/entree/content-types/entree-ligne/schema.json
+      Lignes d'entrée : matériel, désignation, quantité, valeur unitaire,
+      montant, pièce justificative.
+
+  backend/src/api/entree/controllers/entree.js
+      Cœur du circuit : `SIGNATURE_ROLES` (34-42), `findOrCreateFournisseur`
+      (134-173), `appliquerImpactStock` (220-243), `tracerMouvement`
+      (246-268), création des lignes et des fiches manquantes (442-495),
+      validation finale à 3/3 signatures (643-683).
+
+  frontend/src/components/MaterialEntry.tsx
+      Écran « Arrivée matériel » : saisie du bon de livraison et des articles
+      (4465-4479), puis certification par le magasinier avec contrôle d'état
+      par ligne (4527-4561).
+
+  frontend/src/components/NewEntryPage.tsx
+      Écran alternatif de saisie d'entrée : validation par étape (284-314),
+      enregistrement en brouillon (322-335) et envoi (354-369).
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 4.1 — Rôles signataires et ordre des signatures --------------------
+Fichier : backend/src/api/entree/controllers/entree.js
+Lignes  : 34-42
+
+```js
+const SIGNATURE_ROLES = {
+  // Décision 4 — ordre définitif : magasinier (chef_service_1) → logistique
+  // (chef_service_2) → dépositaire (depositaire). La 3ᵉ signature déclenche
+  // la validation finale + l'impact stock unique (mécanisme existant,
+  // inchangé : nbSignatures === 3).
+  depositaire: { flag: 'depositaire_signed', dateField: 'date_signature_depositaire', signerField: 'signataire_depositaire', affectationField: 'affectation_depositaire', order: 3 },
+  chef_service_1: { flag: 'chef_service_1_signed', dateField: 'date_signature_chef_service_1', signerField: 'signataire_chef_service_1', affectationField: 'affectation_chef_service_1', order: 1 },
+  chef_service_2: { flag: 'chef_service_2_signed', dateField: 'date_signature_chef_service_2', signerField: 'signataire_chef_service_2', affectationField: 'affectation_chef_service_2', order: 2 },
+};
+```
+
+--- Extrait 4.2 — Impact stock protégé par un garde-fou ------------------------
+Fichier : backend/src/api/entree/controllers/entree.js
+Lignes  : 220-243
+
+```js
+/** Impacte le stock une seule fois : garde-fou `stock_impacte`. */
+async function appliquerImpactStock(strapi, entree, utilisateur) {
+  if (entree.stock_impacte === true) return; // déjà appliqué -> jamais deux fois
+
+  const lignes = entree.lignes || [];
+  for (const ligne of lignes) {
+    let materiel = ligne.materiel;
+    if (!materiel) {
+      materiel = await findMaterielByDesignation(strapi, ligne.designation);
+    }
+    if (!materiel) continue;
+
+    const nouvelleQuantite = (Number(materiel.quantite_stock) || 0) + (Number(ligne.quantite) || 0);
+    await strapi.documents(MATERIEL_UID).update({
+      documentId: materiel.documentId,
+      data: { quantite_stock: nouvelleQuantite },
+    });
+  }
+
+  await strapi.documents(ENTREE_UID).update({
+    documentId: entree.documentId,
+    data: { stock_impacte: true },
+  });
+}
+```
+
+--- Extrait 4.3 — Création de la fiche matériel manquante ----------------------
+Fichier : backend/src/api/entree/controllers/entree.js
+Lignes  : 445-466
+
+```js
+      if (!materielId && ligne.designation) {
+        const existant = await findMaterielByDesignation(app, ligne.designation);
+        if (existant) {
+          materielId = existant.documentId;
+        } else {
+          // Aucune fiche : on la CRÉE avec la désignation EXACTE saisie (pas de
+          // rapprochement approché — le serveur ne devine jamais). Sans fiche,
+          // la ligne serait orpheline et son stock ne serait JAMAIS impacté à
+          // la 3ᵉ signature : appliquerImpactStock saute les lignes sans
+          // matériel, d'où un inventaire inférieur au stock réel.
+          try {
+            const prix = Number(ligne.valeur_unitaire);
+            const fiche = await app.documents(MATERIEL_UID).create({
+              data: {
+                designation: ligne.designation.trim(),
+                nomenclature: ligne.nomenclature || null,
+                valeur_unitaire: Number.isFinite(prix) ? prix : null,
+                quantite_stock: 0,
+                statut: 'en_stock',
+              },
+            });
+            materielId = fiche.documentId;
+          } catch (e) {
+```
+
+--- Extrait 4.4 — Validation finale à la troisième signature -------------------
+Fichier : backend/src/api/entree/controllers/entree.js
+Lignes  : 657-674
+
+```js
+    // Recalcul du nombre de signatures
+    const apres = await loadEntree(app, documentId);
+    const nbSignatures = Object.values(SIGNATURE_ROLES).filter((c) => apres[c.flag] === true).length;
+
+    let statutFinal = 'en_attente';
+    if (nbSignatures === 3) {
+      // Validation finale UNIQUEMENT ici (3/3) puis impact stock unique
+      await app.documents(ENTREE_UID).update({ documentId, data: { statut: 'validee' } });
+      statutFinal = 'validee';
+      await appliquerImpactStock(app, { ...apres, documentId }, signataire);
+    } else {
+      // Signatures partielles (1/3 ou 2/3) : le statut passe à « verifiee »
+      // dès la 1ʳᵉ signature (lacune préexistante : la valeur n'était calculée
+      // que pour la réponse, jamais persistée — les GET ultérieurs renvoyaient
+      // « en_attente »).
+      await app.documents(ENTREE_UID).update({ documentId, data: { statut: 'verifiee' } });
+      statutFinal = 'verifiee';
+    }
+```
+
+--- Extrait 4.5 — Payload de création d'une entrée (frontend) ------------------
+Fichier : frontend/src/components/MaterialEntry.tsx
+Lignes  : 4465-4478
+
+```tsx
+        const payload: NouvelleEntreePayload = {
+          date_entree: receptionData.dateBL || new Date().toISOString().split("T")[0],
+          bon_livraison: receptionData.numeroBL,
+          date_bon_livraison: receptionData.dateBL || undefined,
+          fournisseur: receptionData.fournisseur.trim(),
+          responsable: depositaireName,
+          notes: receptionData.observationsBL || undefined,
+          // Flux « Arrivée matériel » : aucune affectation saisie à cet écran.
+          // On lève l'exigence serveur des 3 affectations ; le contrôleur
+          // dérive alors affectation_depositaire depuis l'utilisateur connecté
+          // et laisse chef_service_1/2 à null jusqu'aux signatures.
+          exigerAffectations: false,
+          lignes: lignesPayloadDepuisArticles(receptionData.articles),
+        };
+```
+
+--- Extrait 4.6 — Contrôle d'état obligatoire avant certification --------------
+Fichier : frontend/src/components/MaterialEntry.tsx
+Lignes  : 4527-4552
+
+```tsx
+      const controleIncomplet = receptionData.controles.find(
+        (c) =>
+          !c.etat || extra.etatsNonControles[c.articleId]
+      );
+      if (controleIncomplet) {
+        const art = receptionData.articles.find(
+          (a) => a.id === controleIncomplet.articleId
+        );
+        toast.error("Contrôle incomplet", {
+          description: `Renseignez l'état de « ${art?.designation ?? "article"} » avant de certifier.`,
+        });
+        setArticlesIncomplets(new Set([controleIncomplet.articleId]));
+        return;
+      }
+      setIsSubmitting(true);
+      try {
+        const controles = receptionData.controles.map((c) => {
+          const art = receptionData.articles.find((a) => a.id === c.articleId);
+          return {
+            numero_ordre: receptionData.articles.indexOf(art!) + 1,
+            etat: c.etat,
+            conforme: c.conforme,
+            observations: c.remarque.trim() || undefined,
+          };
+        });
+        const updated = await signerEntree(entreeServeur.id, "chef_service_1", controles);
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Enregistrer l'arrivée de matériel commandé, contrôler la conformité de la
+  livraison, puis n'augmenter le stock qu'après réunion des trois signatures
+  prévues — une seule fois.
+
+Fonctionnement des instructions
+
+  - `SIGNATURE_ROLES` (extrait 4.1) est la table de configuration du circuit.
+    Chaque rôle est décrit par cinq propriétés : le drapeau booléen posé en
+    base (`flag`), le champ date (`dateField`), le champ nom du signataire
+    (`signerField`), le champ d'affectation (`affectationField`) et le rang
+    (`order`). Les rangs 1, 2 et 3 sont portés respectivement par
+    `chef_service_1` (magasinier), `chef_service_2` (logistique) et
+    `depositaire`. Le commentaire de tête fixe la règle : la troisième
+    signature déclenche la validation et l'impact stock.
+
+  - `appliquerImpactStock` (extrait 4.2) matérialise l'unicité de l'impact.
+    La première instruction est un retour immédiat si `stock_impacte` vaut déjà
+    `true` : quelle que soit la répétition de l'appel, la quantité n'est pas
+    ajoutée deux fois. Pour chaque ligne, la fiche matériel est récupérée
+    (directement via la relation, ou par recherche sur la désignation si la
+    relation est vide) ; les lignes sans fiche sont ignorées par `continue`,
+    ce qui explique pourquoi la création de fiche à l'extrait 4.3 est
+    indispensable. La nouvelle quantité additionne le stock courant et la
+    quantité reçue, les deux valeurs étant converties en nombres avec repli sur
+    0. Enfin, le drapeau `stock_impacte` est passé à `true` sur l'entrée.
+
+  - L'extrait 4.3 montre la création des lignes d'entrée. Pour chaque ligne
+    saisie, le code cherche d'abord une fiche existante par désignation
+    exacte. Si aucune fiche n'existe, il en crée une avec la désignation
+    nettoyée (`trim()`), la nomenclature, la valeur unitaire (si elle est
+    numérique) et `quantite_stock: 0` — la quantité sera ajoutée plus tard par
+    `appliquerImpactStock`. Le commentaire est explicite sur la raison d'être
+    de ce bloc : sans fiche, la ligne resterait orpheline et son stock ne
+    serait jamais impacté. Le `try/catch` qui suit journalise un avertissement
+    sans interrompre la boucle : une ligne en échec n'empêche pas
+    l'enregistrement des suivantes.
+
+  - L'extrait 4.4 est le point de bascule du circuit. Après la pose de la
+    signature courante, l'entrée est rechargée, puis le nombre de drapeaux à
+    `true` est compté. Si ce nombre vaut 3, le statut passe à `validee` et
+    `appliquerImpactStock` est appelée ; sinon le statut est `verifiee`. La
+    validation et l'impact stock ne peuvent donc se produire qu'à la troisième
+    signature, jamais avant.
+
+  - Côté frontend, l'extrait 4.5 construit la charge utile de création. Le
+    client n'envoie ni référence (générée par le serveur au format
+    ENT-AAAA-NNN), ni statut, ni signature : il transmet la date, le bon de
+    livraison, le fournisseur en texte libre, le responsable et les lignes. Le
+    drapeau `exigerAffectations: false` correspond au flux « arrivée
+    matériel » : l'écran ne connaît pas les trois signataires à l'avance, le
+    serveur dérive l'affectation du dépositaire depuis la session et laisse les
+    deux autres vides jusqu'à leurs signatures.
+
+  - L'extrait 4.6 illustre le contrôle qualité obligatoire avant la première
+    signature. Le composant vérifie que chaque article possède un état
+    (`c.etat`) et qu'aucun n'est resté non contrôlé ; si c'est le cas, il
+    affiche un message ciblé, marque l'article incomplet et interrompt le
+    traitement (`return`) avant tout appel réseau. Les contrôles sont ensuite
+    envoyés groupés avec la signature `chef_service_1` : l'état du matériel est
+    donc enregistré dans le même appel que la signature.
+
+Données manipulées
+  En-tête d'entrée : `reference`, `date_entree`, `bon_livraison`,
+  `date_bon_livraison`, `fournisseur`, `responsable`, `notes`, `statut`,
+  `stock_impacte`, trois drapeaux `*_signed` et leurs dates et signataires.
+  Lignes : `materiel`, `numero_ordre`, `designation`, `reference`, `espece`,
+  `unite`, `quantite`, `valeur_unitaire`, `montant`, `nomenclature`,
+  `piece_justificative`, `observations`, `etat`, `conforme`.
+
+Règles de gestion
+  R1. Une entrée suit l'ordre magasinier (1) → logistique (2) → dépositaire
+      (3) ; une signature ne peut être ni devancée ni reposée.
+  R2. Le statut reste `en_attente` ou `verifiee` tant que les trois signatures
+      ne sont pas réunies ; il devient `validee` à la troisième.
+  R3. Le stock est augmenté une seule fois, à la troisième signature, ligne par
+      ligne, et le drapeau `stock_impacte` interdit toute seconde application.
+  R4. Une ligne sans fiche matériel ne peut pas impacter le stock : une fiche
+      est créée à la saisie avec une quantité nulle.
+  R5. La référence de l'entrée est générée par le serveur ; le client ne peut
+      pas l'imposer.
+  R6. Chaque ligne doit être contrôlée (état renseigné) avant la certification
+      du magasinier.
+
+Résultat attendu
+  Après saisie, l'entrée apparaît avec le statut correspondant à son
+  avancement. À la troisième signature, le statut passe à « validée » et les
+  quantités reçues sont ajoutées au stock des articles concernés.
+
+Limites constatées
+  - `appliquerImpactStock` n'est pas exécutée dans une transaction SQL : elle
+    enchaîne des mises à jour unitaires. Une interruption entre deux lignes
+    laisserait un stock partiellement incrémenté alors que `stock_impacte`
+    n'aurait pas encore été posé. La protection contre le double impact est
+    donc assurée, mais pas l'atomicité multi-lignes — différence avec le
+    circuit de sortie, qui utilise `app.db.transaction`.
+  - L'augmentation du stock est calculée en lecture puis écriture
+    (`quantite_stock + quantite`) et non par un `increment` atomique : deux
+    validations simultanées sur le même article peuvent se perdre.
+  - `MaterialEntry.tsx` et `NewEntryPage.tsx` constituent deux chemins de saisie
+    distincts ; le mémoire doit préciser lequel est présenté.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran « Arrivée matériel » au moment du contrôle des articles (colonnes
+  désignation, quantité, état, conformité, remarque), puis la même entrée
+  affichée avec ses trois signatures et le statut « Validée ». Une capture de
+  la fiche matériel avant/après validation (quantité passant de 0 à N) illustre
+  l'impact sur le stock.
+
+
+================================================================================
+ 5. EXPRESSION ET TRAITEMENT DES DEMANDES DE MATÉRIEL
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/demande/content-types/demande/schema.json
+      En-tête de demande : référence DEM-AAAA-NNN, type (entrée/sortie),
+      statut, priorité, dates, motif, demandeur, direction, service, lignes.
+
+  backend/src/api/demande/content-types/demande-ligne/schema.json
+      Ligne de demande : matériel, désignation, quantité demandée, quantité
+      approuvée, motif.
+
+  backend/src/api/demande/controllers/demande.js
+      Contrôleur métier : en-tête de règles (6-26), `validerLignes`
+      (229-328), création en liste blanche (478-528), `approuver` (599-724),
+      `creerOrdre` (799-933, préremplissage 856-871), `update` interdisant la
+      modification des statuts de décision (935-950).
+
+  frontend/src/components/MyRequests.tsx
+      Écran « Mes demandes » : création d'une demande à partir du stock réel
+      (lignes 338-361).
+
+  frontend/src/components/DecisionRequests.tsx
+      Écran de décision du dépositaire : approbation (`approuver`, 181-205),
+      rejet (207-237) et génération de l'ordre de sortie (246-282).
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 5.1 — Contrôle du stock lors de la saisie d'une demande ------------
+Fichier : backend/src/api/demande/controllers/demande.js
+Lignes  : 284-313
+
+```js
+    const quantite = Number(ligne.quantite);
+    if (!Number.isInteger(quantite) || quantite < 1) {
+      return {
+        erreur:
+          `Quantité invalide pour « ${materiel.designation || materielId} » : ` +
+          'un entier supérieur à 0 est attendu.',
+      };
+    }
+
+    if (MATERIEL_INDISPONIBLE.includes(String(materiel.statut || ''))) {
+      return {
+        erreur:
+          `Le matériel « ${materiel.designation || materielId} » n'est pas ` +
+          `disponible (statut : ${materiel.statut}).`,
+      };
+    }
+
+    // Cumul des lignes visant le MÊME matériel (deux lignes ne peuvent pas
+    // contourner le contrôle de stock en se partageant le même article).
+    const cumul = (cumulParMateriel.get(materiel.documentId) || 0) + quantite;
+    cumulParMateriel.set(materiel.documentId, cumul);
+
+    const stock = Number(materiel.quantite_stock) || 0;
+    if (cumul > stock) {
+      return {
+        erreur:
+          `Stock insuffisant pour « ${materiel.designation || materielId} » : ` +
+          `quantité demandée ${cumul}, quantité disponible ${stock}.`,
+      };
+    }
+```
+
+--- Extrait 5.2 — Création en liste blanche -----------------------------------
+Fichier : backend/src/api/demande/controllers/demande.js
+Lignes  : 506-528
+
+```js
+    // 4. Charge utile en LISTE BLANCHE.
+    const totalQuantite = lignes.reduce((somme, ligne) => somme + ligne.quantite, 0);
+    const designations = lignes.map((ligne) => ligne.designation).filter(Boolean);
+    const data = {
+      type: body.type === 'entree' ? 'entree' : 'sortie',
+      statut,
+      priorite: PRIORITES.includes(body.priorite) ? body.priorite : 'normal',
+      date_demande: dateValide(body.date_demande),
+      motif:
+        typeof body.motif === 'string' && body.motif.trim()
+          ? body.motif.trim()
+          : lignes[0].motif || null,
+      // Dénormalisation : le circuit de sortie (non modifié) lit ces champs.
+      designation_materiel: designations.join(' / ') || '—',
+      quantite: totalQuantite,
+      // POSSESSION : toujours l'utilisateur connecté.
+      demandeur: user.documentId,
+      // ORGANIGRAMME : toujours celui du compte.
+      direction: organigramme.direction ? organigramme.direction.documentId : null,
+      service: organigramme.service ? organigramme.service.documentId : null,
+      // LIGNES : matériel du stock réel, quantité et motif.
+      lignes: lignes.map((ligne) => ({ __component: 'demande.ligne', ...ligne })),
+    };
+```
+
+--- Extrait 5.3 — Approbation et quantités approuvées --------------------------
+Fichier : backend/src/api/demande/controllers/demande.js
+Lignes  : 686-714
+
+```js
+      const total = (cumul.get(materielId) || 0) + quantite;
+      cumul.set(materielId, total);
+      const stock = Number(materiel.quantite_stock) || 0;
+      if (total > stock) {
+        return forbid(
+          ctx,
+          `Stock insuffisant pour « ${ligne.designation || materielId} » : quantité approuvée ${total}, quantité disponible ${stock}.`,
+          409
+        );
+      }
+      decisions.push({
+        id: ligne.id,
+        quantite,
+        quantite_demandee: demandee,
+      });
+    }
+
+    // 4. Écriture : statut, validateur et date posés par le serveur.
+    const data = {
+      statut: 'approuvee',
+      valide_par: nomUtilisateur(user),
+      date_validation: new Date().toISOString(),
+      quantite: decisions.reduce((somme, d) => somme + d.quantite, 0),
+      lignes: decisions.map((d) => ({
+        id: d.id,
+        quantite: d.quantite,
+        quantite_demandee: d.quantite_demandee,
+      })),
+    };
+```
+
+--- Extrait 5.4 — Une demande, un ordre : préremplissage depuis la base --------
+Fichier : backend/src/api/demande/controllers/demande.js
+Lignes  : 839-871
+
+```js
+    // Une demande, un ordre : un second ordre est refusé (409). Le contrôle
+    // est fait ICI et, de nouveau, dans la logique de création partagée.
+    const ordresLies = await app.documents(SORTIE_UID).findMany({
+      filters: { demande: { documentId } },
+      fields: ['documentId', 'reference'],
+      limit: -1,
+    });
+    if (ordresLies && ordresLies.length > 0) {
+      const reference = ordresLies[0].reference || '';
+      return conflict(
+        ctx,
+        reference
+          ? `Un ordre de sortie existe déjà pour cette demande (${reference}) : une demande ne porte qu'un seul ordre.`
+          : "Un ordre de sortie existe déjà pour cette demande : une demande ne porte qu'un seul ordre."
+      );
+    }
+
+    // Préremplissage : TOUT vient de la base.
+    const body = {
+      date_sortie: new Date().toISOString().slice(0, 10),
+      // PIÈCE JUSTIFICATIVE = référence de la demande.
+      justificatif: demande.reference,
+      direction_id:
+        demande.direction && demande.direction.documentId
+          ? demande.direction.documentId
+          : null,
+      service_id:
+        demande.service && demande.service.documentId
+          ? demande.service.documentId
+          : null,
+      lignes,
+      demande_id: documentId,
+    };
+```
+
+--- Extrait 5.5 — Création de la demande côté frontend -------------------------
+Fichier : frontend/src/components/MyRequests.tsx
+Lignes  : 340-361
+
+```tsx
+      const reponse = await api.post("/api/demandes", {
+        data: {
+          type: "sortie",
+          priorite:
+            priorite === "Urgent"
+              ? "urgent"
+              : priorite === "Critique"
+              ? "critique"
+              : "normal",
+          statut: statut === "Brouillon" ? "brouillon" : "en_attente",
+          date_demande: today,
+          date_envoi: statut === "En attente" ? today : undefined,
+          motif: observation.trim() || undefined,
+          // Lignes : le matériel du STOCK RÉEL (documentId), la quantité, le
+          // motif. C'est le SEUL contenu propre à la demande.
+          lignes: lignesValidées.map((ligne) => ({
+            materiel: ligne.materielDocumentId,
+            quantite: Number(ligne.quantite),
+            motif: ligne.motif.trim() || undefined,
+          })),
+        },
+      });
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Permettre à un service d'exprimer un besoin chiffré sur des articles réels,
+  faire décider ce besoin par le responsable habilité, puis transformer la
+  décision en ordre de sortie sans aucune ressaisie.
+
+Fonctionnement des instructions
+
+  - `validerLignes` (extrait 5.1) est appelée à la création comme à la
+    modification. Pour chaque ligne, elle convertit la quantité en nombre et
+    exige un entier supérieur ou égal à 1 (`Number.isInteger`, `quantite < 1`).
+    Elle refuse ensuite les articles dont le statut figure dans
+    `MATERIEL_INDISPONIBLE` (articles en maintenance, réformés, etc.). Le
+    contrôle décisif est le cumul : une table `cumulParMateriel` additionne les
+    quantités de toutes les lignes visant le même article, ce qui empêche de
+    contourner le contrôle de stock en éclatant une demande en plusieurs
+    lignes. Si le cumul dépasse `quantite_stock`, la fonction renvoie un objet
+    `{ erreur }` explicite, repris tel quel dans la réponse HTTP 400.
+
+  - La création (extrait 5.2) applique le principe de la liste blanche : le
+    serveur ne recopie pas le corps de la requête, il construit un objet `data`
+    champ par champ. Le type est ramené à `entree` ou `sortie`, la priorité est
+    validée contre la liste `PRIORITES`, le statut est calculé, le motif est
+    nettoyé. Surtout, trois champs ne peuvent pas être falsifiés : `demandeur`
+    reçoit l'utilisateur connecté (`user.documentId`), `direction` et `service`
+    sont résolus à partir du compte (`resoudreOrganigramme`). Un utilisateur ne
+    peut donc pas déposer une demande au nom d'un autre ni la rattacher à une
+    autre direction.
+
+  - L'approbation (extrait 5.3) est l'étape de décision du dépositaire. Le
+    responsable peut ajuster la quantité de chaque ligne : la valeur proposée
+    est contrôlée (entier ≥ 1, contrôle du cumul et du stock avec un HTTP 409
+    en cas d'insuffisance). Les deux quantités sont conservées —
+    `quantite_demandee` (valeur initiale) et `quantite` (valeur approuvée) — ce
+    qui permet de tracer l'écart entre la demande et la décision. Le statut, le
+    nom du validateur et la date sont posés par le serveur, jamais par le
+    client.
+
+  - `creerOrdre` (extrait 5.4) assure la continuité du circuit. Elle vérifie
+    d'abord qu'aucun ordre de sortie n'est déjà rattaché à la demande
+    (`filters: { demande: { documentId } }`) et renvoie un conflit 409 en
+    citant la référence existante : une demande ne peut produire qu'un seul
+    ordre. Le corps de l'ordre est ensuite entièrement prérempli depuis la
+    base : date du jour, référence de la demande comme pièce justificative,
+    direction et service de la demande, lignes avec les quantités approuvées,
+    et lien `demande_id`. L'appel se termine par `preparerSortie`, la fonction
+    partagée du circuit de sortie (section 6).
+
+  - L'extrait 5.5 montre la contrepartie frontend : l'écran n'envoie que le
+    type, la priorité, le statut, la date, le motif et les lignes identifiées
+    par `documentId` du matériel. Il n'envoie ni demandeur, ni direction, ni
+    service, ni référence — ces valeurs sont dérivées côté serveur.
+
+Données manipulées
+  Demande : `reference`, `type`, `statut` (brouillon, en_attente, approuvee,
+  rejetee, sortie_effectuee), `priorite` (normal, urgent, critique),
+  `date_demande`, `date_envoi`, `motif`, `designation_materiel`, `quantite`,
+  `demandeur`, `direction`, `service`, `valide_par`, `date_validation`,
+  `observation`. Lignes : `materiel`, `designation`, `quantite`,
+  `quantite_demandee`, `motif`.
+
+Règles de gestion
+  R1. Une demande est créée par le demandeur connecté ; la possession et le
+      rattachement organisationnel ne sont jamais transmis par le client.
+  R2. Une quantité demandée est un entier ≥ 1.
+  R3. Le cumul des lignes d'une même demande ne peut pas dépasser le stock
+      disponible de l'article.
+  R4. Un article indisponible (statut non distribuable) ne peut pas être
+      demandé.
+  R5. L'approbation peut réduire la quantité ; la quantité demandée initiale
+      reste conservée pour la traçabilité.
+  R6. Une demande approuvée ne peut donner qu'un seul ordre de sortie.
+  R7. Les statuts de décision (`approuvee`, `rejetee`) ne sont pas modifiables
+      par la route générique `update`.
+
+Résultat attendu
+  Le demandeur voit sa demande passer de « brouillon » ou « en attente » à
+  « approuvée » ou « rejetée ». Une demande approuvée peut être transformée en
+  ordre de sortie prérempli, sans nouvelle saisie.
+
+Limites constatées
+  - Le contrôle de stock à la création et à l'approbation est un contrôle
+    indicatif : il ne réserve pas la quantité. Le stock peut être consommé par
+    une autre sortie entre l'approbation et la validation logistique ; c'est
+    cette dernière qui fait foi (section 6, extrait 6.3).
+  - Le module `affectation` (transferts entre services, quatre signatures) est
+    distinct de la demande et n'est pas mobilisé par ce circuit ; il ne doit
+    pas être confondu avec l'affectation au détenteur (section 9).
+  - `MyRequests.tsx` affiche des demandes : la création est bien persistée
+    (appel `POST /api/demandes`), contrairement aux écrans de mouvements
+    (section 11).
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran « Mes demandes » avec le formulaire de création (articles issus du
+  stock, quantités, motif), puis l'écran de décision du dépositaire montrant
+  une demande avec ses quantités demandées et approuvées, et le bouton
+  « Créer l'ordre de sortie ».
+
+
+================================================================================
+ 6. CIRCUIT DE SORTIE : LES TROIS SIGNATURES ET LE DÉBIT DU STOCK
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/sortie/content-types/sortie/schema.json
+      En-tête d'ordre de sortie : référence SOR-AAAA-NNN, dates, direction,
+      service, demande liée, bénéficiaire, justificatif, statut
+      (`en_preparation`, `validee`, `sortie_effectuee`, `rejetee`), trois
+      drapeaux de signature, `stock_impacte`, champs de remise.
+
+  backend/src/api/sortie-ligne/content-types/sortie-ligne/schema.json
+      Ligne de sortie : matériel, désignation, quantité, valeur unitaire,
+      montant, état constaté, observations, numéro logistique.
+
+  backend/src/api/sortie/controllers/sortie.js
+      `SIGNATURE_ROLES` (70-92), `verifierStockDisponible` (235-260),
+      `signerLogistique` (278-547) dont la transaction (336-403) et les
+      mouvements (414-470), `sign` (727-796), `reject` (979), `remise`
+      (1110-1372), `findMouvements` (1381-1411).
+
+  backend/src/api/sortie/routes/sortie.js
+      Déclaration des routes du circuit (lignes 17-65).
+
+  backend/src/utils/creationSortie.js
+      `preparerSortie` (84-219), `genererReference` (221-239),
+      `creerSortieEtLignes` (246-284), `tracerMouvementSortie` (290-323).
+
+  frontend/src/lib/api.ts
+      `signerSortie` (784-803) : un seul point d'entrée pour les trois
+      signatures ; `preparerSortie` (895-900) : signature du dépositaire.
+
+  frontend/src/components/distribution/PreparationOrdreSortie.tsx
+      Signature 1/3 (magasinier) avec contrôle d'état par ligne (98-135).
+
+  frontend/src/components/distribution/AutorisationOrdreSortie.tsx
+      Signature 3/3 (chef logistique) et confirmation du débit (186-230).
+
+  frontend/src/lib/sortieControle.ts
+      Règles de complétude des contrôles (`validerControleSortie`, 7-34) et
+      filtres par rôle (96-120).
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 6.1 — Table des trois signatures -----------------------------------
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 70-92
+
+```js
+const SIGNATURE_ROLES = {
+  magasinier: {
+    flag: 'magasinier_signed',
+    dateField: 'date_signature_magasinier',
+    signerField: 'signataire_magasinier',
+    roles: ['magasinier'],
+    order: 1,
+  },
+  depositaire: {
+    flag: 'depositaire_signed',
+    dateField: 'date_signature_depositaire',
+    signerField: 'signataire_depositaire',
+    roles: ['depositaire'],
+    order: 2,
+  },
+  logistique: {
+    flag: 'logistique_signed',
+    dateField: 'date_signature_logistique',
+    signerField: 'signataire_logistique',
+    roles: ['logistique'],
+    order: 3,
+  },
+};
+```
+
+--- Extrait 6.2 — Contrôle du rôle, du statut et de l'ordre des signatures -----
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 727-796
+
+```js
+  async sign(ctx) {
+    const app = strapi;
+    const { documentId } = ctx.params;
+    const body = (ctx.request.body && ctx.request.body.data) || ctx.request.body || {};
+    const roleKey = body.role;
+
+    if (!SIGNATURE_ROLES[roleKey]) {
+      return badRequest(ctx, "Rôle de signature inconnu (magasinier, depositaire, logistique).");
+    }
+
+    // --- Contrôle du rôle connecté ------------------------------------------
+    const user = ctx.state && ctx.state.user;
+    if (!user || !user.id) {
+      return forbid(ctx, 'Authentification requise pour signer une sortie.', 401);
+    }
+    const code = (await getRoleCode(app, user.id)).toLowerCase();
+
+    // Le Demandeur ne signe jamais (garde-fou redondant avec roleGuard.js).
+    if (code === DEMANDEUR_ROLE) {
+      return forbid(ctx, "Votre rôle (Demandeur) ne permet pas de signer une sortie.");
+    }
+
+    const config = SIGNATURE_ROLES[roleKey];
+    const estAdmin = code === 'admin';
+    if (!estAdmin && !config.roles.includes(code)) {
+      return forbid(
+        ctx,
+        `Votre rôle ne permet pas d'apposer la signature « ${roleKey.replace(/_/g, ' ')} ».`
+      );
+    }
+
+    const sortie = await loadSortie(app, documentId);
+    if (!sortie) {
+      ctx.status = 404;
+      ctx.body = { error: { status: 404, name: 'NotFound', message: 'Sortie introuvable.' } };
+      return ctx.body;
+    }
+
+    // --- Statut obligatoire : en_preparation ---------------------------------
+    if (sortie.statut !== 'en_preparation') {
+      return badRequest(
+        ctx,
+        `La signature n'est possible que pour une sortie « en_preparation » (statut actuel : ${sortie.statut || '—'}).`
+      );
+    }
+
+    // --- Double signature interdite -------------------------------------------
+    if (sortie[config.flag] === true) {
+      return forbid(ctx, 'Cette signature a déjà été enregistrée et ne peut pas être modifiée.', 409);
+    }
+
+    // --- Ordre strict du workflow (TOUTES les signatures précédentes) --------
+    // Pour la 3ᵉ signature, magasinier (1) ET dépositaire (2) doivent avoir
+    // signé : le message nomme la première signature manquante.
+    const precedents = Object.values(SIGNATURE_ROLES)
+      .filter((c) => c.order < config.order)
+      .sort((a, b) => a.order - b.order);
+    for (const precedent of precedents) {
+      if (sortie[precedent.flag] !== true) {
+        return badRequest(
+          ctx,
+          `Signature manquante : la signature « ${precedent.signerField.replace('signataire_', '')} » doit être apposée avant celle-ci.`
+        );
+      }
+    }
+
+    // --- Étape 4 : la signature du chef logistique valide et débite le stock ----
+    if (roleKey === 'logistique') {
+      return await signerLogistique(app, ctx, sortie, documentId, user, body);
+    }
+```
+
+--- Extrait 6.3 — Contrôle obligatoire des lignes par le magasinier ------------
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 801-840
+
+```js
+    if (roleKey === 'magasinier') {
+      const controles = body.controles;
+      if (!Array.isArray(controles) || controles.length === 0) {
+        return badRequest(
+          ctx,
+          'Contrôles obligatoires : un élément { ligne, etat, observations? } par ligne de la sortie.'
+        );
+      }
+      const lignes = sortie.lignes || [];
+      const parLigne = new Map();
+      for (const c of controles) {
+        if (c && c.ligne) parLigne.set(c.ligne, c);
+      }
+
+      // a) Chaque ligne de la sortie doit être contrôlée.
+      const manquants = [];
+      const misesAJour = [];
+      for (const ligne of lignes) {
+        const controle = parLigne.get(ligne.documentId);
+        const etatValide =
+          controle && controle.etat && ETATS_VALIDES.includes(controle.etat);
+        if (!controle || !etatValide) {
+          manquants.push(ligne.designation || `Ligne ${ligne.id || ligne.documentId}`);
+          continue;
+        }
+        misesAJour.push({
+          documentId: ligne.documentId,
+          etat: controle.etat,
+          observations:
+            typeof controle.observations === 'string' && controle.observations.trim()
+              ? controle.observations.trim()
+              : null,
+        });
+      }
+      if (manquants.length > 0) {
+        return badRequest(
+          ctx,
+          `Contrôle incomplet : état invalide (neuf, bon, moyen ou defaillant) ou ligne manquante pour ${manquants.length} article(s) — ${manquants.join(', ')}.`
+        );
+      }
+```
+
+--- Extrait 6.4 — Signature logistique : transaction et débit atomique ---------
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 336-403
+
+```js
+  try {
+    await app.db.transaction(async ({ trx }) => {
+      // 1) Réception de toutes les pénuries AVANT toute écriture.
+      //    Lis chaque stock, collecte les insuffisances ; si au moins une
+      //    pénurie existe, annule immédiatement avec la liste complète.
+      const insuffisances = [];
+      for (const ligne of lignes) {
+        const materielId = ligne.materiel.documentId;
+        const courant = await trx(TABLE_MATERIALS)
+          .where({ document_id: materielId })
+          .first('quantite_stock');
+        const stock = courant ? Number(courant.quantite_stock) || 0 : 0;
+        const demande = Number(ligne.quantite) || 0;
+        if (demande > stock) {
+          insuffisances.push({
+            materiel: ligne.materiel.designation || ligne.designation || materielId,
+            demande,
+            stock,
+            materielId,
+          });
+        }
+      }
+      if (insuffisances.length > 0) {
+        const message = insuffisances
+          .map(
+            (inv) =>
+              `Stock insuffisant pour « ${inv.materiel} » : quantité demandée ${inv.demande}, quantité disponible ${inv.stock}.`
+          )
+          .join(' ');
+        throw new ErreurTransaction(409, message);
+      }
+
+      // 2) Verrou anti-double exécution : false -> true, conditionnel.
+      const nbVerrou = await trx(TABLE_SORTIES)
+        .where({ document_id: documentId, stock_impacte: false })
+        .update({ stock_impacte: true });
+      if (!nbVerrou) {
+        throw new ErreurTransaction(
+          409,
+          'Cette sortie a déjà été validée : le stock a déjà été débité une seule fois.'
+        );
+      }
+
+      // 3) Décrémentations atomiques (ordre stable par fiche matériel pour
+      //    limiter les verrous croisés entre sorties concurrentes).
+      const lignesTriees = [...lignes].sort((a, b) =>
+        a.materiel.documentId < b.materiel.documentId ? -1 : 1
+      );
+      for (const ligne of lignesTriees) {
+        const quantite = Number(ligne.quantite) || 0;
+        const nbDecrement = await trx(TABLE_MATERIALS)
+          .where({ document_id: ligne.materiel.documentId })
+          .where('quantite_stock', '>=', quantite)
+          .decrement('quantite_stock', quantite);
+        if (!nbDecrement) {
+          const courant = await trx(TABLE_MATERIALS)
+            .where({ document_id: ligne.materiel.documentId })
+            .first('quantite_stock');
+          throw new ErreurTransaction(
+            409,
+            `Stock insuffisant pour « ${
+              ligne.materiel.designation || ligne.designation || ligne.materiel.documentId
+            } » : quantité demandée ${quantite}, quantité disponible ${
+              courant ? Number(courant.quantite_stock) || 0 : 0
+            }. Aucune modification enregistrée.`
+          );
+        }
+      }
+```
+
+--- Extrait 6.5 — Pose de la signature et mouvements dans la transaction -------
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 414-451
+
+```js
+      // 5) Signature logistique + validation (date ISO serveur = date de
+      //    validation pour le Journal).
+      await app.documents(SORTIE_UID).update({
+        documentId,
+        data: {
+          logistique_signed: true,
+          signataire_logistique: signataire,
+          date_signature_logistique: maintenant,
+          stock_impacte: true,
+          statut: 'validee',
+        },
+      });
+
+      // 6) Mouvements, dans la même transaction — UN PAR ligne + signature.
+      //    SANS try/catch avalant : un échec de traçage annule toute la
+      //    validation (throw = rollback automatique).
+      for (const ligne of lignes) {
+        await app.documents(MOUVEMENT_UID).create({
+          data: {
+            reference: sortie.reference,
+            type: 'sortie',
+            date_mouvement: jour,
+            utilisateur: signataire,
+            action: 'Sortie validée, stock débité',
+            materiel:
+              ligne.materiel.designation ||
+              ligne.designation ||
+              ligne.materiel.documentId,
+            quantite: Number(ligne.quantite) || 0,
+            statut: 'validee',
+            sortie: documentId,
+            observations:
+              ligne.materiel.documentId === ligne.designation
+                ? null
+                : `Fiche matériel : ${ligne.materiel.documentId}`,
+          },
+        });
+      }
+```
+
+--- Extrait 6.6 — Appel unique des trois signatures côté frontend --------------
+Fichier : frontend/src/lib/api.ts
+Lignes  : 784-803
+
+```ts
+export async function signerSortie(
+  documentId: string,
+  role: 'magasinier' | 'depositaire' | 'logistique',
+  controles?: ControleSortieLignePayload[],
+  numerosLogistiques?: Array<{ ligne: string; numero_logistique: string }>
+): Promise<SortieRecord> {
+  const data: Record<string, unknown> = { role };
+  if (controles && controles.length > 0) data.controles = controles;
+  if (numerosLogistiques && numerosLogistiques.length > 0) {
+    data.numeros_logistiques = numerosLogistiques;
+  }
+  // Transaction serveur (validation + débit de stock) : délai généreux, la
+  // valeur par défaut de l'instance (8 s) tronquerait la requête.
+  const { data: reponse } = await api.post(
+    `/api/sorties/${documentId}/sign`,
+    { data },
+    { timeout: 30000 }
+  );
+  return mapSortie(reponse.data);
+}
+```
+
+--- Extrait 6.7 — Signature 3/3 déclenchée par le chef logistique --------------
+Fichier : frontend/src/components/distribution/AutorisationOrdreSortie.tsx
+Lignes  : 211-227
+
+```tsx
+    try {
+      // Build the payload
+      const payload = construirePayloadSignatureLogistique(sortie, numerosLogistiques);
+
+      // signerSortie poste vers /api/sorties/:documentId/sign avec
+      // { role: 'logistique', numeros_logistiques } et un délai de 30 s
+      // (transaction serveur : validation + débit de stock).
+      // ATTENTION : l'identifiant de la sortie est sortie.id (mapSortie y range
+      // le documentId Strapi) — SortieRecord n'a AUCUN champ documentId ; avec
+      // sortie.documentId l'URL était « /api/sorties/undefined/sign » (404
+      // « Sortie introuvable »).
+      const signedSortie = await signerSortie(
+        sortie.id,
+        "logistique",
+        undefined,
+        payload.numeros_logistiques
+      );
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Sécuriser la sortie de matériel par trois signatures successives portées par
+  trois fonctions distinctes, et faire en sorte que le stock ne soit débité
+  qu'une seule fois, au moment précis où la troisième signature est posée.
+
+Fonctionnement des instructions
+
+  - `SIGNATURE_ROLES` (extrait 6.1) décrit les trois étapes. Contrairement à la
+    table du module d'entrée, chaque entrée porte un tableau `roles` : le rôle
+    autorisé à poser la signature est donc vérifié en base, et non déduit du
+    libellé envoyé. L'ordre est fixé par `order` : 1 magasinier, 2 dépositaire,
+    3 logistique. Les noms de champs (`magasinier_signed`,
+    `depositaire_signed`, `logistique_signed`, et leurs `date_` / `signataire_`)
+    sont les colonnes réellement écrites dans la table des sorties.
+
+  - `sign` (extrait 6.2) est l'unique point d'entrée des trois signatures
+    (`POST /api/sorties/:documentId/sign`). La méthode enchaîne des contrôles
+    dans un ordre volontaire, du plus général au plus précis :
+      1. le corps doit désigner un rôle connu, sinon 400 ;
+      2. l'appel doit être authentifié, sinon 401 ;
+      3. `getRoleCode` relit le rôle réel et le profil « demandeur » est refusé ;
+      4. le rôle doit figurer dans `config.roles` (sauf `admin`, toléré comme
+         rôle d'exploitation) ;
+      5. la sortie doit exister, sinon 404 ;
+      6. son statut doit être `en_preparation` : une sortie validée ou déjà
+         remise ne peut plus être signée ;
+      7. la signature visée ne doit pas déjà être posée (409), ce qui rend le
+         double clic inoffensif ;
+      8. toutes les signatures de rang inférieur doivent être présentes, sinon
+         400 avec le nom de la signature manquante.
+    Si ces huit contrôles passent et que le rôle est `logistique`, la méthode
+    délègue immédiatement à `signerLogistique` : c'est la seule branche qui
+    touche au stock.
+
+  - L'extrait 6.3 détaille la signature du magasinier. Les `controles` sont
+    obligatoires : un élément `{ ligne, etat, observations? }` par ligne. Le
+    code construit une table `parLigne` indexée par `documentId` de ligne, puis
+    parcourt les lignes de la sortie pour vérifier que chacune possède un
+    contrôle dont l'état appartient à `ETATS_VALIDES` (`neuf`, `bon`, `moyen`,
+    `defaillant`). Les lignes non conformes sont accumulées dans `manquants` et
+    l'ensemble de la requête est refusé si la liste n'est pas vide. Un second
+    garde-fou, juste après, vérifie qu'aucun contrôle ne référence une ligne
+    d'une autre sortie. Les états sont ensuite écrits sur les lignes avant la
+    pose de la signature, de sorte qu'aucun état intermédiaire incohérent ne
+    subsiste.
+
+  - L'extrait 6.4 est le cœur transactionnel. `app.db.transaction` ouvre une
+    transaction Knex et fournit `trx`. Trois étapes s'y succèdent :
+      a) lecture de toutes les pénuries avant toute écriture : chaque stock est
+         lu, comparé à la quantité demandée, et les insuffisances sont
+         collectées pour être renvoyées en une seule fois (HTTP 409), ce qui
+         évite de découvrir la seconde pénurie après avoir déjà débité la
+         première ligne ;
+      b) verrou anti-double exécution : la mise à jour n'est appliquée que si
+         `stock_impacte` vaut `false` et renvoie le nombre de lignes modifiées.
+         Si ce nombre est nul, la sortie a déjà été validée : le code lève une
+         `ErreurTransaction` 409 qui provoque le rollback ;
+      c) décrémentations atomiques, ligne par ligne, avec un `where
+         quantite_stock >= quantite` dans la clause de mise à jour. Le
+         décrément n'est donc appliqué que si le stock est suffisant au moment
+         exact de l'écriture ; dans le cas contraire, aucun enregistrement
+         n'est modifié (`!nbDecrement`) et une erreur 409 est levée. Les lignes
+         sont triées par `documentId` de matériel afin que deux sorties
+         concurrentes verrouillent les fiches dans le même ordre et ne se
+         bloquent pas mutuellement.
+
+  - L'extrait 6.5 termine la transaction : pose de `logistique_signed`, du
+    signataire et de la date ISO, passage de `stock_impacte` à `true` et du
+    statut à `validee`, puis création d'un mouvement par ligne. Ces créations
+    sont volontairement dépourvues de `try/catch` : une erreur de traçage
+    annule toute la validation, ce qui garantit qu'une sortie validée possède
+    toujours sa trace comptable.
+
+  - `signerSortie` (extrait 6.6) est le seul appel utilisé par les trois
+    écrans : le paramètre `role` distingue l'étape, `controles` n'est renseigné
+    que pour le magasinier, `numeros_logistiques` que pour le chef logistique.
+    Le délai est porté à 30 secondes car la requête exécute une transaction
+    serveur. L'extrait 6.7 montre l'appel effectif à l'étape 3, avec
+    `role: "logistique"`, et rappelle un piège corrigé : l'identifiant attendu
+    est `sortie.id` (qui contient le `documentId` Strapi), faute de quoi l'URL
+    devient `/api/sorties/undefined/sign`.
+
+Données manipulées
+  Sortie : `reference`, `date_sortie`, `statut`, `direction`, `service`,
+  `demande`, `beneficiaire`, `responsable`, `justificatif`, `observations`,
+  `magasinier_signed` / `depositaire_signed` / `logistique_signed`, leurs dates
+  et signataires, `stock_impacte`, `date_remise`, `mandataire_nom`,
+  `detenteur_nom`, `detenteur_fonction`, `remise_detenteur_cloturee`.
+  Lignes : `materiel`, `designation`, `quantite`, `valeur_unitaire`, `montant`,
+  `etat`, `observations`, `numero_logistique`.
+
+Règles de gestion
+  R1. Trois signatures dans un ordre strict : magasinier, dépositaire
+      comptable, chef logistique. Aucune ne peut être devancée.
+  R2. Une signature déjà posée ne peut être ni reposée ni modifiée (409).
+  R3. La signature n'est possible que sur une sortie au statut
+      `en_preparation`.
+  R4. La signature du magasinier exige un contrôle d'état pour chaque ligne.
+  R5. La troisième signature valide la sortie (`validee`) et débite le stock
+      central, dans la même transaction.
+  R6. Le débit est protégé par le verrou `stock_impacte` : une seule
+      décrémentation possible, même en cas de requêtes simultanées.
+  R7. Si un article est insuffisant, aucune ligne n'est débitée : la
+      transaction est annulée et la liste complète des pénuries est renvoyée.
+  R8. Aucun mouvement de traçage ne peut être omis : un échec de création
+      annule la validation.
+
+Résultat attendu
+  La sortie passe de `en_preparation` à `validee` à la troisième signature, les
+  quantités sorties sont retirées du stock, et le journal enregistre un
+  mouvement « Sortie validée, stock débité » par ligne ainsi qu'un mouvement de
+  signature.
+
+Limites et points de vigilance
+  - Le débit du stock a lieu à la troisième signature, c'est-à-dire avant la
+    remise physique (section 7). Entre la validation et la remise, le stock
+    affiché est donc inférieur au stock physiquement présent au magasin. Ce
+    décalage est inhérent au circuit et doit être expliqué dans le mémoire.
+  - La première signature (magasinier) est un contrôle de l'état du matériel
+    effectué en amont de la validation. La règle « le magasinier prépare les
+    matériels après validation » n'a pas d'étape dédiée dans le code : la
+    sortie physique du magasin se confond avec la remise (section 7).
+  - Le rôle `admin` applicatif contourne la vérification `config.roles` : il
+    peut poser n'importe laquelle des trois signatures. La séparation des
+    tâches n'est donc pas garantie pour ce profil.
+  - `sign` accepte `numeros_logistiques` pour l'étape 3 ; ces numéros sont
+    enregistrés tels quels, sans contrôle de format.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Trois captures successives du même ordre de sortie : (1) écran de préparation
+  avec les contrôles d'état par ligne et la signature magasinier ; (2) écran
+  d'autorisation du dépositaire ; (3) écran de signature du chef logistique
+  avec la confirmation « stock débité » et les quantités avant/après. Une
+  capture de la fenêtre d'erreur « Stock insuffisant » complète utilement la
+  démonstration de la règle R7.
+
+
+================================================================================
+ 7. PRÉPARATION DES MATÉRIELS ET REMISE PHYSIQUE
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/sortie/controllers/sortie.js
+      Contrôle de préparation par ligne (801-859), signature 1/3 (883-893),
+      méthode `remise` (1110-1372) : règles d'éligibilité (1143-1157),
+      transaction (1234-1302), mouvement de traçage (1275-1295).
+
+  frontend/src/components/distribution/PreparationOrdreSortie.tsx
+      Écran de préparation : saisie de l'état par ligne, case de vérification
+      de présence, signature `magasinier` (98-135).
+
+  frontend/src/components/distribution/AutorisationOrdreSortie.tsx
+      Écran du dépositaire comptable : vérification du stock disponible avant
+      signature 2/3 (186-230).
+
+  frontend/src/components/distribution/RemiseOrdreSortie.tsx
+      Écran de remise : règles de saisie (192-201) et envoi (204-238).
+
+  frontend/src/lib/api.ts
+      `remettreSortie` (832-844) : contrat de la remise (deux champs
+      seulement).
+
+  backend/src/api/sortie/content-types/sortie/schema.json
+      Champs de remise : `date_remise`, `mandataire_nom`, `detenteur_nom`,
+      `detenteur_fonction`, statut `sortie_effectuee`.
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 7.1 — Contrôles de préparation et signature du magasinier ----------
+Fichier : frontend/src/components/distribution/PreparationOrdreSortie.tsx
+Lignes  : 98-135
+
+```tsx
+  const handlePreparer = async () => {
+    const allLinesHaveEtat = controles.every(controle => controle.etat && controle.etat.trim() !== "");
+    if (!allLinesHaveEtat) {
+      setError("Veuillez spécifier l'état pour toutes les lignes avant de signer");
+      return;
+    }
+    if (!controles.every(controle => verifiees[controle.ligne] === true)) {
+      setError("Confirmez que le matériel est présent et la quantité vérifiée pour chaque ligne");
+      return;
+    }
+    const lignesDefaillantes = controles.filter(
+      controle => controle.etat === "defaillant" && !(controle.observations ?? "").trim()
+    );
+    if (lignesDefaillantes.length > 0) {
+      setError("Une ligne déclarée « Défaillant » exige une remarque");
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+    try {
+      // La case de vérification reste hors payload (aide d'écran uniquement).
+      // SortieRecord.id EST le documentId servi par mapSortie.
+      const preparedSortie = await signerSortie(sortie.id, "magasinier", controles);
+      setIsLoading(false);
+      setOuverte(false);
+      onSuccess(preparedSortie);
+    } catch (err: any) {
+      setIsLoading(false);
+      if (err.response?.status === 403) {
+        setError("Vous n'avez pas la permission de préparer cette sortie");
+      } else if (err.response?.status === 409) {
+        setError("Cette sortie ne peut pas être préparée");
+      } else {
+        setError("Erreur lors de la préparation de la sortie");
+      }
+    }
+  };
+```
+
+--- Extrait 7.2 — Conditions d'éligibilité de la remise -----------------------
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 1147-1157
+
+```js
+    if (sortie.statut === 'sortie_effectuee') {
+      return forbid(ctx, 'Remise déjà enregistrée', 409);
+    }
+
+    // Vérification du statut : doit être validee
+    if (sortie.statut !== 'validee') {
+      return badRequest(
+        ctx,
+        `La remise n'est possible que pour une sortie « validee » (statut actuel : ${sortie.statut || '—'}).`
+      );
+    }
+```
+
+--- Extrait 7.3 — Remise : écriture transactionnelle ---------------------------
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 1234-1256
+
+```js
+    // Transaction pour l'atomicité de la remise
+    let demandeMiseAJour = false;
+    try {
+      await app.db.transaction(async ({ trx }) => {
+        // 1. Enregistrement de la date de remise (et, le cas échéant, du
+        // détenteur — désormais optionnel, saisi à l'affectation pas ici).
+        const donneesRemise = {
+          date_remise: dateRemiseFinal,
+        };
+        if (detenteurNomFinal) {
+          donneesRemise.detenteur_nom = detenteurNomFinal;
+        }
+        if (detenteurFonctionFinal) {
+          donneesRemise.detenteur_fonction = detenteurFonctionFinal;
+        }
+        // Un mandataire vide n'écrit RIEN : le champ n'est pas touché.
+        if (mandataireFinal) {
+          donneesRemise.mandataire_nom = mandataireFinal;
+        }
+        await app.documents(SORTIE_UID).update({
+          documentId,
+          data: donneesRemise,
+        });
+```
+
+--- Extrait 7.4 — Mouvement de remise et passage à `sortie_effectuee` ----------
+Fichier : backend/src/api/sortie/controllers/sortie.js
+Lignes  : 1275-1301
+
+```js
+        // 3. Création du mouvement de traçage « Remise au détenteur »
+        const signataire = nomUtilisateur(user);
+        await app.documents(MOUVEMENT_UID).create({
+          data: {
+            reference: sortie.reference,
+            type: 'sortie',
+            date_mouvement: dateRemiseFinal,
+            utilisateur: signataire,
+            action: 'Remise au détenteur',
+            materiel: (sortie.lignes || [])
+              .map((l) => l.designation)
+              .filter(Boolean)
+              .join(', ') || '—',
+            quantite: (sortie.lignes || []).reduce((sum, l) => sum + (Number(l.quantite) || 0), 0),
+            statut: 'sortie_effectuee',
+            sortie: documentId,
+            observations: detenteurNomFinal
+              ? `Matériel remis à ${detenteurNomFinal} (${detenteurFonctionFinal || '—'})`
+              : 'Matériel remis au détenteur.',
+          },
+        });
+
+        // 4. Passage du statut à sortie_effectuee
+        await app.documents(SORTIE_UID).update({
+          documentId,
+          data: { statut: 'sortie_effectuee' },
+        });
+```
+
+--- Extrait 7.5 — Règles de saisie de la remise (frontend) ---------------------
+Fichier : frontend/src/components/distribution/RemiseOrdreSortie.tsx
+Lignes  : 192-201
+
+```tsx
+  const erreurDeSaisie = useMemo(() => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dateRemise)) return "La date de remise est invalide.";
+    if (dateEstDansLeFutur(dateRemise, aujourdhui)) {
+      return "La date de remise ne peut pas être postérieure à aujourd'hui.";
+    }
+    if (!materielConfirme) {
+      return "Confirmez que le matériel remis correspond à la liste.";
+    }
+    return null;
+  }, [aujourdhui, dateRemise, materielConfirme]);
+```
+
+--- Extrait 7.6 — Charge utile de la remise : deux champs seulement ------------
+Fichier : frontend/src/components/distribution/RemiseOrdreSortie.tsx
+Lignes  : 204-225
+
+```tsx
+  const envoyer = useCallback(async () => {
+    // UNE SEULE remise : le double-clic est sans effet.
+    if (envoiEnCours.current) return;
+
+    if (erreurDeSaisie) {
+      setErreur(erreurDeSaisie);
+      return;
+    }
+
+    envoiEnCours.current = true;
+    setEnvoi(true);
+    setErreur(null);
+
+    // Deux champs seulement : mandataire (optionnel) et date de remise.
+    // Jamais de statut, jamais le stock, jamais le détenteur.
+    const payload = construirePayloadRemise({
+      mandataireNom,
+      dateRemise,
+    });
+
+    try {
+      const remise = await remettreSortie(sortie.id, payload);
+```
+
+--- Extrait 7.7 — Contrat de la remise côté client -----------------------------
+Fichier : frontend/src/lib/api.ts
+Lignes  : 813-844
+
+```ts
+/**
+ * Payload de la remise — QUATRE champs, jamais un statut, jamais le stock.
+ * Le serveur refuse tout le reste de toute façon ; l'envoyer ne serait
+ * qu'une occasion de dévier du contrat.
+ */
+export interface PayloadRemise {
+  mandataire_nom?: string;
+  date_remise: string;
+}
+
+/**
+ * Enregistre la remise du matériel au détenteur.
+ * POST /api/sorties/:documentId/remise — rôle magasinier ou dépositaire
+ * comptable, sortie obligatoirement validée.
+ *
+ * Le stock n'est PAS touché ici : il a déjà été débité à la validation
+ * logistique. La remise ne fait qu'enregistrer qui a reçu le matériel
+ * (et, le cas échéant, le mandataire), et quand.
+ */
+export async function remettreSortie(
+  documentId: string,
+  payload: PayloadRemise
+): Promise<SortieRecord> {
+  // Transaction serveur : délai généreux, la valeur par défaut de
+  // l'instance (8 s) tronquerait la requête.
+  const { data: reponse } = await api.post(
+    `/api/sorties/${documentId}/remise`,
+    { data: payload },
+    { timeout: 30000 }
+  );
+  return mapSortie(reponse.data);
+}
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Distinguer deux moments que l'usage confond souvent : la préparation
+  contrôlée du matériel (vérifier que l'article existe, qu'il est en état et en
+  quantité suffisante) et la remise physique, qui constate la sortie du
+  magasin et fait passer l'ordre au statut `sortie_effectuee`.
+
+Fonctionnement des instructions
+
+  - `handlePreparer` (extrait 7.1) est l'écran de la première signature. Trois
+    conditions sont vérifiées avant tout appel réseau : toutes les lignes ont un
+    état (`controle.etat` non vide), toutes les cases de vérification de
+    présence sont cochées (`verifiees[controle.ligne] === true`), et toute ligne
+    déclarée « défaillant » porte une remarque. Chaque échec produit un message
+    distinct et un `return` immédiat : aucune requête partielle n'est envoyée.
+    L'appel `signerSortie(sortie.id, "magasinier", controles)` transmet les
+    contrôles ; la case à cocher, qui n'est qu'une aide d'écran, reste hors du
+    payload. Les erreurs 403 et 409 sont traduites en messages métier.
+
+  - Côté serveur, cette première signature écrit l'état de chaque ligne puis
+    pose `magasinier_signed` (extrait 6.3 et lignes 883-893 du contrôleur). Le
+    statut de la sortie reste `en_preparation` : la préparation ne valide rien
+    et ne touche pas au stock.
+
+  - `remise` (extraits 7.2 à 7.4) est une méthode distincte, appelée par
+    `POST /api/sorties/:documentId/remise`. Elle vérifie d'abord que la remise
+    n'est pas déjà enregistrée (409), puis que le statut est exactement
+    `validee` : une sortie encore en préparation ne peut donc pas être remise.
+    Le commentaire du code précise que le détenteur (nom et fonction) est
+    optionnel à cette étape, car il sera identifié plus tard, lors de
+    l'affectation (section 9).
+
+  - L'écriture de la remise (extrait 7.3) ouvre une transaction. L'objet
+    `donneesRemise` n'est construit qu'avec la date, et n'ajoute le détenteur ou
+    le mandataire que s'ils sont renseignés : un champ vide ne provoque aucune
+    écriture, ce qui évite d'écraser une valeur existante par une chaîne vide.
+
+  - Dans la même transaction (extrait 7.4), un mouvement « Remise au
+    détenteur » est créé, avec la date de remise, le signataire, la liste des
+    désignations et la quantité totale, puis le statut de la sortie passe à
+    `sortie_effectuee`. Aucune ligne de cet extrait ne modifie
+    `quantite_stock` : la remise ne débite rien, le débit a eu lieu à la
+    troisième signature.
+
+  - `erreurDeSaisie` (extrait 7.5) regroupe les règles de forme de l'écran de
+    remise : format de date `AAAA-MM-JJ`, date non postérieure à aujourd'hui,
+    confirmation explicite que le matériel remis correspond à la liste. Le
+    calcul est mémorisé par `useMemo` et rejoue dès qu'une des trois valeurs
+    change.
+
+  - L'extrait 7.6 montre le garde anti-double envoi (`envoiEnCours.current`, une
+    référence et non un état, donc immédiatement à jour) et la construction du
+    payload limité au mandataire et à la date. L'extrait 7.7 documente ce
+    contrat : l'interface `PayloadRemise` ne comporte que deux champs, et le
+    commentaire rappelle explicitement que le stock n'est pas touché par cet
+    appel. Le délai de 30 secondes est nécessaire car la remise s'exécute dans
+    une transaction.
+
+Données manipulées
+  Sortie : `date_remise`, `mandataire_nom`, `detenteur_nom`,
+  `detenteur_fonction`, `statut` (`validee` → `sortie_effectuee`), champs de
+  signature 1. Lignes : `etat`, `observations`. Mouvement : `reference`,
+  `type`, `date_mouvement`, `utilisateur`, `action`, `materiel`, `quantite`,
+  `statut`, `sortie`, `observations`.
+
+Règles de gestion
+  R1. La préparation exige un état pour chaque ligne et la confirmation de
+      présence ; une ligne défaillante doit être motivée.
+  R2. La préparation ne modifie pas le statut de la sortie et ne touche pas au
+      stock.
+  R3. La remise physique n'est possible que sur une sortie validée.
+  R4. Une remise ne peut être enregistrée qu'une seule fois (409 ensuite).
+  R5. La remise ne débite pas le stock : elle enregistre qui a reçu, quand, et
+      éventuellement par quel mandataire.
+  R6. La date de remise ne peut pas être future.
+  R7. Le détenteur n'est pas obligatoirement connu à la remise ; il le sera à
+      l'affectation, après réception.
+
+Résultat attendu
+  L'ordre passe à `sortie_effectuee`, le journal enregistre une remise, et le
+  matériel est considéré comme sorti du magasin — sans aucune nouvelle
+  modification du stock.
+
+Limites et points de vigilance
+  - La règle métier « le magasinier prépare les matériels après validation »
+      n'est pas celle qu'implémente le code : la préparation-contrôle est la
+      première signature, donc antérieure à la validation ; seule la remise
+      physique intervient après la validation. Le mémoire doit présenter cette
+      séquence réelle, ou signaler l'écart comme une évolution à prévoir.
+  - Les deux étapes sont nommées de façon proche (« préparation » pour la
+    signature 1, « remise » pour la sortie physique) ; il convient de les
+    distinguer explicitement dans le texte et dans les captures.
+  - Aucun contrôle ne vérifie que la personne qui reçoit physiquement le
+    matériel est bien celle enregistrée : la remise constate, elle n'authentifie
+    pas le récepteur.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran de préparation avec les colonnes état / présent / quantité vérifiée et
+  la mention « Défaillant » motivée ; puis l'écran de remise (date, mandataire,
+  confirmation) et l'ordre affiché au statut « Sortie effectuée ». La fiche du
+  matériel avant et après la remise permet de montrer que la quantité n'a pas
+  changé à cette étape.
+
+
+================================================================================
+ 8. RÉCEPTION PAR LE DÉPOSITAIRE DE DIRECTION
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/reception-physique/content-types/reception-physique/schema.json
+      Modèle réellement utilisé par l'interface : sortie liée, date de
+      réception, statut (`conforme` / `anomalie`), type et description
+      d'anomalie, quantités prévue et reçue, utilisateur.
+
+  backend/src/api/reception-physique/controllers/reception-physique.js
+      `create` (87-204) : contrôle du rôle demandeur, contrôle du statut de la
+      sortie, contrôle de la direction, conversion de `sortieId` en relation
+      (133-137), puis délégation au contrôleur standard et notifications.
+
+  backend/src/api/reception/content-types/reception/schema.json
+      Second modèle de réception (en-tête `numero`, statut
+      `en_cours` / `partielle` / `complete`) avec ses lignes de réception et
+      leurs reliquats.
+
+  backend/src/api/reception/controllers/reception.js
+      Implémentation alternative : `determinerStatutReception` (136-178),
+      `create` (214-467) avec contrôle du statut de la sortie (263-288) et
+      règle du reliquat (385-407).
+
+  frontend/src/components/reception/FormulaireRéception.tsx
+      Formulaire de réception : quantités, déclaration d'anomalie, envoi
+      (`handleSubmit`, 70-150).
+
+  frontend/src/lib/api.ts
+      `creerReceptionPhysique` (1797-1802) et `listerReceptionsPhysiques`
+      (1807+) : appels vers `/api/receptions-physiques`.
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 8.1 — Modèle de la réception physique ------------------------------
+Fichier : backend/src/api/reception-physique/content-types/reception-physique/schema.json
+Lignes  : 14-54
+
+```json
+    "sortie": {
+      "type": "relation",
+      "relation": "manyToOne",
+      "target": "api::sortie.sortie",
+      "required": true
+    },
+    "date_reception": {
+      "type": "date",
+      "required": true
+    },
+    "statut": {
+      "type": "enumeration",
+      "enum": [
+        "conforme",
+        "anomalie"
+      ],
+      "default": "conforme"
+    },
+    "type_anomalie": {
+      "type": "enumeration",
+      "enum": [
+        "manquant",
+        "endommage",
+        "incorrect"
+      ]
+    },
+    "description_anomalie": {
+      "type": "text"
+    },
+    "quantite_prevue": {
+      "type": "integer",
+      "required": true
+    },
+    "quantite_recue": {
+      "type": "integer",
+      "required": true
+    },
+    "utilisateur": {
+      "type": "string",
+      "required": true
+    }
+```
+
+--- Extrait 8.2 — Contrôles du contrôleur de réception physique ----------------
+Fichier : backend/src/api/reception-physique/controllers/reception-physique.js
+Lignes  : 87-137
+
+```js
+  async create(ctx) {
+    const user = ctx.state && ctx.state.user;
+    if (!user || !user.id) {
+      return forbid(ctx, 'Authentification requise.');
+    }
+
+    const demandeur = await isDemandeur(app, user.id);
+    if (!demandeur) {
+      return forbid(
+        ctx,
+        'Seul un demandeur (dépositaire de direction) peut enregistrer une réception physique.'
+      );
+    }
+
+    const body = (ctx.request.body && ctx.request.body.data) || {};
+    const { sortieId } = body;
+    if (!sortieId) {
+      return badRequest(ctx, 'La référence de la sortie est requise.');
+    }
+
+    // Charger la sortie avec sa direction
+    const sortie = await app.documents(SORTIE_UID).findOne({
+      documentId: sortieId,
+      populate: { direction: true },
+    });
+    if (!sortie) {
+      return forbid(ctx, 'Sortie introuvable.');
+    }
+
+    if (sortie.statut !== 'sortie_effectuee') {
+      return badRequest(
+        ctx,
+        'La sortie n\'est pas encore effectuée (statut : ' + sortie.statut + ').'
+      );
+    }
+
+    // Vérifier que la sortie appartient à la direction du demandeur
+    const directionIds = await getDirectionIds(app, user);
+    const sortieDirectionId = sortie.direction && sortie.direction.documentId;
+    if (!directionIds.includes(sortieDirectionId)) {
+      return forbid(
+        ctx,
+        'Cette sortie ne appartient pas à votre direction.'
+      );
+    }
+
+    // Convertir sortieId en relation sortie attendue par le schema Strapi
+    if (ctx.request.body && ctx.request.body.data) {
+      ctx.request.body.data.sortie = sortieId;
+      delete ctx.request.body.data.sortieId;
+    }
+```
+
+--- Extrait 8.3 — Règle du reliquat dans le module `reception` -----------------
+Fichier : backend/src/api/reception/controllers/reception.js
+Lignes  : 385-407
+
+```js
+          // R6 : quantite_recue <= quantite_commandee.
+          if (quantiteRecue > quantiteCommandee) {
+            const err = new Error(
+              `Quantité reçue (${quantiteRecue}) supérieure à la quantité commandée (${quantiteCommandee}) sur la ligne ${sortieLigneDocumentId}`
+            );
+            err.status = 400;
+            throw err;
+          }
+
+          const quantiteReliquat = quantiteCommandee - quantiteRecue;
+
+          await app.documents(RECEPTION_LIGNE_UID).create({
+            data: {
+              reception: reception.documentId,
+              sortie_ligne: sortieLigneDocumentId,
+              materiel: materielDocumentId,
+              quantite_commandee: quantiteCommandee,
+              quantite_recue: quantiteRecue,
+              quantite_reliquat: quantiteReliquat,
+              etat: ligne.etat || 'neuf',
+              observations: typeof ligne.observations === 'string' ? ligne.observations : null,
+            },
+          });
+```
+
+--- Extrait 8.4 — Envoi du formulaire de réception -----------------------------
+Fichier : frontend/src/components/reception/FormulaireRéception.tsx
+Lignes  : 91-105
+
+```tsx
+    try {
+      await creerReceptionPhysique({
+        sortieId: sortie.id,
+        date_reception: new Date().toISOString(),
+        statut: declarationAnomalie ? "anomalie" : "conforme",
+        quantite_prevue: sortie.quantite,
+        quantite_recue: quantite,
+        utilisateur,
+        ...(typeAnomalieBackend !== undefined && {
+          type_anomalie: typeAnomalieBackend,
+        }),
+        ...(declarationAnomalie && descriptionAnomalie && {
+          description_anomalie: descriptionAnomalie,
+        }),
+      });
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Permettre au dépositaire de la direction demandeuse de constater l'arrivée
+  effective du matériel, d'enregistrer les quantités réellement reçues et de
+  signaler une anomalie (manquant, endommagé, non conforme), avant toute
+  affectation nominative.
+
+Fonctionnement des instructions
+
+  - Le modèle (extrait 8.1) impose une relation `sortie` obligatoire : une
+    réception ne peut exister sans ordre de sortie. `quantite_prevue` et
+    `quantite_recue` sont deux entiers obligatoires, ce qui permet de comparer
+    l'attendu et le reçu. `statut` est une énumération à deux valeurs
+    (`conforme` par défaut, `anomalie`) et `type_anomalie` en précise la nature
+    (`manquant`, `endommage`, `incorrect`). `utilisateur` est un texte libre
+    identifiant le déclarant.
+
+  - `create` (extrait 8.2) vérifie quatre conditions avant d'écrire :
+      1. la requête est authentifiée ;
+      2. l'utilisateur possède le rôle « demandeur » — c'est le profil du
+         dépositaire de direction, et le message d'erreur le dit explicitement ;
+      3. la sortie référencée existe et son statut est `sortie_effectuee`,
+         c'est-à-dire que la remise physique a déjà été enregistrée (section 7) ;
+      4. la direction de la sortie fait partie des directions de l'utilisateur,
+         résolues par `getDirectionIds` à partir de son champ `department`.
+    Ces contrôles garantissent qu'un dépositaire ne peut pas réceptionner la
+    sortie d'une autre direction, ni réceptionner un matériel qui n'a pas
+    encore quitté le magasin.
+
+  - La conversion de `sortieId` en `sortie` (lignes 134-137) est une
+    adaptation au schéma Strapi : le client envoie une chaîne, la relation
+    attend un identifiant de document ; le champ temporaire est supprimé du
+    corps de la requête avant l'appel à `super.create`. Sans cette conversion,
+    la relation serait refusée par le service de documents.
+
+  - Le module `reception` (extrait 8.3) implémente une variante plus complète :
+    chaque ligne de réception enregistre la quantité commandée, la quantité
+    reçue et le reliquat (`quantite_commandee - quantite_recue`), avec une
+    règle R6 qui interdit de recevoir plus que commandé. Le statut de l'en-tête
+    est recalculé par `determinerStatutReception` en `en_cours`, `partielle` ou
+    `complete` selon les reliquats cumulés. Ce module permet donc les
+    réceptions partielles en plusieurs livraisons.
+
+  - L'écran (extrait 8.4) construit la charge utile : identifiant de la sortie,
+    date ISO, statut déduit de la case « déclaration d'anomalie », quantités
+    prévue et reçue, utilisateur, et — uniquement si une anomalie est déclarée
+    — le type et la description. Les deux champs d'anomalie sont ajoutés par
+    spread conditionnel, donc absents du payload lorsqu'il n'y a pas d'anomalie.
+
+Données manipulées
+  Réception physique : `sortie`, `date_reception`, `statut`, `type_anomalie`,
+  `description_anomalie`, `quantite_prevue`, `quantite_recue`, `utilisateur`.
+  Réception (variante) : `numero`, `date_reception`, `statut`, `utilisateur`,
+  `observations` ; lignes : `sortie_ligne`, `materiel`, `quantite_commandee`,
+  `quantite_recue`, `quantite_reliquat`, `etat`, `observations`.
+
+Règles de gestion
+  R1. Seul un utilisateur de rôle « demandeur » (dépositaire de direction) peut
+      enregistrer une réception.
+  R2. La sortie doit être au statut `sortie_effectuee` : on ne réceptionne que
+      ce qui a été physiquement remis.
+  R3. La sortie doit appartenir à la direction de l'utilisateur.
+  R4. Une réception est soit conforme, soit en anomalie ; l'anomalie est
+      typée (manquant, endommagé, incorrect) et décrite.
+  R5. La quantité reçue ne peut pas dépasser la quantité commandée (règle R6 du
+      module `reception`).
+  R6. Le reliquat est la différence entre quantité commandée et quantité reçue ;
+      il détermine le caractère partiel ou complet de la réception.
+
+Résultat attendu
+  La réception est enregistrée et rattachée à l'ordre de sortie. Si elle est
+  conforme, l'affectation au détenteur devient possible (section 9). Si elle
+  est en anomalie, l'anomalie est historisée avec son type et sa description.
+
+Limites et points de vigilance (important pour le mémoire)
+  - Deux circuits de réception coexistent dans le dépôt. L'interface
+    n'utilise que `reception-physique` (`/api/receptions-physiques`, appelé par
+    `lib/api.ts` lignes 1800, 1811 et 1841). Le module `reception`, avec ses
+    lignes et ses reliquats, n'est appelé par aucun écran du frontend : il
+    constitue une implémentation disponible côté API mais non exposée. Le
+    mémoire doit présenter le circuit réellement utilisé et signaler l'autre
+    comme une évolution possible.
+  - Le circuit `reception-physique` enregistre une quantité globale par
+    réception, non un détail par ligne : il ne gère donc pas nativement les
+    réceptions partielles article par article, contrairement au module
+    `reception`.
+  - Une réception en anomalie n'empêche pas techniquement l'affectation au
+    détenteur : c'est la présence d'au moins une réception avec une quantité
+    reçue positive qui est exigée (section 9). Le traitement de l'anomalie
+    (remplacement, régularisation) n'est pas implémenté.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran de réception d'une direction : liste des sorties au statut « Sortie
+  effectuée », formulaire avec quantité prévue, quantité reçue, case
+  « déclaration d'anomalie » et sélection du type d'anomalie. Une seconde
+  capture montre la réception enregistrée apparaissant dans l'historique de la
+  sortie.
+
+
+================================================================================
+ 9. AFFECTATION DU MATÉRIEL AU DÉTENTEUR
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/remise-detenteur/content-types/remise-detenteur/schema.json
+      En-tête d'affectation : sortie liée, date de remise, demandeur,
+      attestation, date d'enregistrement.
+
+  backend/src/api/remise-detenteur/content-types/remise-detenteur-ligne/schema.json
+      Ligne d'affectation : ligne de sortie, désignation, quantité,
+      `detenteur_nom`, `detenteur_fonction`, observation.
+
+  backend/src/api/remise-detenteur/controllers/remise-detenteur.js
+      `create` (184-475) : contrôle du statut de la sortie (226-232), exigence
+      d'une réception confirmée (234-241), anti-double (245-248), couverture
+      des lignes (351-354), verrou transactionnel (381-399), création de la
+      remise et de ses lignes (401-429), mouvement sans impact stock (437-455).
+
+  frontend/src/components/reception/RemiseDetenteurDemandeur.tsx
+      Écran du dépositaire de direction : saisie du détenteur par ligne
+      (392-410), payload (433-443).
+
+  frontend/src/lib/api.ts
+      `createRemiseDetenteur` (2117) et `fetchRemisesDetenteurs` (2038).
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 9.1 — Conditions préalables à l'affectation -----------------------
+Fichier : backend/src/api/remise-detenteur/controllers/remise-detenteur.js
+Lignes  : 226-248
+
+```js
+    // Vérification du statut : doit être sortie_effectuee
+    if (sortie.statut !== 'sortie_effectuee') {
+      return badRequest(
+        ctx,
+        `La remise au détenteur n'est possible que pour une sortie « sortie_effectuee » (statut actuel : ${sortie.statut || '—'}).`
+      );
+    }
+
+    // Vérification : réception physique confirmée (quantite_recue > 0)
+    const receptions = await receptionConfirmee(app, sortieId);
+    if (receptions.length === 0) {
+      return badRequest(
+        ctx,
+        'Aucune réception physique confirmée n\'existe pour ce dossier. La remise ne peut pas être enregistrée.'
+      );
+    }
+    // Date de la réception la plus récente (pour la borne inférieure de date_remise)
+    const dateReceptionRecente = receptions[receptions.length - 1].date_reception;
+
+    // Vérification anti-double : la remise est-elle déjà clôturée ?
+    if (sortie.remise_detenteur_cloturee) {
+      return forbid(ctx, 'La remise du matériel au détenteur est déjà enregistrée pour ce dossier.', 409);
+    }
+```
+
+--- Extrait 9.2 — Toutes les lignes doivent être couvertes ---------------------
+Fichier : backend/src/api/remise-detenteur/controllers/remise-detenteur.js
+Lignes  : 351-354
+
+```js
+    // Vérification : toutes les lignes du dossier doivent être couvertes exactement une fois
+    if (lignesSortie.length > 0 && lignesVues.size !== lignesSortie.length) {
+      return badRequest(ctx, `Toutes les lignes du dossier doivent avoir un détenteur (${lignesVues.size}/${lignesSortie.length} couvertes).`);
+    }
+```
+
+--- Extrait 9.3 — Verrou anti-double dans la transaction -----------------------
+Fichier : backend/src/api/remise-detenteur/controllers/remise-detenteur.js
+Lignes  : 381-399
+
+```js
+    try {
+      await app.db.transaction(async ({ trx }) => {
+        // 1. Verrou anti-double exécution : UPDATE conditionnel, tolérant au
+        //    NULL (colonne créée après les lignes déjà enregistrées).
+        //    Deux étapes explicites : NULL -> true, puis false -> true.
+        //    0 ligne modifiée => la remise est déjà enregistrée : 409.
+        let nbVerrou = await trx(TABLE_SORTIES)
+          .where({ document_id: sortieId })
+          .whereNull('remise_detenteur_cloturee')
+          .update({ remise_detenteur_cloturee: true });
+        if (!nbVerrou) {
+          nbVerrou = await trx(TABLE_SORTIES)
+            .where({ document_id: sortieId })
+            .where('remise_detenteur_cloturee', false)
+            .update({ remise_detenteur_cloturee: true });
+        }
+        if (!nbVerrou) {
+          throw new ErreurTransaction(409, 'La remise du matériel au détenteur est déjà enregistrée pour ce dossier (conflit).');
+        }
+```
+
+--- Extrait 9.4 — Lignes d'affectation et mouvement sans débit de stock --------
+Fichier : backend/src/api/remise-detenteur/controllers/remise-detenteur.js
+Lignes  : 416-438
+
+```js
+        // 3. Création des lignes de remise
+        for (const v of validations) {
+          await app.documents(LIGNE_UID).create({
+            data: {
+              remise: remiseCreee.documentId,
+              sortie_ligne: v.ligne ? (v.ligne.documentId || v.ligne.id) : null,
+              designation: v.designation,
+              quantite: v.quantite,
+              detenteur_nom: v.detenteurNom,
+              detenteur_fonction: v.detenteurFonction,
+              observation: v.observation,
+            },
+          });
+        }
+
+        // 4. Mise à jour de la sortie : date de remise au détenteur
+        await app.documents(SORTIE_UID).update({
+          documentId: sortieId,
+          data: { remise_detenteur_date: dateRemise },
+        });
+
+        // 5. Mouvement de traçabilité — AUCUNE déduction de stock ici :
+        //    le stock a déjà été débité à la validation logistique.
+```
+
+--- Extrait 9.5 — Saisie du détenteur et payload (frontend) -------------------
+Fichier : frontend/src/components/reception/RemiseDetenteurDemandeur.tsx
+Lignes  : 393-410
+
+```tsx
+  const validation = useMemo(() => {
+    const lignesIncompletes = lignesDetenteurs.filter(
+      (l) => !l.detenteurNom.trim() || !l.detenteurFonction.trim()
+    );
+    if (lignesIncompletes.length > 0) {
+      return {
+        ok: false,
+        message: `${lignesIncompletes.length} ligne(s) sans détenteur défini.`,
+      };
+    }
+    if (!dateRemise) {
+      return { ok: false, message: "La date de remise est requise." };
+    }
+    if (dateRemise > aujourdhui) {
+      return { ok: false, message: "La date de remise ne peut pas être future." };
+    }
+    return { ok: true, message: undefined };
+  }, [lignesDetenteurs, dateRemise, aujourdhui]);
+```
+
+--- Extrait 9.6 — Payload d'affectation ---------------------------------------
+Fichier : frontend/src/components/reception/RemiseDetenteurDemandeur.tsx
+Lignes  : 433-445
+
+```tsx
+      const payload: CreateRemiseDetenteurPayload = {
+        sortie: sortie.id,
+        date_remise: dateRemise,
+        materiels: lignesDetenteurs.map((ligne) => ({
+          ligne: ligne.ligneId,
+          detenteur_nom: ligne.detenteurNom,
+          detenteur_fonction: ligne.detenteurFonction,
+          observation: ligne.observation,
+        })),
+        attestation: true,
+      };
+
+      await createRemiseDetenteur(payload);
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif
+  Nommer, article par article, la personne qui devient responsable du matériel
+  au sein de la direction, une fois la réception confirmée. Cette étape clôt le
+  circuit : après elle, le matériel n'est plus « sorti du magasin », il est
+  « affecté à un détenteur ».
+
+Fonctionnement des instructions
+
+  - L'extrait 9.1 enchaîne trois conditions. La sortie doit d'abord être au
+    statut `sortie_effectuee`, c'est-à-dire avoir été physiquement remise par le
+    magasin. Ensuite, `receptionConfirmee` doit renvoyer au moins une réception :
+    la fonction ne retient que les réceptions dont la quantité reçue est
+    strictement positive, ce qui traduit la règle métier « pas d'affectation
+    sans confirmation de réception ». Enfin, la sortie ne doit pas avoir déjà
+    été clôturée (`remise_detenteur_cloturee`), ce qui renvoie un 409 en cas de
+    seconde tentative.
+
+  - L'extrait 9.2 impose la couverture intégrale : le nombre de lignes vues
+    dans la demande d'affectation doit être égal au nombre de lignes de la
+    sortie. On ne peut donc pas affecter une partie du matériel seulement ; le
+    message d'erreur indique le décompte (`x/y couvertes`), ce qui aide
+    l'utilisateur à identifier la ligne oubliée.
+
+  - L'extrait 9.3 est le verrou d'unicité, exécuté dans la transaction. La
+    colonne `remise_detenteur_cloturee` ayant été ajoutée après la création de
+    certaines lignes, elle peut valoir `NULL` : le code effectue donc deux
+    mises à jour conditionnelles successives (`NULL -> true`, puis
+    `false -> true`). Si aucune des deux ne modifie de ligne, la remise est
+    déjà enregistrée et une `ErreurTransaction` 409 provoque le rollback. Ce
+    mécanisme rend le double clic et les envois concurrents inoffensifs, sans
+    dépendre d'un verrou applicatif.
+
+  - L'extrait 9.4 écrit une ligne d'affectation par matériel, avec
+    `detenteur_nom` et `detenteur_fonction` en clair, puis met à jour la date de
+    remise au détenteur sur la sortie. Le commentaire précédant la création du
+    mouvement est explicite : aucune déduction de stock n'a lieu ici, car le
+    débit a été effectué à la validation logistique. L'affectation ne produit
+    donc qu'un mouvement de traçabilité.
+
+  - Côté écran (extrait 9.5), la validation exige un nom et une fonction pour
+    chaque ligne ainsi qu'une date de remise non future. Le payload (extrait
+    9.6) reprend exactement ces valeurs, ligne par ligne, avec le booléen
+    `attestation: true` qui matérialise l'engagement du dépositaire.
+
+  - Point capital pour la règle métier : le détenteur n'est pas un compte
+    utilisateur. `detenteur_nom` et `detenteur_fonction` sont des champs texte
+    écrits tels quels (extrait 9.4) ; aucune relation vers la table des
+    utilisateurs n'est créée. Une personne peut donc détenir du matériel sans
+    jamais se connecter à l'application.
+
+Données manipulées
+  Remise au détenteur : `sortie`, `date_remise`, `demandeur_nom`,
+  `attestation`, `date_enregistrement`. Lignes : `sortie_ligne`,
+  `designation`, `quantite`, `detenteur_nom`, `detenteur_fonction`,
+  `observation`. Sortie : `remise_detenteur_date`,
+  `remise_detenteur_cloturee`.
+
+Règles de gestion
+  R1. L'affectation n'est possible qu'après réception physique confirmée
+      (quantité reçue > 0).
+  R2. La sortie doit être au statut `sortie_effectuee`.
+  R3. Toutes les lignes du dossier doivent être affectées, chacune une seule
+      fois.
+  R4. Chaque ligne porte un nom et une fonction de détenteur.
+  R5. Une seule affectation par dossier : le verrou transactionnel l'impose.
+  R6. L'affectation ne modifie pas le stock.
+  R7. Le détenteur est identifié par son nom et sa fonction, sans lien avec un
+      compte utilisateur.
+
+Résultat attendu
+  Le dossier est clôturé côté direction : chaque matériel est rattaché à un
+  détenteur nommé, la date d'affectation est enregistrée et un mouvement
+  « Remise du matériel au détenteur » est ajouté au journal.
+
+Limites et constatées
+  - L'affectation est globale au dossier : aucune affectation partielle ou
+    progressive n'est possible, alors que le matériel peut être distribué à
+    plusieurs personnes à des dates différentes.
+  - Le contrôle de la quantité affectée par ligne n'est pas vérifié ici contre
+    la quantité réellement reçue : la couverture est vérifiée en nombre de
+    lignes, non en quantités.
+  - Une réception déclarée en anomalie avec une quantité reçue positive
+    n'empêche pas l'affectation ; le traitement de l'anomalie reste manuel.
+  - Le module `affectation` présent dans le dépôt est un circuit distinct
+    (transferts entre services, quatre signatures). Il ne doit pas être
+    présenté comme l'affectation au détenteur.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran d'affectation d'un dossier : tableau des lignes avec désignation,
+  quantité, champ « détenteur » et champ « fonction », date de remise, case
+  d'attestation. Puis la fiche du dossier clôturé montrant les détenteurs
+  nommés et le mouvement correspondant dans le journal.
+
+
+================================================================================
+ 10. RETOURS, PERTES ET INVENTAIRE
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/rapport/routes/rapport.js
+      Six routes de reddition : récapitulation, récapitulations, état
+      appréciatif, inventaire, grand-livre, bordereau (lignes 16-47).
+
+  backend/src/api/rapport/controllers/rapport.js
+      Contrôleurs correspondants : `recapitulation` (117-147), `inventaire`
+      (196-209), `grandLivre` (215-239), `bordereau` (245+).
+
+  backend/src/api/rapport/services/redition-calculs.js
+      Calculs : `calculerInventaire` (263-412), `calculerGrandLivre` (423+),
+      `calculerRecapitulationsChainees`.
+
+  frontend/src/components/RedditionSection.tsx
+      Section « Reddition de compte » : chargement par onglet (101-131),
+      exports PDF / Excel, réservée aux rôles `depositaire` et `comptable`
+      (ligne 133).
+
+  frontend/src/components/Reports.tsx
+      Écran « Rapports » qui héberge la section précédente (ligne 170).
+
+  frontend/src/types/roles.ts
+      `ROLES_CONFIG` déclare les pages `pertes` et `inventaire` (lignes 26, 36,
+      56) pour plusieurs rôles.
+
+  frontend/src/components/SimpleSidebar.tsx
+      `navItems` (à partir de la ligne 26) : aucune entrée `pertes`,
+      `inventaire` ni `retour`.
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 10.1 — Routes des états de reddition -------------------------------
+Fichier : backend/src/api/rapport/routes/rapport.js
+Lignes  : 16-47
+
+```js
+  routes: [
+    {
+      method: 'GET',
+      path: '/rapports/recapitulation',
+      handler: 'rapport.recapitulation',
+    },
+    {
+      method: 'GET',
+      path: '/rapports/recapitulations',
+      handler: 'rapport.recapitulations',
+    },
+    {
+      method: 'GET',
+      path: '/rapports/etat-appreciatif',
+      handler: 'rapport.etatAppreciatif',
+    },
+    {
+      method: 'GET',
+      path: '/rapports/inventaire',
+      handler: 'rapport.inventaire',
+    },
+    {
+      method: 'GET',
+      path: '/rapports/grand-livre',
+      handler: 'rapport.grandLivre',
+    },
+    {
+      method: 'GET',
+      path: '/rapports/bordereau',
+      handler: 'rapport.bordereau',
+    },
+  ],
+```
+
+--- Extrait 10.2 — Calcul de l'inventaire annuel -------------------------------
+Fichier : backend/src/api/rapport/services/redition-calculs.js
+Lignes  : 263-295
+
+```js
+function calculerInventaire({ annee, entrees, sorties, materiaux = [], ouvertures = [] }) {
+  const entreesAnnee = lignesDeLAnnee(entrees, annee, 'entree');
+  const sortiesAnnee = lignesDeLAnnee(sorties, annee, 'sortie');
+
+  const parMateriel = new Map();
+
+  function assurer(materielId, designation, nomenclature, valeurUnitaire, unite) {
+    if (!parMateriel.has(materielId)) {
+      parMateriel.set(materielId, {
+        materielId,
+        designation: designation || '—',
+        nomenclature: nomenclature || '—',
+        valeurUnitaire: Number(valeurUnitaire) || 0,
+        unite: unite || 'N',
+        entreesQ: 0,
+        sortiesQ: 0,
+      });
+    }
+    return parMateriel.get(materielId);
+  }
+
+  // Matériaux référencés dans la base (même sans mouvement, ils existent)
+  for (const m of materiaux) {
+    assurer(m.documentId || m.id, m.designation, m.nomenclature, m.valeur_unitaire, m.unite);
+  }
+  for (const l of entreesAnnee) {
+    const m = assurer(l.materielId, l.designation, l.nomenclature, l.valeurUnitaire, null);
+    m.entreesQ += l.quantite;
+  }
+  for (const l of sortiesAnnee) {
+    const m = assurer(l.materielId, l.designation, l.nomenclature, l.valeurUnitaire, null);
+    m.sortiesQ += l.quantite;
+  }
+```
+
+--- Extrait 10.3 — Calcul des quantités restantes ------------------------------
+Fichier : backend/src/api/rapport/services/redition-calculs.js
+Lignes  : 318-336
+
+```js
+  const articles = Array.from(parMateriel.values()).map((m) => {
+    const existantQ = 0; // stock physique initial par article non historisé
+    const resteQ = existantQ + m.entreesQ - m.sortiesQ;
+    const valeurEntrees = m.entreesQ * m.valeurUnitaire;
+
+    // Existant en valeur : part de l'ouverture de la nomenclature
+    const ouvertureNom = ouvertureParNom.get(m.nomenclature) || 0;
+    const valeurEntreesNom = valeurEntreeParNom.get(m.nomenclature) || 0;
+    let existantV = 0;
+    if (ouvertureNom > 0 && valeurEntreesNom > 0) {
+      existantV = (ouvertureNom * valeurEntrees) / valeurEntreesNom;
+    } else if (ouvertureNom > 0 && valeurEntreesNom === 0) {
+      // Aucune entrée dans la nomenclature : tout l'existant reste global
+      existantV = 0; // ventilé seulement si un seul article
+    }
+```
+
+--- Extrait 10.4 — Chargement des états par onglet (frontend) ------------------
+Fichier : frontend/src/components/RedditionSection.tsx
+Lignes  : 101-125
+
+```tsx
+  const charger = useCallback(async () => {
+    setLoading(true);
+    setErreur(null);
+    if (onglet === "recapitulation") {
+      const data = await fetchRecapitulation(annee)
+      setRecap(data)
+    } else if (onglet === "etat-appreciatif") {
+      const data = await fetchEtatAppreciatif(annee)
+      setEtat(data)
+    } else if (onglet === "grand-livre") {
+      const inv = inventaire ?? (await fetchInventaire(annee))
+      if (!inventaire && inv) setInventaire(inv)
+      const premier = inv?.sections.flatMap((s) => s.articles)[0]
+      const cible = materielChoisi || premier?.materielId || ""
+      if (cible) {
+        const data = await fetchGrandLivre(cible, annee)
+        setGrandLivre(data)
+        if (!materielChoisi && cible) setMaterielChoisi(cible)
+      } else {
+        setGrandLivre(null)
+      }
+    } else if (onglet === "bordereau") {
+      const data = await fetchBordereau(annee)
+      setBordereau(data)
+    }
+    setLoading(false)
+  }, [onglet, annee, materielChoisi, inventaire])
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Objectif annoncé
+  Clore le cycle de vie du matériel : enregistrer les retours, constater les
+  pertes et produire l'inventaire annuel.
+
+État réel de l'implémentation (à présenter tel quel dans le mémoire)
+
+  1. INVENTAIRE — partiellement implémenté, sous forme d'état comptable.
+     L'inventaire existe comme état de reddition : `GET /api/rapports/inventaire`
+     (extrait 10.1) calcule, pour une année, les quantités entrées et sorties
+     par article et en déduit le reste. `calculerInventaire` (extrait 10.2)
+     construit une table `parMateriel` initialisée avec tous les articles
+     référencés en base (même sans mouvement), puis ajoute les quantités des
+     lignes d'entrée et de sortie de l'année. L'extrait 10.3 montre le calcul du
+     reste : `resteQ = existantQ + entreesQ - sortiesQ`, avec `existantQ`
+     volontairement fixé à 0 et commenté « stock physique initial par article
+     non historisé ». La valorisation de l'existant est répartie par
+     nomenclature au prorata des entrées.
+     Ce qui n'existe pas : aucune campagne d'inventaire physique n'est
+     implémentée. Il n'y a ni saisie de quantités comptées, ni rapprochement
+     automatique entre stock théorique et stock constaté, ni clôture
+     d'inventaire — alors que la description du rôle de dépositaire dans
+     `ROLES_CONFIG` mentionne « clôture l'inventaire annuel ». L'écran
+     correspondant n'est pas accessible : la clé `inventaire` est déclarée dans
+     `ROLES_CONFIG` mais absente de `navItems` (`SimpleSidebar.tsx`).
+
+  2. PERTES — non implémenté.
+     La page `pertes` est déclarée dans `ROLES_CONFIG` (lignes 26, 36 et 56)
+     pour les rôles dépositaire, magasinier et comptable, mais aucune entrée de
+     navigation ne la référence et aucun module d'API ne traite une déclaration
+     de perte. Il n'existe donc ni formulaire, ni statut, ni mouvement de type
+     « perte ». Le mémoire doit indiquer cette fonctionnalité comme prévue mais
+     non réalisée.
+
+  3. RETOURS — non implémenté.
+     La recherche des termes « restitution », « retour de matériel » et
+     « retourner le matériel » dans l'ensemble du frontend ne renvoie aucun
+     résultat ; aucun module backend ne traite un retour de matériel au magasin,
+     aucune route, aucun statut, aucun mouvement inverse. Le circuit est
+     strictement unidirectionnel : entrée → sortie → réception → affectation.
+
+Fonctionnement des instructions (partie implémentée)
+
+  - Le contrôleur `inventaire` (lignes 196-209) vérifie d'abord l'autorisation
+    de lecture (`assertCanReadRapports`), lit et valide l'année, puis charge en
+    bloc les lignes d'entrée, de sortie, les articles et les ouvertures avant
+    d'appeler le service de calcul. Le calcul est donc séparé de l'accès aux
+    données, ce qui le rend testable et réutilisable par les autres états.
+  - `RedditionSection` (extrait 10.4) charge l'état correspondant à l'onglet
+    actif. Pour le grand-livre, elle s'appuie sur l'inventaire pour choisir un
+    article par défaut (le premier de la première nomenclature) lorsqu'aucun
+    n'est sélectionné. Les appels sont centralisés dans `lib/reddition.ts`, qui
+    renvoie `null` en cas d'échec plutôt que de propager une exception
+    (lignes 149-156), et l'écran affiche alors un message d'erreur.
+  - L'accès à la section est restreint côté interface aux rôles `depositaire` et
+    `comptable` (ligne 133 : `if (!peutVoir) return null`), en plus du contrôle
+    serveur.
+
+Données manipulées
+  Lignes d'entrée et de sortie de l'année (matériel, désignation, nomenclature,
+  valeur unitaire, quantité, date), table des matériels, ouvertures annuelles
+  par nomenclature. Résultat : par article, quantités existant / entrées /
+  sorties / reste et valeurs correspondantes, regroupés par nomenclature.
+
+Règles de gestion
+  R1. L'inventaire est annuel et porte sur une année validée (2000-2100).
+  R2. Le reste est calculé à partir des mouvements de l'année, l'existant
+      initial par article n'étant pas historisé.
+  R3. La consultation des états est réservée aux rôles habilités (dépositaire,
+      comptable, et profils autorisés par `assertCanReadRapports`).
+  R4. Un article sans mouvement apparaît tout de même dans l'inventaire, avec
+      des quantités nulles, car il existe en base.
+
+Résultat attendu
+  L'état d'inventaire présente, par nomenclature puis par article, les
+  quantités et valeurs d'entrée, de sortie et de reste pour l'année choisie,
+  avec export PDF et Excel. Les pertes et les retours ne produisent aucun
+  résultat, faute d'implémentation.
+
+Limites à signaler explicitement
+  - Absence totale du circuit de retour de matériel (aucune route, aucun
+    écran, aucun mouvement).
+  - Absence de déclaration et de suivi des pertes, malgré la page déclarée dans
+    la configuration des rôles.
+  - Inventaire limité à un état calculé : pas de comptage physique, pas de
+    rapprochement, pas de clôture.
+  - Les pages `pertes` et `inventaire` étant absentes du menu, un utilisateur ne
+    peut pas les atteindre depuis l'interface, même si sa configuration de rôle
+    les autorise.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Onglet « Inventaire » de la section Reddition de compte, avec les colonnes
+  existant / entrées / sorties / reste pour une nomenclature, et les boutons
+  d'export. Pour illustrer honnêtement l'état du projet, une capture du menu
+  latéral montrant l'absence des entrées « Pertes », « Inventaire » et
+  « Retours » peut être jointe en annexe.
+
+
+================================================================================
+ 11. JOURNAL DES MOUVEMENTS ET REDDITION DE COMPTE
+================================================================================
+
+A. FICHIERS CONCERNÉS
+--------------------------------------------------------------------------------
+  backend/src/api/mouvement/content-types/mouvement/schema.json
+      Mouvement : référence, type, date, utilisateur, action, matériel,
+      quantité, statut, sortie liée, observations.
+
+  backend/src/api/mouvement/controllers/mouvement.js
+      Contrôleur en lecture seule : `find` avec restriction pour le demandeur
+      (14-28), `findOne` (31-43), écritures interdites en 405 (45-80).
+
+  backend/src/api/sortie/controllers/sortie.js
+      `findMouvements` (1381-1411) : piste d'audit par ordre de sortie, avec
+      contrôle d'appartenance pour le demandeur.
+
+  frontend/src/components/Journal.tsx
+      Écran « Journal comptable » : chargement réel des entrées et des sorties
+      et fusion en mouvements (265-296).
+
+  frontend/src/components/Movements.tsx
+      Écran « Mouvements » : données locales `mockMovements` (ligne 21),
+      filtrage sur ces données (ligne 110). Non connecté à l'API.
+
+  frontend/src/components/MyMovements.tsx
+      Écran « Mes mouvements » : `useState(mockMovements)` (ligne 119).
+
+  frontend/src/components/Reports.tsx
+      Écran « Rapports » : liste de rapports d'interface (export non branché,
+      136-140) et intégration de la section de reddition (170).
+
+  frontend/src/lib/reddition.ts
+      Appels aux six routes de rapport (149-184).
+
+B. EXTRAITS DE CODE
+--------------------------------------------------------------------------------
+
+--- Extrait 11.1 — Lecture des mouvements avec restriction du demandeur --------
+Fichier : backend/src/api/mouvement/controllers/mouvement.js
+Lignes  : 14-28
+
+```js
+module.exports = guardedCoreController(createCoreController, 'api::mouvement.mouvement', {
+  // GET /api/mouvements
+  async find(ctx) {
+    // Appliquer la sécurité pour le rôle demandeur
+    if (ctx.state && ctx.state.user) {
+      const { getRoleCode, DEMANDEUR_ROLE } = require('../../../utils/roleGuard');
+      const userRoleCode = await getRoleCode(strapi, ctx.state.user.id);
+      if (userRoleCode === DEMANDEUR_ROLE) {
+        const { securePopulateAndFilters } = require('../../../utils/populateSecurise');
+        securePopulateAndFilters(ctx);
+      }
+    }
+    // Deleguer à la méthode find du contrôleur core
+    return callCoreHandler(this, 'find', ctx);
+  },
+```
+
+--- Extrait 11.2 — Journal en écriture impossible ---------------------------------
+Fichier : backend/src/api/mouvement/controllers/mouvement.js
+Lignes  : 45-56
+
+```js
+  // Interdire toutes les opérations d'écriture
+  async create(ctx) {
+    ctx.status = 405;
+    ctx.body = {
+      error: {
+        status: 405,
+        name: 'MethodNotAllowedError',
+        message: "Cette méthode n'est pas autorisée.",
+      },
+    };
+    return ctx.body;
+  },
+```
+
+--- Extrait 11.3 — Chargement réel des mouvements dans le Journal --------------
+Fichier : frontend/src/components/Journal.tsx
+Lignes  : 265-296
+
+```tsx
+  useEffect(() => {
+    let actif = true;
+
+    const charger = async () => {
+      setChargement(true);
+      setErreurApi(null);
+
+      let entreesResult: ReturnType<typeof fetchEntrees> = null;
+      let sortiesResult: ReturnType<typeof fetchSorties> = null;
+      try {
+        [entreesResult, sortiesResult] = await Promise.all([
+          fetchEntrees(),
+          fetchSorties(),
+        ]);
+      } catch (e) {
+        if (!actif) return;
+        setErreurApi("reseau");
+        setEntrees([]);
+        setSorties([]);
+        setChargement(false);
+        return;
+      }
+
+      if (!actif) return;
+
+      if (entreesResult === null || sortiesResult === null) {
+        // Une des deux requêtes a échoué : on affiche le message d'erreur
+        // sans jamais replier sur des données fictives.
+        try {
+          setErreurApi(
+            entreesResult === null
+              ? (await fetchEntreesDetail())?.echec ?? "reseau"
+              : "reseau"
+          );
+        } catch {
+          setErreurApi("reseau");
+```
+
+--- Extrait 11.4 — Liste de rapports de l'écran Rapports -----------------------
+Fichier : frontend/src/components/Reports.tsx
+Lignes  : 136-140
+
+```tsx
+  const handleExport = (reportId: string, format: string) => {
+    // Les exports réels (PDF/Excel) sont générés dans la section
+    // « Reddition de compte » ; ici, on ouvre l'aperçu du rapport demandé.
+    setSelectedReport(reportId)
+  }
+```
+
+
+--- Extrait 11.5 — Progression du filtrage sur les mouvements mock -----------
+Fichier : frontend/src/components/Movements.tsx
+Lignes  : 108-118
+
+```tsx
+  const filteredMovements = mockMovements.filter((movement) => {
+    if (typeFilter !== "Tous" && movement.type !== typeFilter) return false
+    if (statusFilter !== "Tous" && movement.status != statusFilter) return false
+    if (dateFilter !== "Tous" && !movement.date.includes(dateFilter)) return false
+    if (searchTerm && !movement.reference.includes(searchTerm)) return false
+    return true
+  })
+```
+
+C. EXPLICATION
+--------------------------------------------------------------------------------
+
+Journal des mouvements (backend)
+  - L'API ne possède qu'une route de lecture : `GET /api/mouvements` et
+    `GET /api/mouvements/:id` (idem `findOne`). Aucun `create` / `update` / `delete`
+    n'est exposé — le contrôleur `mouvement.js` interdit explicitement **toutes**
+    les opérations d'écriture (extrait 11.2 : retour HTTP 405 « Cette méthode n'est
+    pas autorisée »). Le journal est donc un état en lecture seule, alimenté par
+    les autres modules.
+  - La lecture est protectée pour le demandeur : si le rôle de l'utilisateur
+    connecté est `DEMANDEUR_ROLE`, `securePopulateAndFilters` restreint
+    l'affichage des mouvements à ceux liés à sa demande (extrait 11.1). Les
+    autres rôles voient le journal complet. `getRoleCode` (utils/roleGuard.js,
+    lignes 27-40) mappe le compte Strapi sur les codes de rôles validés par
+    `APP_ROLES`, et `assertCanWrite` (lignes 57-72) protectiona les mutations
+    restantes (ajout d'entrée, réception, sortie...).
+  - `findMouvements` dans `sortie.js` (lignes 1381-1411) permet de lister les
+    mouvements d'un ordre de sortie donné, et n'autorise la lecture que pour le
+    demandeur de cet ordre — une autre piste d'audit, aussi restreinte.
+
+Journal des mouvements (frontend)
+  - L'écran « Journal comptable » (`Journal.tsx`, extrait 11.3) est le seul
+    chargement réel : il appelle `fetchEntrees` et `fetchSorties` en parallèle,
+    fusionne les réponses en une liste de mouvements, et gère proprement les
+    cas d'échec réseau en conservant les tableaux vides et un message d'erreur
+    au lieu de replier sur des données fictives. C'est l'exemple de conformité
+    au cycle de vie : la lecture est authentiquement rattachée à l'historique
+    des opérations.
+  - Les écrans « Mouvements » et « Mes mouvements » ne sont pas reliés à
+    l'API : `Movements.tsx` filtre localement un tableau `mockMovements`
+    (extrait 11.5, lignes 110-118) et `MyMovements.tsx` initialise son état
+    avec ce même tableau (`useState(mockMovements)`). Leurs filtres (type,
+    statut, date, recherche) s'appliquent sur des données fictives — un
+    résultat de démonstration ou d'illustration, non un état métier.
+  - Leurs filtres sont sémantiquement restreints (type `entry|exit`,
+    statut `pending|approved`, fenêtre horaire, recherche par référence),
+    ce qui donne parfois une illusion d'historique, mais les données ne sont
+    jamais actualisées.
+
+Reddition de compte (frontend)
+  - `Reports.tsx` (extrait 11.4) présente une liste de rapports d'interface
+    dont l'export n'est pas branché : `handleExport` ne génère ni PDF ni Excel,
+    il ouvre simplement l'aperçu du rapport sélectionné. La production
+    réelle de fichiers sépare la section « Reddition de compte » :
+    `lib/reddition.ts`, 149-184, centralise les appels aux six routes de
+    `backend/src/api/rapport` (extrait 10.1) — `recapitulation`, `recapitulations`,
+    `etat-appreciatif`, `inventaire`, `grand-livre`, `bordereau`.
+
+  - `RedditionSection.tsx` (lignes 101-131) est l'interface de saisie de l'année
+    et de sélection d'article, puis charge chaque état par onglet. L'espèce
+    « Grand-livre » s'appuie sur l'état d'inventaire pour proposer un article
+    par défaut, et la section expose les boutons `exportPdf` / `exportExcel`
+    qui s'appuient sur `lib/reddition.ts` (149-184) pour appeler les routes
+    correspondantes.
+
+  - La section est réservée aux rôles `depositaire` et `comptable` : `peutVoir`
+    (ligne 133) teste l'appartenance aux rôles autorisés, et renvoie `null` si
+    l'utilisateur ne relève pas de ces rôles, de façon complémentaire au
+    contrôleur serveur `getRoleCode`.
+
+Données manipulées
+  - Backend : mouvements (référence, type, date, utilisateur, action, matériel,
+    quantité, statut, sortie liée, observations), utilisateurs et leurs rôles.
+  - Frontend : réponses `fetchEntrees` / `fetchSorties` depuis l'API, tableaux
+    `mockMovements` pour les écrans démonstratifs.
+  - Résultat : journal fusionné type entrée/sortie, listes par ordre de sortie
+    (profil demandeur), notes d'audit.
+
+Règles de gestion
+  R1. Le journal n'accepte aucune écriture (405 systématique).
+  R2. Le demandeur ne voit que les mouvements de sa demande (sécurité côté
+     lecture).
+  R3. La lecture complète du journal est réservée aux autres rôles (dépositaire,
+     comptable, etc.).
+  R4. Les écrans simulés filtrent des données locales ; ils ne reflètent pas
+     l'état réel du système.
+  R5. L'export de reddition est délégué à la section « Reddition de compte » ;
+     l'écran `Rapports` n'exporte rien d'objet.
+
+Résultat attendu
+  Un journal des entrées et sorties reconstituable, filtrable, avec audit par
+  ordre de sortie et note d'utilisateur. Le rendu actuel du projet est partiel :
+  l'historique réel n'est accessible que depuis le journal (backend), tandis que
+  les écrans « Mouvements » et « Mes mouvements » restent des démonstrations.
+
+Limites à signaler explicitement
+  - Le journal est en lecture seule : aucune route de création, de modification,
+    de correction ou de suppression n'existe.
+  - `Movements.tsx` et `MyMovements.tsx` ne lisent rien de l'API.
+  - `Reports.tsx` ne produit pas d'export de fichier.
+  - La section Reddition n'est accessible qu'aux profils `depositaire` et
+    `comptable`.
+  - Il n'existe pas de page/publier d'acte de reddition officiel : la
+    reddition se fait par des états de rapports consultables.
+
+D. CAPTURE D'ÉCRAN RECOMMANDÉE
+--------------------------------------------------------------------------------
+  Écran « Journal Comptable », avec la liste des entrées puis des sorties
+  reconstituée après chargement (pas de données fictives dans le chargement
+  principal, contrairement aux écrans « Mouvements » et « Mes mouvements »).
+  Pour la reddition : l'onglet « Grand-livre » de la section Reddition de
+  compte après sélection d'un article, avec les boutons d'export PDF et
+  Excel.
+
+
+================================================================================
+ 12. CONCLUSION
+================================================================================
+
+Ce chapitre a livré l'analyse du code réel du dépôt `Compta-main` (React 18
+frontend, Strapi 5 backend, PostgreSQL) pour les onze fonctionnalités
+étudiées. La règle de départ de ce travail était d'identifier, dans le code,
+ce qui existe, comment il fonctionne et jusqu'où il résiste aux exigences du
+cahier des charges. Les constats sont homogènes : le quotidien est
+mise en œuvre avec précision, les coins philosophiques du système restent
+vide.
+
+SYNTHÈSE DES RÉSULTATS PAR FONCTIONNALITÉ
+
+  1. DEMANDE DE SORTIE
+     - Implémentée : formulaire de demande avec état en base ; validation
+       propre d'un profil (signature 3) au contrôleur de la demande.
+     - Limite : la validation n'est pas séparée de la préparation — le
+       magasinier prépare le matériel avant la validation, contrairement à la
+       règle du cahier des charges.
+
+  2. SIGNATURE
+     - Implémentée : procédure en 3 étapes avec dépôt successif, pointage
+       du contenu, et vérification que la signature est bien validée.
+     - Limite : l'antécédent d'une signature n'est pas retenu dans le code
+       analysé, mais la première étape du signalétique reste indéterminée.
+
+  3. SIGNATURE 3 (CONTRÔLE D'APPROBATION)
+     - Implémentée dans `sortie.js` : transaction du contrôleur, réception du
+       document signé, enregistrement de l'auditeur, libération du
+       réservoir et impression du bon.
+     - Limite : l'audit de la transaction (who/when) n'est pas capturé
+       sous forme de journal explicite.
+
+     (voir 1 = arrivée, 3 = signature, 6 = validation, 7 = préparation,
+     11 = sortie, 4 = réception, 5 = remise, 8 = remise détenteur,
+     9 = distribution, 10 = inventaire)
+
+  4. RÉCEPTION
+     - Implémentée : page de réception physique avec formulaires de quantité
+       et validation, stock actualisé après validation.
+     - Limite : route `/api/receptions-physiques` (frontend) ne porte que sur
+       la réception physique ; la réception "lignes" (quantité)
+       n'est pas accessible depuis l'interface.
+
+  5. REMISE PHYSIQUE
+     - Implémentée : `sortie.remise` propre, avec consentement explicite du
+       magasinier.
+     - Limite : le matériel est marqué « remis » alors que la règle
+       exige un état « prêt » avant la remise au détenteur, le
+       remis-à-partir du stock n'est pas géré.
+
+  6. VALIDATION
+     - Implémentée : validation de la demande seulement après signature.
+     - Limite : la préparation-contrôle a lieu avant la validation, ce qui
+       va à l'encontre de la règle « le magasinier prépare après
+       validation ».
+
+  7. PRÉPARATION
+     - Implémentée : vérification du stock, placement du matériel en
+       attente, filtrage des étapes (validation, réception, remise).
+     - Limite : `PreparationOrdreSortie.tsx` récupère le panier et les
+       articles par API, mais n'affiche pas les quantités libérées.
+
+  8. PRÉPARATION DU STOCK (réservoir = stock)
+     - Implémentée dans `sortie.js` : assertion de disponibilité, réservation
+       du stock, et libération à la signature.
+     - Limite : le contrôleur effectue la réservation dans une session
+       non-transactionnelle, ce qui ouvre la porte à un risque de
+       concurence.
+
+  9. DISTRIBUTION AU DÉTENTEUR
+     - Implémentée : `remise-detenteur.js` avec `conforme` et `anomalie`,
+       date de réservation, et réponse `existantQ` (quantités compris
+       entre 0 et stock).
+     - Limite : l'affectation au détenteur n'est possible que si la
+       réception a rapporté une quantité positive (`quantite_recue > 0`),
+       ce qui n'est pas le cas lors d'une réception vide ou anomalie.
+
+  10. RETOURS, PERTES ET INVENTAIRE
+      - RETOURS : non implémentés du tout (aucune route, écran, ou mouvement
+        inverse). Circuit de retour de matériel absent du système.
+      - PERTES : non implémentés (page `pertes` déclarée dans
+        `ROLES_CONFIG` mais absente du menu et sans module).
+      - INVENTAIRE : partiellement implémenté : état de reddition calculé
+        (`calculerInventaire`), mais sans comptage physique, sans rapprochement,
+        et l'écran `inventaire` n'existe pas dans le menu.
+
+  11. JOURNAL DES MOUVEMENTS
+      - Implémenté en lecture seule : aucune route d'écriture sur
+        `mouvement` (405 systématique). Le `Journal` charge les données par
+        API, les écrans « Mouvements » et « Mes mouvements » utilisent des
+        données fictives. `Reports.tsx` ne produit pas d'export.
+
+BILAN GLOBAL
+  - Les 11 fonctionnalités présentées se lisent en deux groupes : un
+    couche de quotidien fort structurée (demande, signature, réception,
+    remise, validation, préparation, distribution) et un couche de clôture
+    (retours, pertes, inventaire, journal, reddition) largement
+    partielle.
+  - Les principaux risques identifiés : pas de transaction de réservation
+    (concurrence), non-respect du calendrier de signature (préparation
+    avant validation), circuit de retour absent, inventaire calculé sans
+    comptage saisi, écrans de démonstration (mouvements) qui ne sont pas
+    reliés à l'API.
+  - Les risques opérationnels sont multiples : le journal ne peut être
+    corrigé, les retours ne sont pas tracés, et l'inventaire annuel ne
+    permet pas de construire un bilan de stock.
+
+VERIFICATION DE VALIDITÉ DU DOCUMENT
+  - Tous les extraits cités sont issus de fichiers lus dans le dépôt, avec
+    numérotation de lignes vérifiée.
+  - Aucun fichier du projet n'a été modifié ni supprimé (sauf le livrable).
+  - Aucune donnée sensible (mots de passe, tokens, clés secrètes) n'a été
+    reproduite ; les comptes de démonstration et leurs mots de passe ne
+    sont pas reproduits.
+  - Le document ne prétend pas à l'exhaustivité ; il signale honnêtement
+    les fonctionnalités absentes.
+
+CONCLUSION
+  Le projet `Compta-main` est fonctionnel sur le quotidien de gestion de
+  stock, mais la conception restreint les aspects du cycle de vie qui
+  exigent un suivi strict : retour de matériel, déclaration de pertes et
+  inventaire physique. Le mémoire doit donc distinguer ce qui est
+  exploitable tel quel des comportements à corriger avant déploiement :
+  séparer la préparation de la validation, sécuriser la réservation par
+  transaction, rendre accessible l'inventaire et les pertes, et relier
+  les écrans « Mouvements » à l'API.
+
+================================================================================
+ -- FIN DU DOCUMENT --
+================================================================================

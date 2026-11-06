@@ -8,6 +8,7 @@ export interface DemandeLigne extends Struct.ComponentSchema {
   };
   attributes: {
     designation: Schema.Attribute.String;
+    detenteur: Schema.Attribute.String;
     materiel: Schema.Attribute.Relation<'manyToOne', 'api::material.material'>;
     motif: Schema.Attribute.Text;
     quantite: Schema.Attribute.Integer &

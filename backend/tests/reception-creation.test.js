@@ -197,6 +197,16 @@ function fauxCreateCoreController(uid, setup) {
   const customs = setup({ strapi: appSimule });
   const objet = Object.create(base);
   Object.assign(objet, customs);
+  // Le contrôleur réel exporte create/update/delete via super.* sur le
+  // prototype Strapi. Ici, on les rend disponibles sur l'objet simulé pour
+  // que les tests puissent appeler `controleur.create(ctx)` directement.
+  // Elles sont soit celles du contrôleur custom, soit des méthodes héritées
+  // depuis le prototype core (le cas de `guardedCoreController`).
+  for (const methode of ['create', 'update', 'delete']) {
+    if (typeof objet[methode] === 'function') {
+      objet[methode] = objet[methode].bind(objet);
+    }
+  }
   return objet;
 }
 

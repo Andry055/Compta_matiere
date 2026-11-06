@@ -14,11 +14,16 @@
  * (création, brouillon, envoi, annulation) : c'est la seule ressource en
  * écriture qui lui ouvre.
  *
+ * Le profil « admin » est en CONSULTATION SEULE : il peut tout lire, mais
+ * aucune écriture (création, modification, suppression) ne lui est ouverte
+ * sur les content-types protégés par ce garde-fou.
+ *
  * Les vérifications sont effectuées ici, côté serveur : le frontend ne
  * constitue jamais une source de sécurité.
  */
 
 const DEMANDEUR_ROLE = 'demandeur';
+const ADMIN_ROLE = 'admin';
 const DEMANDE_UID = 'api::demande.demande';
 
 // Statuts qu'un demandeur peut lui-même donner à sa demande.
@@ -61,7 +66,17 @@ async function assertCanWrite(strapi, ctx, uid) {
   }
 
   const code = await getRoleCode(strapi, userId);
-  if (!code || code !== DEMANDEUR_ROLE) return;
+  if (!code) return;
+
+  if (code === ADMIN_ROLE) {
+    forbid(
+      ctx,
+      "Le compte administrateur est en consultation seule : aucune création, modification ou suppression n'est autorisée."
+    );
+    return;
+  }
+
+  if (code !== DEMANDEUR_ROLE) return;
 
   if (uid !== DEMANDE_UID) {
     forbid(
@@ -162,4 +177,10 @@ function guardedCoreController(createCoreController, uid, customMethods = {}) {
   }));
 }
 
-module.exports = { assertCanWrite, guardedCoreController, getRoleCode, DEMANDEUR_ROLE };
+module.exports = {
+  assertCanWrite,
+  guardedCoreController,
+  getRoleCode,
+  DEMANDEUR_ROLE,
+  ADMIN_ROLE,
+};

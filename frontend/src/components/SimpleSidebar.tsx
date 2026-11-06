@@ -171,7 +171,9 @@ export function SimpleSidebar({ activeSection, onSectionChange, user, isMobile =
       item.key !== 'distribution'
   )
 
-  const roleLabel = ROLES_CONFIG[userRole]?.label || (user?.role === 'admin' ? 'Administrateur Système' : 'Personnel')
+  const roleLabel =
+    ROLES_CONFIG[userRole]?.label ||
+    (user?.role === 'admin' ? 'Administrateur Système — données en consultation' : 'Personnel')
 
   useEffect(() => {
     const role = user?.role

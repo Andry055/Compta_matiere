@@ -389,7 +389,7 @@ const mockDirections: Direction[] = [
   },
 ];
 
-export function Departments() {
+export function Departments({ readOnly = false }: { readOnly?: boolean } = {}) {
   const [expandedDirection, setExpandedDirection] = useState<number | null>(
     null
   );
@@ -760,13 +760,15 @@ export function Departments() {
             </span>
           </div>
         </div>
-        <button
-          onClick={handleCreateDirection}
-          className="group relative inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-primary to-primary/90 text-primary-foreground rounded-lg shadow-lg shadow-primary/25 transition-all duration-300 transform-gpu overflow-hidden font-medium min-w-[200px] justify-center hover:shadow-xl hover:shadow-primary/40 hover:scale-105 active:scale-95 cursor-pointer"
-        >
-          <Building2 className="h-5 w-5 group-hover:rotate-12 transition-transform duration-300" />
-          <span>Nouvelle Direction</span>
-        </button>
+        {!readOnly && (
+          <button
+            onClick={handleCreateDirection}
+            className="group relative inline-flex items-center gap-3 px-6 py-3 bg-gradient-to-r from-primary to-primary/90 text-primary-foreground rounded-lg shadow-lg shadow-primary/25 transition-all duration-300 transform-gpu overflow-hidden font-medium min-w-[200px] justify-center hover:shadow-xl hover:shadow-primary/40 hover:scale-105 active:scale-95 cursor-pointer"
+          >
+            <Building2 className="h-5 w-5 group-hover:rotate-12 transition-transform duration-300" />
+            <span>Nouvelle Direction</span>
+          </button>
+        )}
       </div>
 
       {/* Statistics Cards */}
@@ -847,6 +849,7 @@ export function Departments() {
         onEditDirection={handleEditDirection}
         addingEmployees={addingEmployees}
         getStatusColor={getStatusColor}
+        readOnly={readOnly}
       />
 
       {/* Modals */}

@@ -72,7 +72,12 @@ export function TransfertsPage({ user }: TransfertsPageProps) {
     ...entreeRecords,
   ]);
 
-  const canCreate = user?.role !== "depositaire" && user?.role !== "logistique" && !!user;
+  // L'administrateur est en consultation seule : il ne crée pas de transfert.
+  const canCreate =
+    !!user &&
+    user.role !== "depositaire" &&
+    user.role !== "logistique" &&
+    user.role !== "admin";
 
   // Liste = transferts EN BASE ∪ traces historiques locales (référence doublon
   // résolu par la version serveur).

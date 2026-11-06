@@ -3702,6 +3702,9 @@ export function MaterialEntry({
   const isFixedMagasinier = user?.role === "magasinier";
   const isFixedDepositaire = user?.role === "depositaire";
   const isFixedLogistique = user?.role === "logistique";
+  // L'administrateur consulte le circuit (sélecteur de rôle) mais n'exécute
+  // aucune étape : ni saisie, ni signature, ni création d'entrée.
+  const isAdmin = user?.role === "admin";
   const [activeRole, setActiveRole] = useState<AppRole>(() =>
     resolveActiveRole(user?.role)
   );
@@ -4165,6 +4168,12 @@ export function MaterialEntry({
 
   // When articles change, sync the controles list
   const handleDataChange = (partial: Partial<ReceptionData>) => {
+    if (isAdmin) {
+      toast.error("Consultation seule", {
+        description: "Le compte administrateur ne peut pas modifier une réception.",
+      });
+      return;
+    }
     // Toute écriture locale « sale » l'écran : la relecture de fond doit
     // s'abstenir tant que l'utilisateur n'a pas enregistré sa pièce.
     modifieLocalementRef.current = true;
@@ -4255,6 +4264,12 @@ export function MaterialEntry({
   // signature n'est posée qu'au clic « Certifier ») — elle protège donc aussi
   // l'écran d'une relecture de fond.
   const handleCertifierLogistique = (v: boolean) => {
+    if (isAdmin) {
+      toast.error("Consultation seule", {
+        description: "Le compte administrateur ne peut pas certifier une réception.",
+      });
+      return;
+    }
     modifieLocalementRef.current = true;
     setLogistiqueCertifie(v);
   };
@@ -4308,6 +4323,13 @@ export function MaterialEntry({
     // depositaire ne pouvait donc jamais valider, quelle que soit la case de
     // certification. On borne donc au-delà de la DERNIÈRE étape.
     if (currentStep > STEP_LABELS.length) return;
+
+    // Consultation seule (admin) : « Suivant » ne fait que parcourir les
+    // étapes, sans jamais créer ni signer quoi que ce soit.
+    if (isAdmin) {
+      setCurrentStep((s) => Math.min(s + 1, 4));
+      return;
+    }
 
     // Verrou logique sur la navigation aussi : un rôle ne peut pas valider
     // une étape qui n'est pas la sienne, même si les données le permettraient.
@@ -4652,6 +4674,7 @@ export function MaterialEntry({
   };
 
   const handleNewReception = () => {
+    if (isAdmin) return;
     const fresh = createInitialData(false, activeRole === "depositaire");
     setReceptionData(fresh);
     modifieLocalementRef.current = false;
@@ -4849,7 +4872,7 @@ export function MaterialEntry({
               Rafraîchir
             </Button>
           </div>
-          {currentStep === 4 && (
+          {currentStep === 4 && !isAdmin && (
             <Button variant="outline" onClick={handleNewReception} className="print-hidden">
               Nouvelle réception
             </Button>
@@ -5153,7 +5176,7 @@ export function MaterialEntry({
             data={receptionData}
             extra={extra}
             onChange={handleDataChange}
-            canEdit={canPerformStepAction(activeRole, 2)}
+            canEdit={!isAdmin && canPerformStepAction(activeRole, 2)}
             requiredRoleLabel={ROLES_CONFIG.magasinier.label}
             depositaireName={depositaireName}
             articlesIncomplets={articlesIncomplets}
@@ -5173,7 +5196,7 @@ export function MaterialEntry({
         <Step1BonLivraison
           data={receptionData}
           onChange={handleDataChange}
-          canEdit={canPerformStepAction(activeRole, 1)}
+          canEdit={!isAdmin && canPerformStepAction(activeRole, 1)}
           requiredRoleLabel={ROLES_CONFIG.depositaire.label}
           materiels={materiels}
           onMaterielCree={handleMaterielCree}
@@ -5192,16 +5215,15 @@ export function MaterialEntry({
         <Step2ControleMagasinier
           data={receptionData}
           extra={extra}
-          onChange={handleDataChange}
-          canEdit={canPerformStepAction(activeRole, 2)}
-          requiredRoleLabel={ROLES_CONFIG.magasinier.label}
-          depositaireName={depositaireName}
-          articlesIncomplets={articlesIncomplets}
-          certifying={isSubmitting}
-        />
-      )}
+          onChange={handleDataChange}            canEdit={!isAdmin && canPerformStepAction(activeRole, 2)}
+            requiredRoleLabel={ROLES_CONFIG.magasinier.label}
+            depositaireName={depositaireName}
+            articlesIncomplets={articlesIncomplets}
+            certifying={isSubmitting}
+          />
+        )}
       {!isMagasinierSession && currentStep === 3 && (
-        canPerformStepAction(activeRole, 3) ? (
+        !isAdmin && canPerformStepAction(activeRole, 3) ? (
           <Step3SignatureLogistique
             data={receptionData}
             logistiqueCertifie={logistiqueCertifie}
@@ -5225,7 +5247,7 @@ export function MaterialEntry({
           logistiqueName={logistiqueName}
           onOpenJournal={() => onNavigate?.("journal")}
           onChange={handleDataChange}
-          peutCertifier={canPerformStepAction(activeRole, 4)}
+          peutCertifier={!isAdmin && canPerformStepAction(activeRole, 4)}
           requiredRoleLabel={ROLES_CONFIG.depositaire.label}
         />
       )}
@@ -5333,13 +5355,17 @@ export function MaterialEntry({
         {currentStep < 4 ? (
           <Button
             onClick={goNext}
-            disabled={!canProceed || isSubmitting}
+            disabled={!isAdmin && (!canProceed || isSubmitting)}
             className="gap-2"
           >
-            {currentStep === 3 ? "Valider l'enregistrement" : "Suivant"}
+            {isAdmin
+              ? "Suivant"
+              : currentStep === 3
+              ? "Valider l'enregistrement"
+              : "Suivant"}
             <ArrowRight className="h-4 w-4" />
           </Button>
-        ) : (
+        ) : isAdmin ? null : (
           <Button
             variant="outline"
             onClick={handleNewReception}

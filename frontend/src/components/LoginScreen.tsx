@@ -11,6 +11,10 @@ interface LoginScreenProps {
   onLogin: (user: UserType) => void;
 }
 
+// NB : les rôles métier reconnus et la transformation Strapi -> profil
+// applicatif vivent dans ../lib/session (partagés avec App.tsx, qui les
+// applique aussi à la reprise de session).
+
 const mockUserDatabase: Array<UserType & { password: string }> = [
   {
     id: "admin-1",
@@ -162,6 +166,12 @@ export function LoginScreen({ onLogin }: LoginScreenProps) {
       setError("Email ou mot de passe incorrect");
     }
 
+// Cas 3 : erreur réseau — Strapi injoignable. Aucun repli vers des comptes
+    // fictifs : on affiche une erreur claire et on reste sur l'écran de
+    // connexion. L'authentification ne peut avoir lieu que via le vrai backend.
+    setError(
+      "Serveur indisponible : vérifiez votre connexion ou réessayez plus tard."
+    );
     setIsLoading(false);
     return;
   };

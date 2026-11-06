@@ -71,18 +71,17 @@ export function EquipmentActions({
   const [showArchiveConfirm, setShowArchiveConfirm] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Permissions basées sur le rôle
+  // Permissions basées sur le rôle. L'administrateur est en consultation
+  // seule : aucune action d'écriture, même si la fiche l'y autorisait avant.
+  const estConsultation = currentUser.role === "admin";
   const canEdit =
-    currentUser.role === "admin" ||
-    currentUser.permissions.includes("equipment.edit");
+    !estConsultation && currentUser.permissions.includes("equipment.edit");
   const canDelete =
-    currentUser.role === "admin" ||
-    currentUser.permissions.includes("equipment.delete");
-  const canArchive = currentUser.role === "admin";
+    !estConsultation && currentUser.permissions.includes("equipment.delete");
+  const canArchive = false;
   const canView = true; // Tout le monde peut voir
   const canDuplicate =
-    currentUser.role === "admin" ||
-    currentUser.permissions.includes("equipment.create");
+    !estConsultation && currentUser.permissions.includes("equipment.create");
 
   const handleAction = async (
     action: () => void,

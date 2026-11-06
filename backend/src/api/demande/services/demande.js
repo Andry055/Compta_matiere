@@ -32,9 +32,37 @@ async function nextReference(strapi) {
   return `${prefix}${pad(count + 1, 3)}`;
 }
 
+async function resolveIds(app, data) {
+  const demandeurId = await getUserDocumentId(app, data.demandeur);
+  if (demandeurId) data.demandeur = demandeurId;
+
+  const organigramme = await resoudreOrganigramme(app, data.service, data.direction);
+  if (organigramme.direction) data.direction = organigramme.direction.documentId;
+  if (organigramme.service) data.service = organigramme.service.documentId;
+}
+
+/** Essentiel pour que le contrôleur puisse résoudre les relations d'empreinte.
+ * Les fonctions utilitaires du service sont aussi disponibles ici car le
+ * contrôleur les importe par `require('./demande')`.
+ */
+exports.getUserDocumentId = require('../controllers/demande').getUserDocumentId;
+exports.resoudreOrganigramme = require('../controllers/demande').resoudreOrganigramme;
+
 module.exports = createCoreService('api::demande.demande', ({ strapi }) => ({
   async create(params) {
     const data = params.data || {};
+
+    // RESOLUTION PRECEDEE : `demandeur`, `direction`, `service` sont des
+    // relations vers plugin::users-permissions.user / api::direction.direction /
+    // api::service.service. Le content API n'autorise aucun role a lire la
+    // table users-permissions.user, donc sans resolution precedente le
+    // Strapi refuse l'entree avec :
+    //   1 relation(s) of type plugin::users-permissions.user associated
+    //   with this entity do not exist
+    // On reformate donc ces relations en leurs documentId canoniques avant
+    // que la validation ne soit faite.
+    await resolveIds(strapi, data);
+
     if (!data.reference) {
       data.reference = await nextReference(strapi);
     }

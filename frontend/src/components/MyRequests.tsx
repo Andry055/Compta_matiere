@@ -58,6 +58,7 @@ const EMPTY_LIGNE: DemandeLigne = {
   materiel: "",
   quantite: 1,
   motif: "",
+  detenteur: "",
   materielDocumentId: undefined,
 };
 
@@ -369,11 +370,12 @@ export function MyRequests({
           detenteur_im: detenteur.im.trim() || undefined,
           detenteur_port: detenteur.port.trim() || undefined,
           // Lignes : le matériel du STOCK RÉEL (documentId), la quantité, le
-          // motif. C'est le SEUL contenu propre à la demande.
+          // motif, le détenteur. C'est le SEUL contenu propre à la demande.
           lignes: lignesValidées.map((ligne) => ({
             materiel: ligne.materielDocumentId,
             quantite: Number(ligne.quantite),
             motif: ligne.motif.trim() || undefined,
+            detenteur: ligne.detenteur?.trim() || undefined,
           })),
         },
       });
@@ -842,6 +844,7 @@ export function MyRequests({
                     { label: "Direction", value: orgaProfil.direction },
                     { label: "Service", value: orgaProfil.service },
                     { label: "Fonction", value: "Fonction non renseignée" },
+                    { label: "N° porte", value: user?.numeroPorte || "—" },
                   ].map((field) => (
                     <div
                       key={field.label}
@@ -944,13 +947,13 @@ export function MyRequests({
                         <thead>
                           <tr className="border-b border-border bg-muted/20">
                             <th className="text-left py-2 px-3 text-xs text-muted-foreground">
-                              Catégorie
-                            </th>
-                            <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                               Matériel
                             </th>
                             <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                               Qté
+                            </th>
+                            <th className="text-left py-2 px-3 text-xs text-muted-foreground">
+                              Détenteur
                             </th>
                             <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                               Motif
@@ -964,9 +967,6 @@ export function MyRequests({
                               key={index}
                               className="border-b border-border last:border-b-0"
                             >
-                              <td className="py-2 px-2 text-sm text-muted-foreground">
-                                {ligne.categorie || "—"}
-                              </td>
                               <td className="py-2 px-2">
                                 <select
                                   aria-label={`Matériel de la ligne ${index + 1}`}
@@ -1003,6 +1003,19 @@ export function MyRequests({
                                     })
                                   }
                                   className="w-20 px-2 py-1.5 border border-border rounded bg-background text-sm"
+                                />
+                              </td>
+                              <td className="py-2 px-2">
+                                <input
+                                  aria-label={`Détenteur de la ligne ${index + 1}`}
+                                  value={ligne.detenteur || ""}
+                                  onChange={(e) =>
+                                    updateLigne(index, {
+                                      detenteur: e.target.value,
+                                    })
+                                  }
+                                  placeholder="Nom + fonction (ex: Rakoto, Chef IT)"
+                                  className="w-full min-w-40 px-2 py-1.5 border border-border rounded bg-background text-sm"
                                 />
                               </td>
                               <td className="py-2 px-2">
@@ -1156,13 +1169,13 @@ export function MyRequests({
                       <thead>
                         <tr className="border-b border-border bg-muted/20">
                           <th className="text-left py-2 px-3 text-xs text-muted-foreground">
-                            Catégorie
-                          </th>
-                          <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                             Matériel
                           </th>
                           <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                             Qté
+                          </th>
+                          <th className="text-left py-2 px-3 text-xs text-muted-foreground">
+                            Détenteur
                           </th>
                           <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                             Motif
@@ -1178,13 +1191,13 @@ export function MyRequests({
                               className="border-b border-border last:border-b-0"
                             >
                               <td className="py-2 px-3 text-sm text-card-foreground">
-                                {ligne.categorie || "—"}
-                              </td>
-                              <td className="py-2 px-3 text-sm text-card-foreground">
                                 {ligne.materiel}
                               </td>
                               <td className="py-2 px-3 text-sm text-card-foreground">
                                 {ligne.quantite}
+                              </td>
+                              <td className="py-2 px-3 text-sm text-card-foreground">
+                                {ligne.detenteur || "—"}
                               </td>
                               <td className="py-2 px-3 text-sm text-card-foreground">
                                 {ligne.motif || "—"}
@@ -1427,13 +1440,13 @@ export function MyRequests({
                       <thead>
                         <tr className="border-b border-border bg-muted/20">
                           <th className="text-left py-2 px-3 text-xs text-muted-foreground">
-                            Catégorie
-                          </th>
-                          <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                             Matériel
                           </th>
                           <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                             Qté
+                          </th>
+                          <th className="text-left py-2 px-3 text-xs text-muted-foreground">
+                            Détenteur
                           </th>
                           <th className="text-left py-2 px-3 text-xs text-muted-foreground">
                             Motif
@@ -1446,9 +1459,6 @@ export function MyRequests({
                             key={index}
                             className="border-b border-border last:border-b-0"
                           >
-                            <td className="py-2 px-3 text-sm text-card-foreground">
-                              {ligne.categorie || "—"}
-                            </td>
                             <td className="py-2 px-3 text-sm text-card-foreground">
                               {ligne.materiel}
                             </td>
@@ -1464,6 +1474,9 @@ export function MyRequests({
                                   demandée : {ligne.quantiteDemandee}
                                 </span>
                               ) : null}
+                            </td>
+                            <td className="py-2 px-3 text-sm text-card-foreground">
+                              {ligne.detenteur || "—"}
                             </td>
                             <td className="py-2 px-3 text-sm text-card-foreground">
                               {ligne.motif || "—"}

@@ -1,0 +1,108 @@
+
+> backend@0.1.0 develop
+> strapi develop
+
+- Loading Strapi
+(node:2628) Warning: Accessing non-existent property 'normaliser' of module exports inside circular dependency
+(Use `node --trace-warnings ...` to show where the warning was created)
+[2026-11-06 11:58:58.981] [33mwarn[39m: [email]: The "sendmail" email provider is still supported, but for most production setups that use a dedicated SMTP relay, consider switching to @strapi/provider-email-nodemailer (set `provider` to `"nodemailer"` in your email plugin config). This message is only shown in development.
+[2026-11-06 11:58:59.513] [32minfo[39m: [MCP] Starting MCP server...
+[2026-11-06 11:58:59.515] [32minfo[39m: [MCP] Server available at /mcp
+[2026-11-06 11:58:59.597] [32minfo[39m: [seed] Directions déjà présentes : seed ignoré.
+[2026-11-06 11:58:59.599] [32minfo[39m: [seed-reddition] Ouvertures déjà présentes : seed ignoré.
+[2026-11-06 11:58:59.600] [32minfo[39m: [seed-materiels] Matériels déjà présents : seed ignoré.
+[2026-11-06 11:58:59.603] [32minfo[39m: [routes] Routes notification enregistrées sur le content-api router
+- Building build context
+✔ Building build context (52ms)
+- Creating admin
+✔ Creating admin (985ms)
+✔ Loading Strapi (5022ms)
+- Generating types
+✔ Generating types (1388ms)
+
+ Project information
+
+[90m╭────────────────────[39m[90m┬──────────────────────────────────────────────────╮[39m
+[90m│[39m Time               [90m│[39m Fri Nov 06 2026 11:59:02 GMT+0300 (heure normal… [90m│[39m
+[90m│[39m Launched in        [90m│[39m 6515 ms                                          [90m│[39m
+[90m│[39m Environment        [90m│[39m development                                      [90m│[39m
+[90m│[39m Process PID        [90m│[39m 2628                                             [90m│[39m
+[90m│[39m Version            [90m│[39m 5.53.0 (node v24.20.0)                           [90m│[39m
+[90m│[39m Plan               [90m│[39m Community                                        [90m│[39m
+[90m│[39m Database           [90m│[39m sqlite                                           [90m│[39m
+[90m│[39m Database name      [90m│[39m .tmp\data.db                                     [90m│[39m
+[90m╰────────────────────[39m[90m┴──────────────────────────────────────────────────╯[39m
+
+ Actions available
+
+Welcome back!
+To access the server ⚡️, go to:
+http://localhost:1337
+
+[2026-11-06 11:59:02.168] [32minfo[39m: Strapi started successfully
+[2026-11-06 11:59:19.098] [32mhttp[39m: POST /api/auth/local (154 ms) 200
+[2026-11-06 11:59:19.296] [32mhttp[39m: GET /api/users/me (24 ms) 200
+[2026-11-06 11:59:19.636] [32mhttp[39m: POST /api/auth/local (102 ms) 200
+[2026-11-06 11:59:19.888] [32mhttp[39m: POST /api/session/users (152 ms) 201
+[2026-11-06 11:59:20.209] [32mhttp[39m: DELETE /api/session/users/5 (12 ms) 400
+[2026-11-06 11:59:20.426] [32mhttp[39m: DELETE /api/session/users/ (1 ms) 405
+[2026-11-06 11:59:20.609] [32mhttp[39m: DELETE /api/session/users/ (0 ms) 405
+[2026-11-06 11:59:20.749] [32mhttp[39m: DELETE /api/session/users/ (1 ms) 405
+[2026-11-06 11:59:21.080] [32mhttp[39m: GET /api/session/users (25 ms) 200
+[2026-11-06 12:00:22.249] [32mhttp[39m: POST /api/auth/local (124 ms) 200
+[2026-11-06 12:00:22.515] [32mhttp[39m: POST /api/auth/local (104 ms) 200
+[2026-11-06 12:00:22.723] [32mhttp[39m: GET /api/session/users (26 ms) 200
+[2026-11-06 12:00:22.918] [32mhttp[39m: DELETE /api/session/users/10 (11 ms) 403
+[2026-11-06 12:00:22.943] [32minfo[39m: File created: C:\Users\ADMIN\Documents\Projet Mat\Compta_matiere\backend\resp-d2.json
+[2026-11-06 12:00:22.957] [32minfo[39m: Shutting down Strapi
+[2026-11-06 12:00:22.962] [32minfo[39m: [MCP] Stopping MCP server...
+[2026-11-06 12:00:22.962] [32minfo[39m: [MCP] Service stopped
+[2026-11-06 12:00:22.965] [32minfo[39m: Strapi has been shut down
+- Loading Strapi
+(node:17484) Warning: Accessing non-existent property 'normaliser' of module exports inside circular dependency
+(Use `node --trace-warnings ...` to show where the warning was created)
+[2026-11-06 12:00:32.019] [33mwarn[39m: [email]: The "sendmail" email provider is still supported, but for most production setups that use a dedicated SMTP relay, consider switching to @strapi/provider-email-nodemailer (set `provider` to `"nodemailer"` in your email plugin config). This message is only shown in development.
+[2026-11-06 12:00:32.641] [32minfo[39m: [MCP] Starting MCP server...
+[2026-11-06 12:00:32.644] [32minfo[39m: [MCP] Server available at /mcp
+[2026-11-06 12:00:32.725] [32minfo[39m: [seed] Directions déjà présentes : seed ignoré.
+[2026-11-06 12:00:32.726] [32minfo[39m: [seed-reddition] Ouvertures déjà présentes : seed ignoré.
+[2026-11-06 12:00:32.728] [32minfo[39m: [seed-materiels] Matériels déjà présents : seed ignoré.
+[2026-11-06 12:00:32.730] [32minfo[39m: [routes] Routes notification enregistrées sur le content-api router
+- Building build context
+✔ Building build context (69ms)
+- Creating admin
+✔ Creating admin (924ms)
+✔ Loading Strapi (5364ms)
+- Generating types
+✔ Generating types (1297ms)
+
+ Project information
+
+[90m╭────────────────────[39m[90m┬──────────────────────────────────────────────────╮[39m
+[90m│[39m Time               [90m│[39m Fri Nov 06 2026 12:00:35 GMT+0300 (heure normal… [90m│[39m
+[90m│[39m Launched in        [90m│[39m 6744 ms                                          [90m│[39m
+[90m│[39m Environment        [90m│[39m development                                      [90m│[39m
+[90m│[39m Process PID        [90m│[39m 17484                                            [90m│[39m
+[90m│[39m Version            [90m│[39m 5.53.0 (node v24.20.0)                           [90m│[39m
+[90m│[39m Plan               [90m│[39m Community                                        [90m│[39m
+[90m│[39m Database           [90m│[39m sqlite                                           [90m│[39m
+[90m│[39m Database name      [90m│[39m .tmp\data.db                                     [90m│[39m
+[90m╰────────────────────[39m[90m┴──────────────────────────────────────────────────╯[39m
+
+ Actions available
+
+Welcome back!
+To access the server ⚡️, go to:
+http://localhost:1337
+
+[2026-11-06 12:00:35.155] [32minfo[39m: Strapi started successfully
+[2026-11-06 12:01:34.157] [32mhttp[39m: POST /api/auth/local (144 ms) 200
+[2026-11-06 12:01:34.462] [32mhttp[39m: POST /api/auth/local (148 ms) 200
+[2026-11-06 12:01:34.617] [32mhttp[39m: DELETE /api/session/users/10 (37 ms) 200
+[2026-11-06 12:01:34.728] [32mhttp[39m: DELETE /api/session/users/10 (9 ms) 404
+[2026-11-06 12:01:34.827] [32mhttp[39m: DELETE /api/session/users/5 (12 ms) 400
+[2026-11-06 12:01:35.098] [32mhttp[39m: POST /api/session/users (151 ms) 201
+[2026-11-06 12:01:35.246] [32mhttp[39m: GET /api/session/users (23 ms) 200
+[2026-11-06 12:01:35.387] [32mhttp[39m: DELETE /api/session/users/11 (12 ms) 403
+[2026-11-06 12:01:35.544] [32mhttp[39m: DELETE /api/session/users/11 (28 ms) 200
+[2026-11-06 12:01:35.685] [32mhttp[39m: GET /api/session/users (21 ms) 200

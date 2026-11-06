@@ -12,6 +12,8 @@ import {
   Calendar,
   AlertTriangle,
   Plus,
+  CheckCircle2,
+  UserCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -22,13 +24,6 @@ interface ListeSortiesARéceptionnerProps {
   onRecevoir: (sortie: SortieRecord) => void;
   onAnomalie: (sortie: SortieRecord) => void;
 }
-
-const STATUT_SORTIE_BADGE: Record<string, string> = {
-  "Sortie effectuée": "bg-green-50 text-green-700 border-green-200",
-  Validée: "bg-blue-50 text-blue-700 border-blue-200",
-  Demandée: "bg-yellow-50 text-yellow-700 border-yellow-200",
-  Annulée: "bg-red-50 text-red-700 border-red-200",
-};
 
 const STATUT_BADGE_COLOR: Record<string, string> = {
   "En cours": "text-blue-700",
@@ -51,10 +46,10 @@ export function ListeSortiesARéceptionner({
 
   if (sortiesTriees.length === 0) {
     return (
-      <div className="msr-etat">
-        <Package className="w-10 h-10 text-muted-foreground mb-2" />
-        <h3 className="font-medium text-foreground mb-1">Aucune sortie à réceptionner</h3>
-        <p className="text-sm text-muted-foreground">
+      <div className="msc-empty">
+        <Package className="msc-empty__icon" aria-hidden="true" />
+        <h3 className="msc-empty__title">Aucune sortie à réceptionner</h3>
+        <p className="msc-empty__description">
           Aucune sortie effectuée avec trois signatures pour votre direction n'attend de réception.
         </p>
       </div>
@@ -62,7 +57,7 @@ export function ListeSortiesARéceptionner({
   }
 
   return (
-    <div className="msr-liste">
+    <div className="msc-list" role="list" aria-label="Sorties à réceptionner">
       {sortiesTriees.map((sortie) => {
         const reliquat = getReliquat(sortie, receptionsServeur);
         const statutRéception = getStatutRéceptionSortie(sortie, receptionsServeur);
@@ -72,94 +67,95 @@ export function ListeSortiesARéceptionner({
         return (
           <Card
             key={sortie.id}
-            className="msr-carte border border-border"
+            className="msc-card"
           >
-            <CardHeader>
-              <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
-                <div>
-                  <CardTitle className="text-sm font-semibold">
-                    {sortie.reference}
-                  </CardTitle>
-                  <p className="text-xs text-muted-foreground">
-                    {sortie.materiel} • {sortie.categorie}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant={
-                      troisSignatures ? "default" : "secondary"
-                    }
-                    className={troisSignatures
-                      ? "bg-green-50 text-green-700 border-green-200 text-xs"
-                      : "bg-yellow-50 text-yellow-700 border-yellow-200 text-xs"}
-                  >
-                    {troisSignatures ? "3 signatures OK" : "Signatures manquantes"}
-                  </Badge>
-                </div>
+            <div className="msc-card__header">
+              <div className="msc-card__title-row">
+                <h3 className="msc-card__reference">{sortie.reference}</h3>
+                <p className="msc-card__meta">
+                  {sortie.materiel} • {sortie.categorie}
+                </p>
               </div>
-            </CardHeader>
-            <CardContent className="pt-3">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
-                <div className="msr-champ">
-                  <span className="msr-champ-cle">Quantité prévue</span>
-                  <span className="msr-champ-valeur font-medium">
+              <div className="msc-card__badges">
+                <span className={`msc-badge ${troisSignatures ? "msc-badge--success" : "msc-badge--warning"}`}>
+                  <CheckCircle2 className="w-3 h-3" aria-hidden="true" />
+                  {troisSignatures ? "3 signatures OK" : "Signatures manquantes"}
+                </span>
+              </div>
+            </div>
+            <div className="msc-card__body">
+              <div className="msc-grid">
+                <div className="msc-field">
+                  <span className="msc-field__label">Quantité prévue</span>
+                  <span className="msc-field__value">
                     {sortie.quantite} unité(s)
                   </span>
                 </div>
-                <div className="msr-champ">
-                  <span className="msr-champ-cle">Reliquat</span>
-                  <span className="msr-champ-valeur font-medium text-primary">
+                <div className="msc-field">
+                  <span className="msc-field__label">Reliquat</span>
+                  <span className="msc-field__value msc-field__value--primary">
                     {reliquat} unité(s)
                   </span>
                 </div>
-                <div className="msr-champ">
-                  <span className="msr-champ-cle">Direction</span>
-                  <span className="msr-champ-valeur text-sm">{sortie.direction}</span>
+                <div className="msc-field">
+                  <span className="msc-field__label">Direction</span>
+                  <span className="msc-field__value msc-field__value--muted">{sortie.direction}</span>
                 </div>
-                <div className="msr-champ">
-                  <span className="msr-champ-cle">Bénéficiaire</span>
-                  <span className="msr-champ-valeur text-sm">{sortie.beneficiaire}</span>
+                <div className="msc-field">
+                  <span className="msc-field__label">Bénéficiaire</span>
+                  <span className="msc-field__value msc-field__value--muted">{sortie.beneficiaire}</span>
                 </div>
-                <div className="msr-champ">
-                  <span className="msr-champ-cle">Date de sortie</span>
-                  <span className="msr-champ-valeur text-sm">
+                <div className="msc-field">
+                  <span className="msc-field__label">Date de sortie</span>
+                  <span className="msc-field__value msc-field__value--muted">
                     {new Date(sortie.dateSortie).toLocaleDateString("fr-FR")}
                   </span>
                 </div>
-                <div className="msr-champ">
-                  <span className="msr-champ-cle">Responsable</span>
-                  <span className="msr-champ-valeur text-sm">{sortie.responsable}</span>
+                <div className="msc-field">
+                  <span className="msc-field__label">Responsable</span>
+                  <span className="msc-field__value msc-field__value--muted">{sortie.responsable}</span>
                 </div>
-                <div className="msr-champ">
-                  <span className="msr-champ-cle">Statut réception</span>
-                  <span className={`msr-champ-valeur text-sm font-medium ${STATUT_BADGE_COLOR[statutRéception]}`}>
+                {sortie.lignes && sortie.lignes.length > 0 && sortie.lignes.some((l) => l.detenteur) && (() => {
+                  const detenteurs = sortie.lignes.filter((l) => l.detenteur).map((l) => l.detenteur);
+                  return (
+                    <div className="msc-field">
+                      <span className="msc-field__label">Détenteur(s)</span>
+                      <span className="msc-field__value msc-field__value--muted">
+                        {detenteurs.join("; ")}
+                      </span>
+                    </div>
+                  );
+                })()}
+                <div className="msc-field">
+                  <span className="msc-field__label">Statut réception</span>
+                  <span className={`msc-field__value msc-field__value--muted ${STATUT_BADGE_COLOR[statutRéception]}`}>
                     {statutRéception}
                   </span>
                 </div>
               </div>
 
-              <div className="flex items-center justify-between gap-3">
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <div className="msc-card__actions">
+                <div className={`msc-signatures ${troisSignatures ? "msc-signatures--complete" : "msc-signatures--incomplete"}`}>
                   {troisSignatures ? (
                     <>
-                      <span className="text-green-600">✓</span>
+                      <CheckCircle2 className="msc-signatures__icon" aria-hidden="true" />
                       Magasinier • Dépositaire • Logistique signés
                     </>
                   ) : (
                     <>
-                      <span className="text-yellow-600">⚠</span>
+                      <AlertTriangle className="msc-signatures__icon" aria-hidden="true" />
                       Signatures incomplètes
                     </>
                   )}
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="msc-card__actions" style={{ marginTop: 0, paddingTop: 0, borderTop: 'none' }}>
                   {!troisSignatures || reliquat <= 0 ? (
                     <Button
                       disabled
                       variant="outline"
                       size="sm"
-                      className="opacity-50 cursor-not-allowed"
+                      className="msc-btn msc-btn--outline msc-btn--sm opacity-50 cursor-not-allowed"
                     >
                       {!troisSignatures ? "Signatures requises" : "Tout réceptionné"}
                     </Button>
@@ -169,32 +165,44 @@ export function ListeSortiesARéceptionner({
                         <Button
                           onClick={() => onRecevoir(sortie)}
                           size="sm"
-                          className="flex-1"
+                          className="msc-btn msc-btn--primary msc-btn--sm"
                         >
-                          <Plus className="w-3 h-3 mr-1" /> Recevoir
+                          <Plus className="msc-btn__icon" aria-hidden="true" /> Recevoir
                         </Button>
                       ) : (
                         <Button
                           disabled
                           variant="outline"
                           size="sm"
-                          className="opacity-50 cursor-not-allowed flex-1"
+                          className="msc-btn msc-btn--outline msc-btn--sm opacity-50 cursor-not-allowed"
                         >
-                          <Plus className="w-3 h-3 mr-1" /> Recevoir (dépositaire)
+                          <Plus className="msc-btn__icon" aria-hidden="true" /> Recevoir (dépositaire)
                         </Button>
                       )}
-                      <Button
-                        onClick={() => onAnomalie(sortie)}
-                        variant="outline"
-                        size="sm"
-                      >
-                        <AlertTriangle className="w-3 h-3 mr-1" /> Anomalie
-                      </Button>
+                      {user?.role === "depositaire" || user?.role === "demandeur" ? (
+                        <Button
+                          onClick={() => onAnomalie(sortie)}
+                          variant="outline"
+                          size="sm"
+                          className="msc-btn msc-btn--outline msc-btn--sm"
+                        >
+                          <AlertTriangle className="msc-btn__icon" aria-hidden="true" /> Anomalie
+                        </Button>
+                      ) : (
+                        <Button
+                          disabled
+                          variant="outline"
+                          size="sm"
+                          className="msc-btn msc-btn--outline msc-btn--sm opacity-50 cursor-not-allowed"
+                        >
+                          <AlertTriangle className="msc-btn__icon" aria-hidden="true" /> Anomalie (dépositaire)
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>
               </div>
-            </CardContent>
+            </div>
           </Card>
         );
       })}
